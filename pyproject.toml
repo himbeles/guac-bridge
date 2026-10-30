@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guac-llm-bridge"
+version = "0.1.0"
+description = "Expose a remote vLLM API locally through an Apache Guacamole SSH terminal"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.10,<4"]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.scripts]
+guac-llm-client = "guac_llm_bridge.client:cli"
+guac-llm-server = "guac_llm_bridge.server:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
