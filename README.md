@@ -15,6 +15,26 @@ The client starts the appropriate server helper automatically. Keep the client r
 
 For the commands below, copy the full URL from your browser after opening the desired Guacamole web terminal connection. Replace `SERVER_URL` and `YOUR_USERNAME` with your connection details. Your Guacamole password is prompted.
 
+Append `--save-password` to either client command to remember the Guacamole
+password in your system credential store after successful login. On Windows,
+this uses Windows Credential Manager for your current user on this computer.
+Both bridges automatically reuse the saved password for the same deployment URL
+and username, regardless of the selected Guacamole connection.
+
+| Option | Behavior |
+| --- | --- |
+| `--save-password` | Save after successful authentication |
+| `--forget-password` | Delete the saved credential and exit |
+| `--no-keyring` | Ignore saved credentials for this invocation |
+
+`GUAC_PASSWORD` takes precedence over stored credentials. If no password is
+available, the client prompts; saving is opt-in. A rejected saved password gets
+one replacement prompt and is updated only after the replacement succeeds.
+macOS Keychain and available Secret Service/KWallet stores are also supported.
+An unavailable store falls back to prompting, without saving to a plaintext file.
+These options store only the Guacamole login, not the inner SSH password or an
+OpenAI API key.
+
 ## Usage: LLM bridge
 
 The server's OpenAI-compatible endpoint should be available at
@@ -94,4 +114,5 @@ input and output pipes.
 Listeners bind to local loopback. Helpers connect to services on the server's
 loopback interface, so no additional inbound server port is needed. Per-connection
 flow control bounds buffering; disconnecting Guacamole closes active connections.
+
 

@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import base64
 import contextlib
-import getpass
 import json
 import logging
 import os
@@ -19,13 +18,12 @@ import aiohttp
 from aiohttp import web
 
 from .console import setup_console, stop_hint
+from .auth import (add_credential_arguments, authenticate, forget_credentials,
+                   login, resolve_username)
+from .errors import BridgeError
 
 LOG = logging.getLogger('guac-llm')
 PATHS = {'/v1/models': 'GET', '/v1/chat/completions': 'POST', '/v1/completions': 'POST'}
-
-
-class BridgeError(Exception):
-    pass
 
 
 def instruction(*args):
@@ -454,26 +452,14 @@ class Bridge:
             await self.tunnel.close()
 
 
-async def login(session, base, username, password, timeout):
-    async with session.post(base + 'api/tokens', data={'username': username, 'password': password},
-                            timeout=aiohttp.ClientTimeout(total=timeout), allow_redirects=False) as response:
-        if response.status != 200:
-            raise BridgeError('Guacamole login returned HTTP ' + str(response.status) +
-                              '. This tool supports the standard username/password login API; '
-                              'SSO/MFA or an external login portal requires adaptation.')
-        try:
-            payload = await response.json(content_type=None)
-            return payload['authToken']
-        except (ValueError, KeyError) as exc:
-            raise BridgeError('Login did not return a Guacamole authToken; check the URL base path') from exc
-
-
 async def serve(args):
+    username = resolve_username(args)
+    if getattr(args, 'forget_password', False):
+        forget_credentials(args.url, username)
+        return
     base, conn, kind, source = parse_url(args.url, args.connection_id, args.data_source)
     command = bootstrap(args)  # Validate helper availability/size before login.
     del command
-    username = args.username or input('Guacamole username: ')
-    password = os.environ.get('GUAC_PASSWORD') or getpass.getpass('Guacamole password: ')
     tls = ssl.create_default_context(cafile=args.ca_file)
     if args.insecure:
         tls.check_hostname = False
@@ -484,8 +470,7 @@ async def serve(args):
     async with aiohttp.ClientSession(connector=connector, timeout=timeout,
                                      trust_env=True, auto_decompress=False,
                                      headers={'Accept-Encoding': 'identity'}) as session:
-        token = await login(session, base, username, password, args.connect_timeout)
-        password = None
+        token = await authenticate(session, base, username, args)
         bridge = Bridge(args, session, base, conn, kind, source, token)
         runner = None
         try:
@@ -519,6 +504,7 @@ def cli():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', required=True, help='Guacamole URL, including #/client/...')
     parser.add_argument('--username', help='Guacamole login username; otherwise prompted')
+    add_credential_arguments(parser)
     parser.add_argument('--port', type=int, default=8000, help='Local loopback port (default: 8000)')
     parser.add_argument('--upstream', default='http://127.0.0.1:8000', help='Server-side loopback vLLM URL')
     parser.add_argument('--connection-id', help='Override URL connection identifier')
@@ -561,5 +547,6 @@ def cli():
 
 if __name__ == '__main__':
     raise SystemExit(cli())
+
 
 
