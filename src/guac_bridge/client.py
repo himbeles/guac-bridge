@@ -18,6 +18,8 @@ import uuid
 import aiohttp
 from aiohttp import web
 
+from .console import setup_console, stop_hint
+
 LOG = logging.getLogger('guac-llm')
 PATHS = {'/v1/models': 'GET', '/v1/chat/completions': 'POST', '/v1/completions': 'POST'}
 
@@ -207,7 +209,7 @@ class Bridge:
                   ('GUAC_TIMEZONE', 'Europe/Berlin'), ('GUAC_IMAGE', 'image/png')]
         self.tunnel = Tunnel(self.session, self.base, params, self.args.transport)
         await self.tunnel.connect()
-        LOG.info('Connected via %s; waiting for terminal', self.tunnel.mode)
+        LOG.info('Connected to Guacamole (%s)', self.tunnel.mode)
         self.reader = asyncio.create_task(self.read_loop())
         await self.wait_for(self.synced.wait(), self.args.connect_timeout)
         await self.wait_for(asyncio.sleep(self.args.startup_delay), self.args.connect_timeout)
@@ -222,7 +224,7 @@ class Bridge:
                               ' installation/PATH, shell readiness, and Guacamole STDIN/output pipes; '
                               'try --startup-delay 5.') from exc
         self.maintainer = asyncio.create_task(self.maintain())
-        LOG.info('Remote helper ready')
+        LOG.info('Server helper ready')
 
     async def wait_for(self, awaitable, timeout):
         operation = asyncio.ensure_future(awaitable)
@@ -499,7 +501,8 @@ async def serve(args):
             runner = web.AppRunner(app, access_log=None, shutdown_timeout=5)
             await runner.setup()
             await web.TCPSite(runner, '127.0.0.1', args.port).start()
-            LOG.info('Local API: http://127.0.0.1:%s/v1 (Ctrl+C to stop)', args.port)
+            LOG.info('API available at http://127.0.0.1:%s/v1', args.port)
+            stop_hint()
             await bridge.failed.wait()
             raise BridgeError(bridge.failure)
         finally:
@@ -543,7 +546,7 @@ def cli():
     if (upstream.scheme != 'http' or upstream.hostname not in ('127.0.0.1', 'localhost', '::1')
             or upstream.username or upstream.password or upstream.query or upstream.fragment):
         parser.error('--upstream must be HTTP on server loopback, with no credentials/query/fragment')
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    setup_console('LLM')
     try:
         asyncio.run(serve(args))
     except KeyboardInterrupt:
@@ -558,4 +561,5 @@ def cli():
 
 if __name__ == '__main__':
     raise SystemExit(cli())
+
 

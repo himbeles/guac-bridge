@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "guac-bridge"
-version = "0.2.0"
+version = "0.2.1"
 description = "Bridge remote LLM APIs and SSH over an Apache Guacamole terminal"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -24,4 +24,5 @@ guac-ssh-server = "guac_bridge.ssh_server:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
 

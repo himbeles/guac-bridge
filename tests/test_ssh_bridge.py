@@ -217,7 +217,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
             while True:
                 line = await asyncio.wait_for(proc.stderr.readline(), 5)
                 self.assertTrue(line, 'Client exited before listening')
-                if b'SSH bridge:' in line:
+                if b'Listening on' in line:
                     break
             reader, writer = await asyncio.open_connection('127.0.0.1', local_port)
             writer.write(b'live connection')
@@ -349,3 +349,4 @@ LogLevel VERBOSE
 
 if __name__ == '__main__':
     unittest.main()
+

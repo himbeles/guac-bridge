@@ -1,6 +1,6 @@
-# Guacamole Bridge
+# 🐸 Guac Bridge
 
-Access an OpenAI-compatible endpoint or SSH service on a server through its Guacamole web terminal.
+OpenAI-compatible endpoints and SSH through Guacamole.
 
 ## Install
 
@@ -94,3 +94,4 @@ input and output pipes.
 Listeners bind to local loopback. Helpers connect to services on the server's
 loopback interface, so no additional inbound server port is needed. Per-connection
 flow control bounds buffering; disconnecting Guacamole closes active connections.
+

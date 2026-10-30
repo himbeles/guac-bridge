@@ -15,6 +15,7 @@ import uuid
 import aiohttp
 
 from .client import Bridge, BridgeError, login, parse_url
+from .console import setup_console, stop_hint
 
 LOG = logging.getLogger('guac-ssh')
 CHUNK = 4096
@@ -163,8 +164,8 @@ async def serve(args):
         try:
             await bridge.start()
             listener = await asyncio.start_server(bridge.accept, '127.0.0.1', args.port)
-            LOG.info('SSH bridge: 127.0.0.1:%s -> server %s:%s (Ctrl+C to stop)',
-                     args.port, args.target_host, args.target_port)
+            LOG.info('Listening on 127.0.0.1:%s', args.port)
+            stop_hint()
             await bridge.failed.wait()
             raise BridgeError(bridge.failure)
         finally:
@@ -200,7 +201,7 @@ def cli():
         parser.error('Ports must be 1..65535 and connection limit must be 1..16')
     if args.connect_timeout <= 0 or args.startup_delay < 0:
         parser.error('Timeout must be positive and startup delay cannot be negative')
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    setup_console('SSH')
     try:
         asyncio.run(serve(args))
     except KeyboardInterrupt:
@@ -214,3 +215,4 @@ def cli():
 
 if __name__ == '__main__':
     raise SystemExit(cli())
+
