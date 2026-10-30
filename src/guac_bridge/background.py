@@ -1,5 +1,6 @@
 """Start a detached SSH bridge and wait for its loopback listener."""
 import contextlib
+import json
 import logging
 import os
 from pathlib import Path
@@ -35,6 +36,23 @@ def default_log(port):
 
 def state_path(port):
     return default_log(port).with_suffix('.json')
+
+
+def startup_error_path(port, instance):
+    return default_log(port).with_suffix('.startup-' + instance + '.json')
+
+
+def record_startup_error(args, message):
+    instance = getattr(args, 'managed_id', None)
+    if (not isinstance(instance, str) or len(instance) != 32
+            or any(c not in '0123456789abcdef' for c in instance)
+            or getattr(args, '_managed_ready', False)):
+        return
+    path = startup_error_path(args.port, instance)
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+            json.dump({'error': message}, output)
 
 
 def stop_managed(port, timeout):
@@ -152,6 +170,7 @@ def _start_and_wait(args, deadline):
     # getpass/input from trying to prompt in the detached process.
     visible = getattr(args, 'show_console', False)
     instance = uuid.uuid4().hex
+    error_path = startup_error_path(args.port, instance)
     command = child_command(args) + ['--managed-id', instance]
     options = {'close_fds': True}
     if visible:
@@ -177,6 +196,10 @@ def _start_and_wait(args, deadline):
         while time.monotonic() < deadline:
             code = process.poll()
             if code is not None:
+                with contextlib.suppress(OSError, ValueError, TypeError, KeyError):
+                    error = json.loads(error_path.read_text())['error']
+                    if isinstance(error, str):
+                        raise BridgeError(error)
                 raise BridgeError(f'Background bridge exited with status {code}; see {destination}')
             state = read_state(state_path(args.port))
             if state and state['instance'] == instance:
@@ -191,3 +214,5 @@ def _start_and_wait(args, deadline):
         if not ready:
             with contextlib.suppress(OSError):
                 stop_child(process)
+        with contextlib.suppress(OSError):
+            error_path.unlink(missing_ok=True)

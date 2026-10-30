@@ -1,0 +1,252 @@
+{
+  "environment": {
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "aiohttp": "3.14.4",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+    "base_commit": "0d547f8131aedf5b938871376fba749f08c32e53",
+    "helper_cpu_note": "Unavailable: process-tree /proc entries hidden by the managed runtime."
+  },
+  "parameters": {
+    "kib": 4096,
+    "repeats": 1,
+    "delays": "0",
+    "transports": "websocket",
+    "variants": "baseline,pipeline",
+    "workloads": "ssh-upload,ssh-download,llm-upload,llm-download",
+    "output": "benchmarks/results/profile-run.json",
+    "profile": "/tmp/guac-performance.pstats"
+  },
+  "rows": [
+    {
+      "input_calls": 1028,
+      "input_wait_s": 1.1061723629945845,
+      "ack_wait_s": 0.9775930090099791,
+      "client_to_gateway_bytes": 10140162,
+      "client_to_gateway_instructions": 4102,
+      "workload": "ssh-upload",
+      "variant": "baseline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 4194304,
+      "wall_s": 1.2182598559993494,
+      "mib_s": 3.28337175381911,
+      "parent_cpu_s": 1.167180345,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 197216,
+      "gateway_to_client_instructions": 4101,
+      "repeat": 0
+    },
+    {
+      "input_calls": 1028,
+      "input_wait_s": 0.17942962898359838,
+      "ack_wait_s": 0.038059777001762995,
+      "client_to_gateway_bytes": 10139459,
+      "client_to_gateway_instructions": 4065,
+      "workload": "ssh-upload",
+      "variant": "pipeline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 4194304,
+      "wall_s": 0.7592881810005565,
+      "mib_s": 5.268092010505124,
+      "parent_cpu_s": 0.7171954039999999,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 196612,
+      "gateway_to_client_instructions": 4064,
+      "repeat": 0
+    },
+    {
+      "input_calls": 1027,
+      "input_wait_s": 0.6393905940003606,
+      "ack_wait_s": 0.5944599560034476,
+      "client_to_gateway_bytes": 162053,
+      "client_to_gateway_instructions": 3070,
+      "workload": "ssh-download",
+      "variant": "baseline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 4194304,
+      "wall_s": 0.8579807579999397,
+      "mib_s": 4.662109217139671,
+      "parent_cpu_s": 0.8340491459999999,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 10127600,
+      "gateway_to_client_instructions": 3069,
+      "repeat": 0
+    },
+    {
+      "input_calls": 1027,
+      "input_wait_s": 0.049618586019278155,
+      "ack_wait_s": 0.0,
+      "client_to_gateway_bytes": 161369,
+      "client_to_gateway_instructions": 3034,
+      "workload": "ssh-download",
+      "variant": "pipeline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 4194304,
+      "wall_s": 0.6114971549995971,
+      "mib_s": 6.541322338617643,
+      "parent_cpu_s": 0.5893563789999994,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 10126765,
+      "gateway_to_client_instructions": 3033,
+      "repeat": 0
+    },
+    {
+      "input_calls": 2,
+      "input_wait_s": 1.0212582800004384,
+      "ack_wait_s": 0.881978264996178,
+      "client_to_gateway_bytes": 13311671,
+      "client_to_gateway_instructions": 3240,
+      "workload": "llm-upload",
+      "variant": "baseline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 5592422,
+      "wall_s": 1.1604452929996114,
+      "mib_s": 4.595950589035703,
+      "parent_cpu_s": 1.0320552459999996,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 78248,
+      "gateway_to_client_instructions": 3240,
+      "repeat": 0
+    },
+    {
+      "input_calls": 2,
+      "input_wait_s": 0.4703066869997201,
+      "ack_wait_s": 0.35827157899166195,
+      "client_to_gateway_bytes": 13311671,
+      "client_to_gateway_instructions": 3240,
+      "workload": "llm-upload",
+      "variant": "pipeline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 5592422,
+      "wall_s": 0.6105088759995851,
+      "mib_s": 8.735907760838021,
+      "parent_cpu_s": 0.5034013010000002,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 78248,
+      "gateway_to_client_instructions": 3240,
+      "repeat": 0
+    },
+    {
+      "input_calls": 1542,
+      "input_wait_s": 0.9975607999995191,
+      "ack_wait_s": 0.9418688170144378,
+      "client_to_gateway_bytes": 233667,
+      "client_to_gateway_instructions": 4087,
+      "workload": "llm-download",
+      "variant": "baseline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 4194304,
+      "wall_s": 1.1317997799997102,
+      "mib_s": 3.5341940073543965,
+      "parent_cpu_s": 1.093047736,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 10210146,
+      "gateway_to_client_instructions": 4087,
+      "repeat": 0
+    },
+    {
+      "input_calls": 1542,
+      "input_wait_s": 0.05960160199811071,
+      "ack_wait_s": 0.0,
+      "client_to_gateway_bytes": 220367,
+      "client_to_gateway_instructions": 3387,
+      "workload": "llm-download",
+      "variant": "pipeline",
+      "transport": "websocket",
+      "ack_delay_ms": 0.0,
+      "payload_bytes": 4194304,
+      "wall_s": 0.7429425279997304,
+      "mib_s": 5.383996539771986,
+      "parent_cpu_s": 0.7034186460000003,
+      "helper_tree_cpu_s": null,
+      "gateway_to_client_bytes": 10196736,
+      "gateway_to_client_instructions": 3387,
+      "repeat": 0
+    }
+  ],
+  "codec": {
+    "raw_bytes": 4096,
+    "body_json_bytes": 5529,
+    "terminal_bytes": 7373,
+    "guac_bytes": 9883,
+    "wire_expansion": 2.412841796875,
+    "controls": [
+      {
+        "workload": "base64",
+        "iterations": 4096,
+        "wall_s": 0.05017273900011787,
+        "mib_s": 318.89827661117744
+      },
+      {
+        "workload": "json",
+        "iterations": 4096,
+        "wall_s": 0.10344872700079577,
+        "mib_s": 154.66599216708508
+      },
+      {
+        "workload": "guac_parser",
+        "iterations": 4096,
+        "wall_s": 0.06786797599943384,
+        "mib_s": 235.75183677399593
+      },
+      {
+        "workload": "full_codec",
+        "iterations": 4096,
+        "wall_s": 0.5080840609998631,
+        "mib_s": 31.49085206198647
+      }
+    ]
+  },
+  "websocket_controls": [
+    {
+      "workload": "websocket-control",
+      "payload_bytes": 8388608,
+      "wall_s": 0.027134487000694207,
+      "mib_s": 294.82775922004083,
+      "parent_cpu_s": 0.027136073999999955
+    },
+    {
+      "workload": "websocket-control",
+      "payload_bytes": 8388608,
+      "wall_s": 0.026734850999673654,
+      "mib_s": 299.2348825919267,
+      "parent_cpu_s": 0.026686666999999997
+    },
+    {
+      "workload": "websocket-control",
+      "payload_bytes": 8388608,
+      "wall_s": 0.018577536000520922,
+      "mib_s": 430.62761389754144,
+      "parent_cpu_s": 0.01856455400000001
+    }
+  ],
+  "tcp_controls": [
+    {
+      "workload": "tcp-control",
+      "payload_bytes": 8388608,
+      "wall_s": 0.012422046000210685,
+      "mib_s": 644.0162916692078,
+      "parent_cpu_s": 0.01240971600000007
+    },
+    {
+      "workload": "tcp-control",
+      "payload_bytes": 8388608,
+      "wall_s": 0.008632796999336279,
+      "mib_s": 926.6984965145213,
+      "parent_cpu_s": 0.008636906
+    },
+    {
+      "workload": "tcp-control",
+      "payload_bytes": 8388608,
+      "wall_s": 0.009193857999889588,
+      "mib_s": 870.146134527646,
+      "parent_cpu_s": 0.009196505000000021
+    }
+  ]
+}

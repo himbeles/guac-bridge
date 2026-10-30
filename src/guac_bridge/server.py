@@ -8,6 +8,7 @@ import sys
 import threading
 import urllib.parse
 
+from . import __version__
 
 def run(config):
     upstream = urllib.parse.urlsplit(config['upstream'])
@@ -38,6 +39,7 @@ def run(config):
     def worker(req, state):
         ident = req['id']
         conn = None
+        terminal_event = None
         try:
             path = req['path']
             if path not in ('/v1/chat/completions', '/v1/completions', '/v1/models'):
@@ -67,19 +69,29 @@ def run(config):
                     break
                 emit({'type': 'data', 'id': ident, 'body': base64.b64encode(data).decode()})
             if not state['cancel'].is_set():
-                emit({'type': 'end', 'id': ident})
+                terminal_event = {'type': 'end', 'id': ident}
         except Exception as exc:
             if not state['cancel'].is_set():
-                emit({'type': 'error', 'id': ident,
-                      'message': 'Upstream HTTP failed: ' + type(exc).__name__})
+                terminal_event = {'type': 'error', 'id': ident,
+                                  'message': 'Upstream HTTP failed: ' + type(exc).__name__}
         finally:
             if conn:
-                conn.close()
+                try:
+                    conn.close()
+                except OSError:
+                    pass
             with state_lock:
                 states.pop(ident, None)
+            # A terminal event certifies that the remote concurrency slot and
+            # upstream socket have been released, not just that EOF was read.
+            if state['cancel'].is_set():
+                emit({'type': 'cancelled', 'id': ident})
+            elif terminal_event:
+                emit(terminal_event)
 
     def cancel(state):
         state['cancel'].set()
+        state['credits'].release()
         sock = state.get('sock')
         if sock:
             try:
@@ -94,7 +106,7 @@ def run(config):
     # Flag 2 enables per-frame autoflush, essential for readiness and SSE latency.
     output(b'\x1b]482202;2;LLM\x07')
     try:
-        emit({'type': 'ready', 'version': 1})
+        emit({'type': 'ready', 'version': 1, 'package_version': __version__})
         threading.Thread(target=heartbeat, daemon=True).start()
         while True:
             line = sys.stdin.buffer.readline(48 * 1024 * 1024)
@@ -113,6 +125,8 @@ def run(config):
                         state['credits'].release()
                     else:
                         cancel(state)
+                elif kind == 'cancel':
+                    emit({'type': 'cancelled', 'id': ident})
             elif kind == 'request':
                 with state_lock:
                     if ident in states or len(states) >= config['max_requests']:
@@ -138,6 +152,7 @@ def run(config):
 def cli():
     import argparse
     parser = argparse.ArgumentParser(description='Relay vLLM HTTP through a Guacamole SSH terminal.')
+    parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     parser.add_argument('--upstream', default='http://127.0.0.1:8000')
     parser.add_argument('--request-timeout', type=float, default=1800)
     parser.add_argument('--max-requests', type=int, default=4)

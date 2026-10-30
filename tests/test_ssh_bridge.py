@@ -17,6 +17,7 @@ import unittest
 import aiohttp
 
 from guac_bridge.client import login
+from guac_bridge.errors import BridgeError
 from guac_bridge.ssh_client import SSHBridge
 from test_bridge import Gateway, start_app
 
@@ -110,6 +111,51 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         bridge, local, _ = await self.connect(target)
         await self.transfer(local, bytes(range(256)) * 2048)
         self.assertFalse(bridge.failed.is_set())
+
+    async def test_different_helper_package_version_fails_during_real_handshake(self):
+        command = ("import guac_bridge,runpy;guac_bridge.__version__='0.0.0';"
+                   "runpy.run_module('guac_bridge.ssh_server',run_name='__main__',alter_sys=True)")
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
+        target = await self.target(self.echo)
+        with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force guac-bridge=='):
+            await self.connect(target)
+        self.assertFalse(self.bridges[-1].ready.is_set())
+
+    async def test_managed_startup_reports_version_mismatch_before_listening(self):
+        command = ("import guac_bridge,runpy;guac_bridge.__version__='0.0.0';"
+                   "runpy.run_module('guac_bridge.ssh_server',run_name='__main__',alter_sys=True)")
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
+        gateway = Gateway(True)
+        self.gateways.append(gateway)
+        runner, base = await start_app(gateway.app())
+        self.runners.append(runner)
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0))
+            local = sock.getsockname()[1]
+        env = dict(os.environ, GUAC_PASSWORD='test', XDG_CACHE_HOME=self.temp.name,
+                   PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'src'))
+        process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'guac_bridge.ssh_client',
+            '--ensure-running', '--url', base + 'guacamole/', '--connection-id', '1', '--data-source', 'mysql',
+            '--username', 'test', '--no-keyring', '--port', str(local), '--server-command', str(self.helper),
+            '--startup-delay', '.1', '--ready-timeout', '10', env=env,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        _, stderr = await asyncio.wait_for(process.communicate(), 15)
+        self.assertEqual(process.returncode, 1, stderr.decode())
+        self.assertIn(b'version: 0.0.0', stderr)
+        self.assertIn(b'uv tool install --force guac-bridge==', stderr)
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', local))
+        self.assertFalse(list(Path(self.temp.name).rglob('*.startup-*.json')))
+
+    async def test_single_remote_slot_can_be_reused_after_closed_channels(self):
+        target = await self.target(self.echo)
+        bridge, local, _ = await self.connect(target, max_connections=1)
+        for index in range(8):
+            await self.transfer(local, bytes([index]) * 16384)
+            async with asyncio.timeout(5):
+                while bridge.requests:
+                    await asyncio.sleep(.005)
+            self.assertFalse(bridge.failed.is_set())
 
     async def test_background_cli_starts_bridge_exits_and_reuses_listener(self):
         target = await self.target(self.echo)

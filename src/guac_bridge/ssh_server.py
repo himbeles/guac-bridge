@@ -9,6 +9,7 @@ import signal
 import sys
 import threading
 
+from . import __version__
 CHUNK = 4096
 WINDOW = 8
 
@@ -45,6 +46,7 @@ async def relay(args):
     async def connection(ident, state):
         writer = None
         tasks = []
+        terminal_event = {'type': 'closed', 'id': ident}
         try:
             reader, writer = await asyncio.wait_for(
                 asyncio.open_connection(args.target_host, args.target_port), args.connect_timeout)
@@ -74,12 +76,11 @@ async def relay(args):
 
             tasks = [asyncio.create_task(receive_tcp()), asyncio.create_task(send_tcp())]
             await asyncio.gather(*tasks)
-            emit({'type': 'closed', 'id': ident})
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            emit({'type': 'error', 'id': ident,
-                  'message': 'SSH target connection failed: ' + type(exc).__name__})
+            terminal_event = {'type': 'error', 'id': ident,
+                              'message': 'SSH target connection failed: ' + type(exc).__name__}
         finally:
             for task in tasks:
                 task.cancel()
@@ -89,6 +90,7 @@ async def relay(args):
                 with contextlib.suppress(Exception):
                     await asyncio.wait_for(writer.wait_closed(), 2)
             channels.pop(ident, None)
+            emit(terminal_event)
 
     async def heartbeat():
         while True:
@@ -98,7 +100,7 @@ async def relay(args):
     # LLM is the established transport pipe name, shared by both relay modes.
     sys.stdout.buffer.write(b'\x1b]482202;2;LLM\x07')
     sys.stdout.buffer.flush()
-    emit({'type': 'ready', 'version': 1, 'protocol': 'ssh-tcp'})
+    emit({'type': 'ready', 'version': 1, 'protocol': 'ssh-tcp', 'package_version': __version__})
     main = asyncio.current_task()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         loop.add_signal_handler(sig, main.cancel)
@@ -126,6 +128,8 @@ async def relay(args):
                 continue
             state = channels.get(ident)
             if state is None:
+                if kind == 'close':
+                    emit({'type': 'closed', 'id': ident})
                 continue
             if kind == 'data':
                 data = base64.b64decode(event['body'], validate=True)
@@ -156,6 +160,7 @@ async def relay(args):
 
 def cli():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     parser.add_argument('--stdio', action='store_true', help='Run the machine protocol; supplied by guac-ssh-client')
     parser.add_argument('--target-host', choices=('127.0.0.1', 'localhost', '::1'), default='127.0.0.1')
     parser.add_argument('--target-port', type=int, default=22)

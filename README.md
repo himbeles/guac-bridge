@@ -11,6 +11,12 @@ uv tool install guac-bridge
 uv tool update-shell
 ```
 
+Install the same package version on client and server. Each new Guacamole
+connection checks the helper version and stops with a matching installation
+command if it differs or cannot be identified. Use `--version` on any of the
+four commands to check its installed version. If using `--server-command`, the
+installation at that path must match the client too.
+
 The client starts the appropriate server helper automatically. Keep the client running while using the bridge; stop it with **Ctrl+C**.
 
 For the commands below, copy the full URL from your browser after opening the desired Guacamole web terminal connection. Replace `SERVER_URL` and `YOUR_USERNAME` with your connection details. Your Guacamole password is prompted.
@@ -148,3 +154,5 @@ listeners and require no additional externally accessible server port.
 
 See [Connection details](docs/connections.md) for flowcharts, the two SSH
 connections, loopback addresses and ports, authentication, and bridge lifetime.
+See [Benchmarking](docs/benchmarking.md) for live transfer tests, LLM timing
+comparisons, and controlled transport benchmarks.

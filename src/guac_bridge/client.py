@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import base64
+from collections import deque
 import contextlib
 import json
 import logging
@@ -17,6 +18,7 @@ import uuid
 import aiohttp
 from aiohttp import web
 
+from . import __version__
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
@@ -193,6 +195,8 @@ class Bridge:
         self.failure = None
         self.input_lock = asyncio.Lock()
         self.acks = asyncio.Queue()
+        self.pending_input = deque()
+        self.ack_deadlines = {}
         self.input_stream = 0
         self.output_stream = None
         self.output_buffer = b''
@@ -244,26 +248,66 @@ class Bridge:
     def new_ack(self):
         future = asyncio.get_running_loop().create_future()
         self.acks.put_nowait(future)
+        self.ack_deadlines[future] = asyncio.get_running_loop().call_later(
+            self.args.connect_timeout, self.input_ack_timeout, future)
+        future.add_done_callback(self.input_ack_done)
         return future
+
+    def input_ack_timeout(self, future):
+        if not future.done():
+            future.set_exception(BridgeError('Guacamole input acknowledgement timed out; restart the bridge'))
+
+    def input_ack_done(self, future):
+        timer = self.ack_deadlines.pop(future, None)
+        if timer:
+            timer.cancel()
+        # A small event can return before its ACK. Observe errors even if no
+        # later send ever needs to wait on this future.
+        if not future.cancelled():
+            error = future.exception()
+            if error is not None:
+                self.fail(str(error) if isinstance(error, BridgeError) else 'Terminal input failed; restart the bridge')
+
+    def finish_input_acks(self, message=None):
+        while not self.acks.empty():
+            future = self.acks.get_nowait()
+            if not future.done():
+                if message:
+                    future.set_exception(BridgeError(message))
+                else:
+                    future.cancel()
 
     async def send_input(self, data):
         async with self.input_lock:
-            pending = []
+            pending = self.pending_input
             try:
                 for offset in range(0, len(data), 3072):
+                    if self.failed.is_set() or not self.tunnel or self.tunnel.closed:
+                        raise BridgeError(self.failure or 'Guacamole tunnel is closed')
+                    while pending and pending[0].done():
+                        pending.popleft().result()
+                    if len(pending) >= 8:
+                        await self.wait_for(pending.popleft(), self.args.connect_timeout)
                     pending.append(self.new_ack())
                     await self.tunnel.send('blob', self.input_stream,
                                            base64.b64encode(data[offset:offset + 3072]).decode())
-                    if len(pending) >= 8:
-                        await self.wait_for(pending.pop(0), self.args.connect_timeout)
-                for future in pending:
-                    await self.wait_for(future, self.args.connect_timeout)
             except BaseException:
                 self.fail('Terminal input failed; restart the bridge')
                 raise
 
+    async def drain_input(self):
+        async with self.input_lock:
+            while self.pending_input:
+                future = self.pending_input.popleft()
+                if future.done():
+                    future.result()
+                else:
+                    await self.wait_for(future, self.args.connect_timeout)
+
     async def send_event(self, event):
         await self.send_input(base64.b64encode(json.dumps(event, separators=(',', ':')).encode()) + b'\n')
+        if event.get('type') == 'shutdown':
+            await self.drain_input()
 
     def fail(self, message):
         if self.failed.is_set() or self.closing:
@@ -294,7 +338,7 @@ class Bridge:
                                 if int(values[2]) == 0:
                                     future.set_result(None)
                                 else:
-                                    future.set_exception(BridgeError('Guacamole rejected STDIN pipe: ' + values[2]))
+                                    future.set_exception(BridgeError('Guacamole rejected terminal input (status ' + values[2] + ')'))
                     elif opcode == 'pipe':
                         if values[2] == 'LLM' and self.output_stream is None:
                             self.output_stream = int(values[0])
@@ -312,7 +356,11 @@ class Bridge:
                                 self.dispatch(event)
                         await self.tunnel.send('ack', values[0], 'OK', 0)
                     elif opcode == 'end' and int(values[0]) == self.output_stream:
-                        raise BridgeError('Remote helper output pipe closed')
+                        if not self.closing:
+                            raise BridgeError('Remote helper output pipe closed')
+                        # The helper may close its output before the gateway's
+                        # final STDIN ACK arrives. Keep reading those ACKs.
+                        self.output_stream = None
                     elif opcode == 'error':
                         raise BridgeError('Guacamole error status ' + (values[1] if len(values) > 1 else 'unknown'))
                     elif opcode == 'disconnect':
@@ -325,12 +373,25 @@ class Bridge:
             raise
         except Exception as exc:
             self.fail(str(exc) if isinstance(exc, BridgeError) else 'Guacamole transport/protocol failure: ' + type(exc).__name__)
+        finally:
+            self.finish_input_acks('Guacamole tunnel closed before acknowledging terminal input')
 
     def dispatch(self, event):
         self.last_seen = time.monotonic()
         if event['type'] == 'ready':
             if event.get('version') != 1:
                 raise BridgeError('Unsupported remote helper version')
+            remote_version = event.get('package_version')
+            if remote_version != __version__:
+                label = (remote_version if isinstance(remote_version, str) and remote_version
+                         and len(remote_version) <= 64
+                         and all(c.isalnum() or c in '.+-_!' for c in remote_version)
+                         else 'not reported (older or incompatible helper)')
+                raise BridgeError(
+                    f'Server helper {self.helper_name} version: {label}; client version: {__version__}. '
+                    'Client and server package versions must match. On the server, run: '
+                    f'uv tool install --force guac-bridge=={__version__}. '
+                    'Then reconnect. If using --server-command, update the installation at that path.')
             self.ready.set()
         elif event['type'] != 'heartbeat':
             queue = self.requests.get(event.get('id'))
@@ -420,10 +481,24 @@ class Bridge:
                 request.transport.abort()
             return response
         finally:
-            self.requests.pop(ident, None)
-            if not complete and not self.failed.is_set():
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(self.send_event({'type': 'cancel', 'id': ident}), timeout=5)
+            try:
+                if not complete and not self.failed.is_set():
+                    try:
+                        await asyncio.wait_for(self.cancel_request(ident, queue), timeout=5)
+                    except asyncio.CancelledError:
+                        self.fail('Remote request cancellation did not complete; restart the bridge')
+                        raise
+                    except Exception:
+                        self.fail('Remote request cancellation did not complete; restart the bridge')
+            finally:
+                self.requests.pop(ident, None)
+
+    async def cancel_request(self, ident, queue):
+        await self.send_event({'type': 'cancel', 'id': ident})
+        while True:
+            event = await queue.get()
+            if event['type'] in ('cancelled', 'end', 'error'):
+                return
 
     async def next_event(self, queue, request):
         # Detect a disconnected HTTP consumer even while vLLM is still prefilling.
@@ -438,9 +513,11 @@ class Bridge:
 
     async def close(self):
         self.closing = True
-        if self.tunnel and self.ready.is_set() and not self.failed.is_set():
+        if self.tunnel and not self.tunnel.closed and self.ready.is_set() and not self.failed.is_set():
             with contextlib.suppress(Exception):
-                await asyncio.wait_for(self.send_event({'type': 'shutdown'}), timeout=3)
+                # Closing the shared transport does not require the SSH
+                # per-connection cancellation shield. Keep shutdown bounded.
+                await asyncio.wait_for(Bridge.send_event(self, {'type': 'shutdown'}), timeout=3)
         if self.tunnel and not self.tunnel.closed:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(self.tunnel.send('end', self.input_stream), timeout=2)
@@ -450,6 +527,13 @@ class Bridge:
         await asyncio.gather(*(t for t in (self.maintainer, self.reader) if t), return_exceptions=True)
         if self.tunnel:
             await self.tunnel.close()
+        self.finish_input_acks()
+        for future, timer in list(self.ack_deadlines.items()):
+            timer.cancel()
+            if not future.done():
+                future.cancel()
+        self.ack_deadlines.clear()
+        self.pending_input.clear()
 
 
 async def serve(args):
@@ -502,6 +586,7 @@ async def serve(args):
 
 def cli():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     parser.add_argument('--url', required=True, help='Guacamole URL, including #/client/...')
     parser.add_argument('--username', help='Guacamole login username; otherwise prompted')
     add_credential_arguments(parser)

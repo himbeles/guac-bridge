@@ -33,6 +33,11 @@ jobs:
         run: python -m pip install .
       - name: Run integration and protocol tests
         run: python -m unittest discover -s tests -v
+      - name: Benchmark integrity and delayed-ACK smoke test
+        run: >-
+          python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20
+          --transports websocket --workloads ssh-upload,ssh-download,llm-paced
+          --output benchmarks/results/release-smoke.json
 
   credentials-windows:
     name: Windows Python ${{ matrix.python }}
@@ -59,6 +64,11 @@ jobs:
       - name: Test Windows background startup
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_background.py -v
+      - name: Test Windows input pipeline and version checks
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_input_pipeline.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_version_checks.py -v
       - name: Test Windows listener errors
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_listeners.py -v

@@ -257,6 +257,14 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(r.status, 200)
             self.assertEqual((await r.json())['echo'], payload)
 
+    async def test_different_helper_package_version_fails_during_real_handshake(self):
+        command = ("import guac_bridge,runpy;guac_bridge.__version__='0.0.0';"
+                   "runpy.run_module('guac_bridge.server',run_name='__main__',alter_sys=True)")
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
+        with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force guac-bridge=='):
+            await self.connect()
+        self.assertFalse(self.bridges[-1].ready.is_set())
+
     async def test_streaming_arrives_before_completion_and_flow_control(self):
         _, local, _ = await self.connect()
         async with self.session.post(local + 'v1/chat/completions',

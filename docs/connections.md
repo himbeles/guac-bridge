@@ -10,7 +10,8 @@ server where the helper and destination service are available.
 1. The client authenticates to Guacamole over HTTP(S).
 2. Guacamole opens its configured SSH terminal on the server.
 3. The client starts the matching server helper inside that terminal.
-4. After the helper is ready, the client opens a listener on your PC.
+4. The client verifies that the helper reports the same package version. After
+   the helper is ready, the client opens a listener on your PC.
 5. Local applications connect to that listener. Requests and responses travel
    through Guacamole and the helper.
 
@@ -18,6 +19,26 @@ The Guacamole transport normally uses WebSocket, with an HTTP tunnel fallback.
 Messages sent through the terminal are framed and Base64-encoded so they can
 carry arbitrary data. Base64 is a transport encoding; encryption comes from the
 underlying HTTPS/WSS and SSH connections when those transports are used.
+
+Both clients pipeline at most eight input blobs across events, preserving frame
+boundaries and backpressure. Missing or rejected input acknowledgements fail the
+connection instead of allowing unbounded buffering. See
+[Benchmarking](benchmarking.md) for measurement instructions.
+
+## Matching client and server versions
+
+The package versions must match exactly. A missing version report from an older
+helper also prevents the local listener from opening. The error identifies the
+client and helper versions and supplies a server-side command such as:
+
+```shell
+uv tool install --force guac-bridge==0.5.0
+```
+
+Reconnect after installing the required version. If `--server-command` selects
+a custom helper path, update that installation. Run the selected helper with
+`--version` to check it. Stop and restart existing managed bridges to use a newly
+installed client; reusing a listener keeps its original running process.
 
 ## SSH bridge
 

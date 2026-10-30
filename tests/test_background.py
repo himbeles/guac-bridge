@@ -121,6 +121,20 @@ asyncio.run(main())
                 background.ensure_running(self.args)
         self.assertIn('authentication failed', Path(self.args.background_log).read_text())
 
+    def test_child_startup_error_is_reported_directly_and_record_is_removed(self):
+        body = f'''
+import json, sys
+from pathlib import Path
+instance = sys.argv[sys.argv.index('--managed-id') + 1]
+path = Path({str(self.root / ('ssh-' + str(self.args.port)))!r} + '.startup-' + instance + '.json')
+path.write_text(json.dumps(dict(error='Server version mismatch. Run uv tool install --force guac-bridge==0.5.0')))
+sys.exit(1)
+'''
+        with self.fake_child(body), patch.object(background.subprocess, 'Popen', side_effect=self.spawn):
+            with self.assertRaisesRegex(BridgeError, 'Server version mismatch. Run uv tool install'):
+                background.ensure_running(self.args)
+        self.assertFalse(list(self.root.glob('*.startup-*.json')))
+
     def test_timeout_terminates_child(self):
         self.args.ready_timeout = .4
         with self.fake_child('import time; time.sleep(60)'), \

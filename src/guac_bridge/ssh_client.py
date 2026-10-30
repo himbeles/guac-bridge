@@ -14,11 +14,12 @@ import uuid
 
 import aiohttp
 
+from . import __version__
 from .client import Bridge, BridgeError, parse_url
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    resolve_username)
-from .background import ensure_running, state_path, stop_managed
+from .background import ensure_running, record_startup_error, state_path, stop_managed
 from .control import ControlServer
 
 LOG = logging.getLogger('guac-ssh')
@@ -102,10 +103,12 @@ class SSHBridge(Bridge):
         self.requests[ident] = queue
         self.credits[ident] = asyncio.BoundedSemaphore(WINDOW)
         tasks = []
+        remote_closed = False
         try:
             await self.send_event({'type': 'open', 'id': ident})
             event = await self.wait_for(queue.get(), self.args.connect_timeout)
             if event['type'] != 'opened':
+                remote_closed = event['type'] in ('error', 'closed')
                 raise BridgeError(event.get('message', 'SSH target did not open'))
 
             async def upload():
@@ -120,6 +123,7 @@ class SSHBridge(Bridge):
                                            'body': base64.b64encode(data).decode()})
 
             async def download():
+                nonlocal remote_closed
                 while True:
                     event = await queue.get()
                     kind = event['type']
@@ -131,11 +135,13 @@ class SSHBridge(Bridge):
                         await writer.drain()
                         await self.send_event({'type': 'credit', 'id': ident})
                     elif kind in ('eof', 'closed'):
+                        remote_closed = kind == 'closed'
                         if writer.can_write_eof():
                             writer.write_eof()
                             await writer.drain()
                         return
                     elif kind == 'error':
+                        remote_closed = True
                         raise BridgeError(event['message'])
                     else:
                         raise BridgeError('Unexpected TCP relay event')
@@ -152,15 +158,24 @@ class SSHBridge(Bridge):
             for child in tasks:
                 child.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-            if not self.failed.is_set() and self.tunnel and not self.tunnel.closed:
-                with contextlib.suppress(Exception):
-                    await asyncio.wait_for(self.send_event({'type': 'close', 'id': ident}), 5)
+            if not remote_closed and not self.failed.is_set() and self.tunnel and not self.tunnel.closed:
+                try:
+                    await asyncio.wait_for(self.close_channel(ident, queue), 5)
+                except (Exception, asyncio.CancelledError):
+                    self.fail('Remote SSH channel close did not complete; restart the bridge')
             self.requests.pop(ident, None)
             self.credits.pop(ident, None)
             writer.close()
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(writer.wait_closed(), 2)
             self.connections.discard(task)
+
+    async def close_channel(self, ident, queue):
+        await self.send_event({'type': 'close', 'id': ident})
+        while True:
+            event = await queue.get()
+            if event['type'] in ('closed', 'error'):
+                return
 
     async def close(self):
         self.closing = True
@@ -196,6 +211,7 @@ async def serve(args):
             listener = await start_listener(bridge.accept, args.port)
             if getattr(args, 'managed_id', None):
                 control = await ControlServer(state_path(args.port), args.managed_id).start()
+                args._managed_ready = True
             LOG.info('Listening on 127.0.0.1:%s', args.port)
             if control:
                 LOG.info('Stop with guac-ssh-client --stop --port %s', args.port)
@@ -226,6 +242,7 @@ async def serve(args):
 
 def cli(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     parser.add_argument('--url', help='Full Guacamole connection URL')
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
@@ -277,8 +294,10 @@ def cli(argv=None):
     except KeyboardInterrupt:
         pass
     except (BridgeError, OSError, aiohttp.ClientError, asyncio.TimeoutError) as exc:
-        LOG.error('%s', str(exc) if isinstance(exc, BridgeError) else type(exc).__name__ +
-                  ': check network, proxy, TLS trust, and local port')
+        message = (str(exc) if isinstance(exc, BridgeError) else type(exc).__name__ +
+                   ': check network, proxy, TLS trust, and local port')
+        record_startup_error(args, message)
+        LOG.error('%s', message)
         return 1
     return 0
 
