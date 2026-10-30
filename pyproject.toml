@@ -12,6 +12,10 @@ dependencies = ["aiohttp>=3.10,<4"]
 license = "MIT"
 license-files = ["LICENSE"]
 
+[project.urls]
+Repository = "https://github.com/himbeles/guac-llm-bridge"
+Issues = "https://github.com/himbeles/guac-llm-bridge/issues"
+
 [project.scripts]
 guac-llm-client = "guac_llm_bridge.client:cli"
 guac-llm-server = "guac_llm_bridge.server:cli"

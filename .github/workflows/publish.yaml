@@ -1,0 +1,94 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches: [main]
+    paths: [pyproject.toml]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-publish
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test on Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install package
+        run: python -m pip install .
+      - name: Run integration and protocol tests
+        run: python -m unittest discover -s tests -v
+
+  build:
+    name: Build distributions
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Check release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import tomllib
+          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          expected = "v" + version
+          if os.environ["RELEASE_TAG"] != expected:
+              raise SystemExit(f"Release tag must be {expected}")
+          PY
+      - name: Install build tools
+        run: python -m pip install build twine
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Validate distribution metadata
+        run: python -m twine check --strict dist/*
+      - name: Check installed wheel entry points
+        run: |
+          python -m pip install dist/*.whl
+          guac-llm-client --help
+          guac-llm-server --help
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish with PyPI Trusted Publishing
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/guac-llm-bridge/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

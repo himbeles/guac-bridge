@@ -16,33 +16,26 @@ against a production Guacamole deployment**.
 
 ## Installation
 
-Clone and install on both machines:
+Install on both machines from PyPI:
+
+```shell
+uv tool install guac-llm-bridge
+uv tool update-shell
+```
+
+Open a fresh terminal if required by `update-shell`. Both commands are installed
+on both machines; use the appropriate one on each. Upgrade an existing PyPI
+installation with `uv tool upgrade guac-llm-bridge`.
+
+To install from source instead:
 
 ```shell
 git clone https://github.com/himbeles/guac-llm-bridge.git
 cd guac-llm-bridge
 uv tool install .
-uv tool update-shell
 ```
 
-Alternatively, when using the downloadable archive, install its included universal wheel:
-
-```shell
-uv tool install ./dist/guac_llm_bridge-0.1.0-py3-none-any.whl
-uv tool update-shell
-```
-
-Open a fresh terminal if required by `update-shell`. Both commands are installed
-on both machines; use the appropriate one on each.
-
-If necessary, select an existing suitable Python explicitly:
-
-```shell
-uv tool install --python /path/to/python3.11 ./dist/guac_llm_bridge-0.1.0-py3-none-any.whl
-```
-
-The package is supplied locally and has not been published to PyPI. Use the local
-path, not `uv tool install guac-llm-bridge`.
+If needed, select a suitable Python with `uv tool install --python 3.11 guac-llm-bridge`.
 
 ## 1. Check the Linux server
 
@@ -225,3 +218,21 @@ Protocol references:
 - https://github.com/apache/guacamole-server/blob/main/src/terminal/terminal-handlers.c
 - https://github.com/apache/guacamole-server/blob/main/src/terminal/terminal-stdin-stream.c
 - https://guacamole.apache.org/doc/gug/protocol-reference.html
+
+## Publishing releases
+
+The workflow `.github/workflows/publish.yaml` uses PyPI Trusted Publishing
+with GitHub environment `pypi`; no PyPI API token is needed. The publisher must
+be registered on PyPI for owner `himbeles`, repository `guac-llm-bridge`,
+workflow `publish.yaml`, and environment `pypi`.
+
+Publishing runs when `pyproject.toml` changes on `main`, when a `v*` tag is
+pushed, or from **Actions → Publish to PyPI → Run workflow**. For each new release,
+increment `project.version` in `pyproject.toml` and `__version__` in
+`src/guac_llm_bridge/__init__.py`, then push to `main`. A release tag, if used,
+must match that version, for example `v0.1.0`.
+
+Tests on Python 3.11 and 3.14 must pass before the distributions are built and
+validated. A separate job downloads those distributions and publishes with
+OIDC credentials scoped to the `pypi` environment. Each version can be uploaded
+only once; rerunning a successful publication with the same version will fail.
