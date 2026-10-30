@@ -106,7 +106,7 @@ def run(config):
     # Flag 2 enables per-frame autoflush, essential for readiness and SSE latency.
     output(b'\x1b]482202;2;LLM\x07')
     try:
-        emit({'type': 'ready', 'version': 1, 'package_version': __version__})
+        emit({'type': 'ready', 'version': 1, 'package_version': __version__, 'capabilities': ['cleanup-ack']})
         threading.Thread(target=heartbeat, daemon=True).start()
         while True:
             line = sys.stdin.buffer.readline(48 * 1024 * 1024)

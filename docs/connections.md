@@ -32,13 +32,27 @@ helper also prevents the local listener from opening. The error identifies the
 client and helper versions and supplies a server-side command such as:
 
 ```shell
-uv tool install --force guac-bridge==0.5.0
+uv tool install --force guac-bridge==0.5.1
 ```
 
 Reconnect after installing the required version. If `--server-command` selects
 a custom helper path, update that installation. Run the selected helper with
 `--version` to check it. Stop and restart existing managed bridges to use a newly
 installed client; reusing a listener keeps its original running process.
+
+If you need SSH access to update the server first, temporarily allow a package
+version mismatch:
+
+```shell
+guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME --ignore-server-version
+```
+
+The same flag works for `guac-llm-client` and is forwarded by `--ensure-running`.
+It also permits attempting connections to older helpers without version reports.
+The client logs a warning; unsupported protocol versions and incorrect helper
+types are still rejected. Compatibility is not guaranteed. Old helpers without
+cleanup acknowledgements use best-effort cleanup for this temporary connection.
+Install the matching package on the server, reconnect, and remove the flag.
 
 ## SSH bridge
 

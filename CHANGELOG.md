@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1
+
+- Add `--ignore-server-version` for temporary upgrade connections, including older helpers.
+
 ## 0.5.0
 
 - Faster SSH transfers and LLM streaming with bounded ACK pipelining.

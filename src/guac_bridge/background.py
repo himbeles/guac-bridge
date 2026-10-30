@@ -96,7 +96,7 @@ def child_command(args):
         value = getattr(args, name, None)
         if value is not None:
             command.extend(['--' + name.replace('_', '-'), str(value)])
-    for name in ('insecure', 'no_keyring'):
+    for name in ('insecure', 'no_keyring', 'ignore_server_version'):
         if getattr(args, name, False):
             command.append('--' + name.replace('_', '-'))
     return command

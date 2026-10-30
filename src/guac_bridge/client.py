@@ -203,6 +203,7 @@ class Bridge:
         self.requests = {}
         self.last_seen = time.monotonic()
         self.closing = False
+        self.cleanup_acks = True
 
     async def start(self):
         params = [('token', self.token), ('GUAC_DATA_SOURCE', self.data_source),
@@ -387,11 +388,17 @@ class Bridge:
                          and len(remote_version) <= 64
                          and all(c.isalnum() or c in '.+-_!' for c in remote_version)
                          else 'not reported (older or incompatible helper)')
-                raise BridgeError(
+                message = (
                     f'Server helper {self.helper_name} version: {label}; client version: {__version__}. '
-                    'Client and server package versions must match. On the server, run: '
+                    'Client and server package versions must match by default. On the server, run: '
                     f'uv tool install --force guac-bridge=={__version__}. '
                     'Then reconnect. If using --server-command, update the installation at that path.')
+                if not getattr(self.args, 'ignore_server_version', False):
+                    raise BridgeError(message)
+                LOG.warning('Ignoring server version mismatch because --ignore-server-version was supplied. '
+                            'Compatibility is not guaranteed. %s', message)
+                capabilities = event.get('capabilities')
+                self.cleanup_acks = isinstance(capabilities, list) and 'cleanup-ack' in capabilities
             self.ready.set()
         elif event['type'] != 'heartbeat':
             queue = self.requests.get(event.get('id'))
@@ -495,6 +502,11 @@ class Bridge:
 
     async def cancel_request(self, ident, queue):
         await self.send_event({'type': 'cancel', 'id': ident})
+        if not self.cleanup_acks:
+            # Older helpers acknowledge the input bytes but do not report
+            # completion of remote cleanup. Preserve their best-effort behavior.
+            await self.drain_input()
+            return
         while True:
             event = await queue.get()
             if event['type'] in ('cancelled', 'end', 'error'):
@@ -590,6 +602,8 @@ def cli():
     parser.add_argument('--url', required=True, help='Guacamole URL, including #/client/...')
     parser.add_argument('--username', help='Guacamole login username; otherwise prompted')
     add_credential_arguments(parser)
+    parser.add_argument('--ignore-server-version', action='store_true',
+                        help='Attempt a temporary connection despite a helper package version mismatch')
     parser.add_argument('--port', type=int, default=8000, help='Local loopback port (default: 8000)')
     parser.add_argument('--upstream', default='http://127.0.0.1:8000', help='Server-side loopback vLLM URL')
     parser.add_argument('--connection-id', help='Override URL connection identifier')

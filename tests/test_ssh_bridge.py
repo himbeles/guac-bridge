@@ -157,6 +157,30 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.sleep(.005)
             self.assertFalse(bridge.failed.is_set())
 
+    async def test_override_connects_to_frozen_0_4_2_helper_and_closes_without_cleanup_ack(self):
+        legacy = Path(__file__).parent / 'fixtures' / 'ssh_server_v0_4_2.py'
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
+                               shlex.quote(str(legacy)) + ' "$@"\n')
+        async def keep_open(reader, writer):
+            writer.write(await reader.readexactly(32))
+            await writer.drain()
+            await asyncio.Event().wait()
+        target = await self.target(keep_open)
+        with self.assertLogs('guac-llm', level='WARNING'):
+            bridge, local, _ = await self.connect(target, ignore_server_version=True)
+        self.assertFalse(bridge.cleanup_acks)
+        reader, writer = await asyncio.open_connection('127.0.0.1', local)
+        writer.write(b'legacy helper upgrade connection')
+        await writer.drain()
+        self.assertEqual(await asyncio.wait_for(reader.readexactly(32), 5), b'legacy helper upgrade connection')
+        # Close without half-closing first: the old helper does not emit a
+        # cancellation completion event. The upgrade connection must still end.
+        writer.close()
+        await writer.wait_closed()
+        await asyncio.wait_for(bridge.close(), 3)
+        self.assertFalse(bridge.requests)
+        self.assertFalse(bridge.failed.is_set())
+
     async def test_background_cli_starts_bridge_exits_and_reuses_listener(self):
         target = await self.target(self.echo)
         gateway = Gateway(True)

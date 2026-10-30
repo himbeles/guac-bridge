@@ -44,3 +44,37 @@ class VersionChecks(unittest.TestCase):
                                     capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn(__version__, result.stdout)
+
+    def test_override_allows_mismatched_or_missing_package_version_with_warning(self):
+        for cls in (Bridge, SSHBridge):
+            for remote in ('0.4.2', None):
+                bridge = self.bridge(cls)
+                bridge.args.ignore_server_version = True
+                event = dict(type='ready', version=1, protocol='ssh-tcp')
+                if remote:
+                    event['package_version'] = remote
+                with self.assertLogs('guac-llm', level='WARNING') as logs:
+                    bridge.dispatch(event)
+                self.assertTrue(bridge.ready.is_set())
+                self.assertFalse(bridge.cleanup_acks)
+                self.assertIn('--ignore-server-version', '\n'.join(logs.output))
+
+    def test_override_preserves_advertised_cleanup_capability(self):
+        bridge = self.bridge(SSHBridge)
+        bridge.args.ignore_server_version = True
+        with self.assertLogs('guac-llm', level='WARNING'):
+            bridge.dispatch(dict(type='ready', version=1, protocol='ssh-tcp',
+                                 package_version='0.0.0', capabilities=['cleanup-ack']))
+        self.assertTrue(bridge.cleanup_acks)
+
+    def test_override_does_not_allow_unsupported_protocol_or_wrong_helper(self):
+        for cls in (Bridge, SSHBridge):
+            bridge = self.bridge(cls)
+            bridge.args.ignore_server_version = True
+            with self.assertRaises(BridgeError):
+                bridge.dispatch(dict(type='ready', version=99, protocol='ssh-tcp', package_version='0.0.0'))
+            self.assertFalse(bridge.ready.is_set())
+        bridge = self.bridge(SSHBridge)
+        bridge.args.ignore_server_version = True
+        with self.assertRaisesRegex(BridgeError, 'Expected guac-ssh-server'):
+            bridge.dispatch(dict(type='ready', version=1, package_version='0.0.0'))

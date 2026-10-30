@@ -17,6 +17,12 @@ command if it differs or cannot be identified. Use `--version` on any of the
 four commands to check its installed version. If using `--server-command`, the
 installation at that path must match the client too.
 
+For a temporary connection to install the matching version on the server, append
+`--ignore-server-version` to either client command. It warns and attempts the
+connection, including with older helpers that do not report a package version.
+Protocol compatibility is still required. Remove the flag after updating the
+server; it is also supported with `--ensure-running`.
+
 The client starts the appropriate server helper automatically. Keep the client running while using the bridge; stop it with **Ctrl+C**.
 
 For the commands below, copy the full URL from your browser after opening the desired Guacamole web terminal connection. Replace `SERVER_URL` and `YOUR_USERNAME` with your connection details. Your Guacamole password is prompted.

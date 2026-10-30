@@ -172,6 +172,9 @@ class SSHBridge(Bridge):
 
     async def close_channel(self, ident, queue):
         await self.send_event({'type': 'close', 'id': ident})
+        if not self.cleanup_acks:
+            await self.drain_input()
+            return
         while True:
             event = await queue.get()
             if event['type'] in ('closed', 'error'):
@@ -246,6 +249,8 @@ def cli(argv=None):
     parser.add_argument('--url', help='Full Guacamole connection URL')
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
+    parser.add_argument('--ignore-server-version', action='store_true',
+                        help='Attempt a temporary connection despite a helper package version mismatch')
     parser.add_argument('--port', type=int, default=2222, help='Local loopback listener port')
     management = parser.add_mutually_exclusive_group()
     management.add_argument('--ensure-running', action='store_true',

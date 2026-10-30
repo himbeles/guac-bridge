@@ -203,6 +203,7 @@ sys.exit(1)
         self.args.server_command = '~/path with spaces/helper'
         self.args.no_keyring = True
         self.args.insecure = True
+        self.args.ignore_server_version = True
         command = background.child_command(self.args)
         self.assertEqual(command[:3], [sys.executable, '-m', 'guac_bridge.ssh_client'])
         self.assertEqual(command[command.index('--url') + 1], self.args.url)
@@ -210,6 +211,7 @@ sys.exit(1)
         self.assertEqual(command[command.index('--server-command') + 1], self.args.server_command)
         self.assertIn('--no-keyring', command)
         self.assertIn('--insecure', command)
+        self.assertIn('--ignore-server-version', command)
         self.assertNotIn('--ensure-running', command)
         self.assertNotIn('--save-password', command)
 

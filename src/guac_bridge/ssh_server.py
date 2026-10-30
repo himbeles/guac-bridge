@@ -100,7 +100,8 @@ async def relay(args):
     # LLM is the established transport pipe name, shared by both relay modes.
     sys.stdout.buffer.write(b'\x1b]482202;2;LLM\x07')
     sys.stdout.buffer.flush()
-    emit({'type': 'ready', 'version': 1, 'protocol': 'ssh-tcp', 'package_version': __version__})
+    emit({'type': 'ready', 'version': 1, 'protocol': 'ssh-tcp', 'package_version': __version__,
+          'capabilities': ['cleanup-ack']})
     main = asyncio.current_task()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         loop.add_signal_handler(sig, main.cancel)
