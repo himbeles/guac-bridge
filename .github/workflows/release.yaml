@@ -74,13 +74,38 @@ jobs:
               print(f"version={package['version']}", file=output)
               print(f"tag=v{package['version']}", file=output)
           PY
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: release-metadata
+          persist-credentials: false
+      - name: Read changelog for published version
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          version = os.environ["VERSION"]
+          changelog = Path("release-metadata/CHANGELOG.md").read_text()
+          heading = "## " + version
+          lines = changelog.splitlines()
+          if heading not in lines:
+              raise SystemExit(f"Missing changelog entry for {version}")
+          start = lines.index(heading) + 1
+          end = next((i for i in range(start, len(lines)) if lines[i].startswith("## ")), len(lines))
+          notes = "\n".join(lines[start:end]).strip()
+          if not notes:
+              raise SystemExit(f"Empty changelog entry for {version}")
+          Path("release-notes.md").write_text(notes + "\n")
+          PY
       - uses: actions/download-artifact@v8
         with:
           name: python-distributions
           path: dist/
           run-id: ${{ steps.publication.outputs.run-id }}
           github-token: ${{ github.token }}
-      - name: Create release and attach distributions
+      - name: Create or update release and attach distributions
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -89,24 +114,13 @@ jobs:
           TAG: ${{ steps.package.outputs.tag }}
         run: |
           set -euo pipefail
-          cat > release-notes.md <<'NOTES'
-          Bridge services through a Guacamole web terminal:
-          - OpenAI-compatible HTTP endpoint with streamed responses.
-          - SSH TCP relay for SSH, SCP, SFTP, and port forwarding.
-
-          Install on the client and server:
-          ```shell
-          uv tool install guac-bridge
-          ```
-
-          Commands: `guac-llm-client`, `guac-llm-server`, `guac-ssh-client`, and `guac-ssh-server`.
-          NOTES
           if gh release view "$TAG" >/dev/null 2>&1; then
             existing_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.sha')"
             if [ "$existing_sha" != "$RELEASE_SHA" ]; then
               echo "Existing release tag points to another commit."
               exit 1
             fi
+            gh release edit "$TAG" --notes-file release-notes.md
             for file in dist/*; do
               asset="$(basename "$file")"
               if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
