@@ -70,6 +70,8 @@ jobs:
           python -m pip install dist/*.whl
           guac-llm-client --help
           guac-llm-server --help
+          guac-ssh-client --help
+          guac-ssh-server --help
       - uses: actions/upload-artifact@v7
         with:
           name: python-distributions
@@ -92,3 +94,4 @@ jobs:
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+

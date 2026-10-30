@@ -1,11 +1,13 @@
 # Guacamole LLM Bridge
 
-One Python package with two installed commands:
+One Python package with four installed commands:
 
 | Command | Machine | Purpose |
 | --- | --- | --- |
 | `guac-llm-client` | Windows, macOS, or Linux client PC | Log into Guacamole and expose an OpenAI-compatible HTTP endpoint on local loopback |
 | `guac-llm-server` | Linux server running vLLM | Relay HTTP through the Guacamole SSH terminal using stdin/stdout |
+| `guac-ssh-client` | Windows, macOS, or Linux client PC | Expose the remote SSH service on local loopback |
+| `guac-ssh-server` | Linux server | Relay binary TCP data to a server-side loopback SSH service |
 
 Requires Python **3.11 or newer** and `uv`. The server helper uses only the Python
 standard library; the shared package installs `aiohttp` for the client command.
@@ -23,7 +25,7 @@ uv tool install guac-llm-bridge
 uv tool update-shell
 ```
 
-Open a fresh terminal if required by `update-shell`. Both commands are installed
+Open a fresh terminal if required by `update-shell`. All four commands are installed
 on both machines; use the appropriate one on each. Upgrade an existing PyPI
 installation with `uv tool upgrade guac-llm-bridge`.
 
@@ -109,6 +111,99 @@ for chunk in client.chat.completions.create(
 ```
 
 `openai` is only required for this example; it is not a bridge dependency.
+
+## SSH, SCP, SFTP, and port forwarding
+
+Version 0.2.0 adds an SSH TCP relay. Install or upgrade the same package on both
+machines:
+
+```shell
+uv tool install --upgrade guac-llm-bridge
+```
+
+On the Linux server, verify `~/.local/bin/guac-ssh-server --help` works. Keep the
+normal SSH daemon running and reachable from that server at `127.0.0.1:22`.
+**Do not start the relay helper manually**; the client starts it automatically.
+It intentionally requires the internal `--stdio` flag to prevent accidental
+interactive startup.
+
+On the client PC, keep this command running:
+
+```shell
+guac-ssh-client --url "https://guacamole.example.com/guacamole/#/client/CLIENT_ID" --username YOUR_GUACAMOLE_USERNAME
+```
+
+Copy the full connection URL from the Guacamole browser session. The client
+logs into Guacamole, starts `~/.local/bin/guac-ssh-server` in that terminal, and
+listens on `127.0.0.1:2222`. Use `--server-command /absolute/path/guac-ssh-server`
+if the remote executable is installed elsewhere.
+
+In a second local terminal, use your normal SSH tools:
+
+```shell
+ssh -p 2222 linuxuser@127.0.0.1
+scp -P 2222 file.txt linuxuser@127.0.0.1:~/
+sftp -P 2222 linuxuser@127.0.0.1
+```
+
+The inner SSH connection performs its own authentication and host-key
+verification. Use the Linux server's SSH username, password, or private key;
+the Guacamole login does not authenticate this second connection. Verify the
+host-key fingerprint against the destination server as you normally would.
+
+For convenient use, add this to your local `~/.ssh/config` (on Windows,
+`%USERPROFILE%\.ssh\config`):
+
+```sshconfig
+Host server-via-guacamole
+    HostName 127.0.0.1
+    Port 2222
+    User linuxuser
+    HostKeyAlias my-linux-server
+    ServerAliveInterval 15
+    ServerAliveCountMax 3
+```
+
+After starting the bridge, you can use `ssh server-via-guacamole` and
+`scp file.txt server-via-guacamole:~/`. The same host entry can be selected in
+VS Code Remote SSH; that integration has not been tested here.
+
+To expose vLLM through ordinary SSH forwarding:
+
+```shell
+ssh -N -L 8000:127.0.0.1:8000 server-via-guacamole
+```
+
+The local OpenAI base URL is then `http://127.0.0.1:8000/v1`. This uses the SSH
+relay instead of `guac-llm-client`. SSH port forwarding must be allowed by the
+server's sshd configuration. A typical server configuration requires no bridge
+changes.
+
+Useful relay options:
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `--port` | `2222` | Client PC listener, always bound to `127.0.0.1` |
+| `--target-host` | `127.0.0.1` | Server-side target; only loopback hosts are accepted |
+| `--target-port` | `22` | Server-side SSH service port |
+| `--max-connections` | `8` | Simultaneous TCP connections; at most 16 |
+| `--server-command` | `~/.local/bin/guac-ssh-server` | Installed remote helper path |
+| `--transport` | `auto` | WebSocket with HTTP tunnel fallback |
+| `--startup-delay` | `2` | Seconds to allow remote shell startup |
+| `--connect-timeout` | `30` | Connection, helper startup, and pipe acknowledgment timeout |
+| `--ca-file`, `--insecure` | System trust | Same Guacamole TLS options as the HTTP client |
+| `--connection-id`, `--data-source` | From URL | Override Guacamole connection selection |
+
+Guacamole credentials can be prompted or supplied using `--username` and
+`GUAC_PASSWORD`. `VLLM_API_KEY` and `BRIDGE_API_KEY` apply only to the HTTP relay;
+SSH authentication is handled by the SSH client itself.
+
+Binary TCP data is Base64-framed through the terminal pipes, with bounded
+per-connection flow control in both directions. Half-close is preserved, so a
+peer can finish sending and still receive data. Losing Guacamole aborts active
+TCP connections; existing SSH sessions cannot resume after reconnecting. The
+additional framing and terminal transport reduce throughput compared with a
+direct SSH connection. The helper is a terminal process, not an SSH daemon.
 
 ## CLI options
 
@@ -236,3 +331,12 @@ Tests on Python 3.11 and 3.14 must pass before the distributions are built and
 validated. A separate job downloads those distributions and publishes with
 OIDC credentials scoped to the `pypi` environment. Each version can be uploaded
 only once; rerunning a successful publication with the same version will fail.
+
+
+SSH relay tests additionally cover binary transfers beyond the flow-control
+window, concurrent connections, connection limits, independent close handling,
+TCP half-close in both directions, refused upstream connections, and tunnel loss.
+An optional real OpenSSH test exercises remote execution, SCP via SFTP, and local
+port forwarding. It requires `GUAC_TEST_OPENSSH=1`, root, sshd, and an existing
+`/run/sshd`; it skips when the environment prohibits OpenSSH's sandbox. No
+production SSH server or VS Code Remote SSH session has been validated.

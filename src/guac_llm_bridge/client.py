@@ -175,6 +175,11 @@ class Tunnel:
 
 
 class Bridge:
+    helper_name = 'guac-llm-server'
+
+    def helper_command(self):
+        return bootstrap(self.args)
+
     def __init__(self, args, session, base, conn, kind, data_source, token):
         self.args, self.session = args, session
         self.base, self.conn, self.kind, self.data_source = base, conn, kind, data_source
@@ -209,13 +214,13 @@ class Bridge:
         ack = self.new_ack()
         await self.tunnel.send('pipe', self.input_stream, 'text/plain', 'STDIN')
         await self.wait_for(ack, self.args.connect_timeout)
-        await self.send_input(bootstrap(self.args))
+        await self.send_input(self.helper_command())
         try:
             await self.wait_for(self.ready.wait(), self.args.connect_timeout)
         except asyncio.TimeoutError as exc:
-            raise BridgeError('Remote helper did not become ready. Check guac-llm-server installation/PATH, shell readiness, '
-                              'and Guacamole STDIN/output pipes; try --startup-delay 5. '
-                              'No HTTP request has been sent to vLLM.') from exc
+            raise BridgeError('Remote helper did not become ready. Check ' + self.helper_name +
+                              ' installation/PATH, shell readiness, and Guacamole STDIN/output pipes; '
+                              'try --startup-delay 5.') from exc
         self.maintainer = asyncio.create_task(self.maintain())
         LOG.info('Remote helper ready')
 
@@ -553,3 +558,4 @@ def cli():
 
 if __name__ == '__main__':
     raise SystemExit(cli())
+
