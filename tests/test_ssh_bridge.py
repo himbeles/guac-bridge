@@ -14,8 +14,8 @@ import unittest
 
 import aiohttp
 
-from guac_llm_bridge.client import login
-from guac_llm_bridge.ssh_client import SSHBridge
+from guac_bridge.client import login
+from guac_bridge.ssh_client import SSHBridge
 from test_bridge import Gateway, start_app
 
 
@@ -24,7 +24,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.helper = Path(self.temp.name) / 'guac-ssh-server'
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) +
-                               ' -m guac_llm_bridge.ssh_server "$@"\n')
+                               ' -m guac_bridge.ssh_server "$@"\n')
         self.helper.chmod(0o755)
         self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15))
         self.bridges, self.gateways, self.runners, self.servers = [], [], [], []
@@ -207,7 +207,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         await reserve.wait_closed()
         env = dict(os.environ, GUAC_PASSWORD='test', PYTHONPATH=str(Path(__file__).parents[1] / 'src'))
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, '-m', 'guac_llm_bridge.ssh_client', '--url',
+            sys.executable, '-m', 'guac_bridge.ssh_client', '--url',
             base + 'guacamole/#/client/' + base64.b64encode(b'1\x00c\x00mysql').decode(), '--username', 'test',
             '--server-command', str(self.helper), '--startup-delay', '.1',
             '--target-port', str(target_port), '--port', str(local_port),

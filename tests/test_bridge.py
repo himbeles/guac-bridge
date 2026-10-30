@@ -14,7 +14,7 @@ import uuid
 
 import aiohttp
 from aiohttp import web
-from guac_llm_bridge.client import Bridge, BridgeError, Parser, bootstrap, instruction, login, parse_url
+from guac_bridge.client import Bridge, BridgeError, Parser, bootstrap, instruction, login, parse_url
 
 
 async def start_app(app):
@@ -185,7 +185,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.helper = Path(self.temp.name) / 'guac-llm-server'
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) +
-                               ' -m guac_llm_bridge.server "$@"\n')
+                               ' -m guac_bridge.server "$@"\n')
         self.helper.chmod(0o755)
         app = web.Application()
         app.router.add_get('/v1/models', self.models)

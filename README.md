@@ -1,4 +1,4 @@
-# Guacamole LLM Bridge
+# Guac Bridge
 
 Access an OpenAI-compatible endpoint or SSH service on a server through its
 Guacamole web terminal.
@@ -9,7 +9,7 @@ Install on both your client computer and the server. Requires Python 3.11+ and
 [uv](https://docs.astral.sh/uv/).
 
 ```shell
-uv tool install guac-llm-bridge
+uv tool install guac-bridge
 uv tool update-shell
 ```
 
@@ -83,7 +83,7 @@ If a helper is installed outside `~/.local/bin/`, pass its full path with
 ## Contribution
 
 Submit issues and pull requests on
-[GitHub](https://github.com/himbeles/guac-llm-bridge).
+[GitHub](https://github.com/himbeles/guac-bridge).
 Include tests for behavior changes.
 
 From a repository checkout, run the test suite in an environment with Bash and
@@ -92,3 +92,18 @@ PTY support:
 ```shell
 uv run python -m unittest discover -s tests -v
 ```
+
+## Architecture
+
+Each client logs into Guacamole and starts its matching server helper inside
+the terminal session. Framed, Base64-encoded messages travel through Guacamole's
+input and output pipes.
+
+| Bridge | Local listener | Server helper |
+| --- | --- | --- |
+| LLM | OpenAI-compatible HTTP API | Forwards requests and streamed responses to the server endpoint |
+| SSH | TCP port for your SSH client | Relays bytes to the server's SSH service |
+
+Listeners bind to local loopback. Helpers connect to services on the server's
+loopback interface, so no additional inbound server port is needed. Per-connection
+flow control bounds buffering; disconnecting Guacamole closes active connections.

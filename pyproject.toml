@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "guac-llm-bridge"
+name = "guac-bridge"
 version = "0.2.0"
 description = "Bridge remote LLM APIs and SSH over an Apache Guacamole terminal"
 readme = "README.md"
@@ -13,14 +13,14 @@ license = "MIT"
 license-files = ["LICENSE"]
 
 [project.urls]
-Repository = "https://github.com/himbeles/guac-llm-bridge"
-Issues = "https://github.com/himbeles/guac-llm-bridge/issues"
+Repository = "https://github.com/himbeles/guac-bridge"
+Issues = "https://github.com/himbeles/guac-bridge/issues"
 
 [project.scripts]
-guac-llm-client = "guac_llm_bridge.client:cli"
-guac-llm-server = "guac_llm_bridge.server:cli"
-guac-ssh-client = "guac_llm_bridge.ssh_client:cli"
-guac-ssh-server = "guac_llm_bridge.ssh_server:cli"
+guac-llm-client = "guac_bridge.client:cli"
+guac-llm-server = "guac_bridge.server:cli"
+guac-ssh-client = "guac_bridge.ssh_client:cli"
+guac-ssh-server = "guac_bridge.ssh_server:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

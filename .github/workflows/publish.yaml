@@ -84,7 +84,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/guac-llm-bridge/
+      url: https://pypi.org/project/guac-bridge/
     permissions:
       id-token: write
     steps:
