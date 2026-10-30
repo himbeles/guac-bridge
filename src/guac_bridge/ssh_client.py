@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import base64
 import contextlib
+import errno
 import logging
 import math
 import shlex
@@ -23,6 +24,29 @@ from .control import ControlServer
 LOG = logging.getLogger('guac-ssh')
 CHUNK = 4096
 WINDOW = 8
+
+
+async def start_listener(accept, port):
+    try:
+        return await asyncio.start_server(accept, '127.0.0.1', port)
+    except OSError as exc:
+        codes = {exc.errno, getattr(exc, 'winerror', None)}
+        address = f'127.0.0.1:{port}'
+        if codes & {errno.EADDRINUSE, 10048}:
+            message = (f'Cannot listen on {address}: this local port is already in use. '
+                       f'To stop a managed SSH bridge, run guac-ssh-client --stop --port {port}. '
+                       'Otherwise stop the program using that port, or choose a different local port with --port.')
+        elif codes & {errno.EACCES, errno.EPERM, 10013}:
+            message = (f'Cannot listen on {address}: the operating system denied access. '
+                       'The local port may be reserved or blocked. Choose a different local port with --port '
+                       'or check local port reservations and permissions.')
+        else:
+            code = getattr(exc, 'winerror', None) or exc.errno
+            detail = f' (OS error {code})' if code is not None else ''
+            message = (f'Cannot open the local listener on {address}{detail}. '
+                       'Check local port availability, reservations, and permissions, '
+                       'or choose a different local port with --port.')
+        raise BridgeError(message) from None
 
 
 class SSHBridge(Bridge):
@@ -169,7 +193,7 @@ async def serve(args):
         waiters = []
         try:
             await bridge.start()
-            listener = await asyncio.start_server(bridge.accept, '127.0.0.1', args.port)
+            listener = await start_listener(bridge.accept, args.port)
             if getattr(args, 'managed_id', None):
                 control = await ControlServer(state_path(args.port), args.managed_id).start()
             LOG.info('Listening on 127.0.0.1:%s', args.port)

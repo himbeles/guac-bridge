@@ -59,6 +59,9 @@ jobs:
       - name: Test Windows background startup
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_background.py -v
+      - name: Test Windows listener errors
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_listeners.py -v
       - name: Test authentication and native Windows credential storage
         env:
           GUAC_TEST_NATIVE_KEYRING: "1"
