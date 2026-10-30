@@ -88,7 +88,7 @@ To start the bridge automatically before SSH, save your Guacamole password once
 with `--save-password`, then use `--ensure-running`. It reuses a listener on the
 selected port or starts a background bridge and exits once the port is ready.
 Keep that port dedicated to this bridge: an existing listener is reused without
-checking its destination. Background startup cannot prompt for credentials.
+checking its destination. Detached startup cannot prompt for credentials.
 
 ```shell
 guac-ssh-client --ensure-running --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
@@ -112,8 +112,20 @@ nonzero and reports the background log path. Override it with `--background-log`
 On Windows, the default is `%LOCALAPPDATA%/guac-bridge/ssh-2222.log`; on macOS,
 `~/Library/Logs/guac-bridge/ssh-2222.log`; elsewhere,
 `${XDG_CACHE_HOME:-~/.cache}/guac-bridge/ssh-2222.log`.
-The success message includes the background process ID; stop that process to
-close the bridge. An already running bridge keeps its original settings.
+The bridge keeps running independently of SSH sessions, and an already running
+bridge keeps its original settings. Stop a managed bridge, including its active
+SSH connections, with:
+
+```shell
+guac-ssh-client --stop --port 2222
+```
+
+On Windows, add `--show-console` to `--ensure-running` (including in the SSH
+configuration above) to open a visible console instead of running invisibly.
+Output appears in that console; press **Ctrl+C** there or use `--stop` to shut
+down. The visible console can also prompt for your password. Without this option,
+output is written to the background log. `--stop` only controls bridges started
+with `--ensure-running`; stop a foreground bridge in its original terminal.
 
 ## Other Remarks
 Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Run either client with `--help` for all options.

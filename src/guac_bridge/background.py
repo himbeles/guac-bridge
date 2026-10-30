@@ -7,8 +7,10 @@ import socket
 import subprocess
 import sys
 import time
+import uuid
 
 from .errors import BridgeError
+from .control import read_state, request
 
 LOG = logging.getLogger('guac-ssh')
 
@@ -29,6 +31,40 @@ def default_log(port):
     else:
         root = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache')
     return root / 'guac-bridge' / f'ssh-{port}.log'
+
+
+def state_path(port):
+    return default_log(port).with_suffix('.json')
+
+
+def stop_managed(port, timeout):
+    deadline = time.monotonic() + timeout
+    with startup_lock(port, deadline):
+        state = read_state(state_path(port))
+        if state is None:
+            if listening(port):
+                raise BridgeError('This listener is not managed; stop it in its original terminal')
+            LOG.info('No managed bridge is running on port %s', port)
+            return
+        try:
+            request(state, 'stop')
+        except BridgeError:
+            # Closing a visible console may bypass Python's cleanup. A stale
+            # record must never be used as authority to kill a PID or listener.
+            if listening(port):
+                raise
+            current = read_state(state_path(port))
+            if current and current['instance'] == state['instance']:
+                state_path(port).unlink(missing_ok=True)
+            LOG.info('No managed bridge is running on port %s', port)
+            return
+        while time.monotonic() < deadline:
+            current = read_state(state_path(port))
+            if current is None or current['instance'] != state['instance']:
+                LOG.info('Stopped bridge on port %s', port)
+                return
+            time.sleep(.1)
+        raise BridgeError('Timed out waiting for the bridge to stop')
 
 
 def child_command(args):
@@ -114,27 +150,40 @@ def _start_and_wait(args, deadline):
     log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Windows reports NUL (DEVNULL) as a TTY. A closed pipe reliably prevents
     # getpass/input from trying to prompt in the detached process.
-    options = {'stdin': subprocess.PIPE, 'close_fds': True}
-    if sys.platform == 'win32':
-        options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    visible = getattr(args, 'show_console', False)
+    instance = uuid.uuid4().hex
+    command = child_command(args) + ['--managed-id', instance]
+    options = {'close_fds': True}
+    if visible:
+        command.append('--visible-console')
+        options['creationflags'] = subprocess.CREATE_NEW_CONSOLE
+        process = subprocess.Popen(command, **options)
+        destination = 'visible bridge console'
     else:
-        options['start_new_session'] = True
-    with os.fdopen(os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), 'ab') as output:
-        process = subprocess.Popen(child_command(args), stdout=output, stderr=output, **options)
-    process.stdin.close()
+        options['stdin'] = subprocess.PIPE
+        if sys.platform == 'win32':
+            options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            options['start_new_session'] = True
+        with os.fdopen(os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), 'ab') as output:
+            process = subprocess.Popen(command, stdout=output, stderr=output, **options)
+        process.stdin.close()
+        destination = str(log_path)
     ready = False
     try:
         while time.monotonic() < deadline:
             code = process.poll()
             if code is not None:
-                raise BridgeError(f'Background bridge exited with status {code}; see {log_path}')
-            if listening(args.port):
+                raise BridgeError(f'Background bridge exited with status {code}; see {destination}')
+            state = read_state(state_path(args.port))
+            if state and state['instance'] == instance:
+                request(state, 'status')
                 ready = True
-                LOG.info('Bridge ready on 127.0.0.1:%s (PID %s; log: %s)',
-                         args.port, process.pid, log_path)
+                LOG.info('Bridge ready on 127.0.0.1:%s (PID %s; output: %s)',
+                         args.port, state['pid'], destination)
                 return
             time.sleep(.1)
-        raise BridgeError(f'Bridge did not become ready within {args.ready_timeout:g}s; see {log_path}')
+        raise BridgeError(f'Bridge did not become ready within {args.ready_timeout:g}s; see {destination}')
     finally:
         if not ready:
             with contextlib.suppress(OSError):

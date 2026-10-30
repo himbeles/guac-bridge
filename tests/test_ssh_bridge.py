@@ -146,6 +146,22 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(process.returncode, 0, stderr.decode())
             self.assertIn(b'Using existing listener', stderr)
             self.assertEqual(len(gateway.tokens), 1)
+            reader, writer = await asyncio.open_connection('127.0.0.1', local)
+            writer.write(b'active')
+            await writer.drain()
+            self.assertEqual(await asyncio.wait_for(reader.readexactly(6), 5), b'active')
+            try:
+                stop = await asyncio.create_subprocess_exec(sys.executable, '-m', 'guac_bridge.ssh_client',
+                    '--stop', '--port', str(local), env=env,
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                _, stderr = await asyncio.wait_for(stop.communicate(), 15)
+                self.assertEqual(stop.returncode, 0, stderr.decode())
+                self.assertIn(b'Stopped bridge', stderr)
+                self.assertEqual(await asyncio.wait_for(reader.read(), 5), b'')
+                pid = None
+            finally:
+                writer.close()
+                await writer.wait_closed()
         finally:
             if pid:
                 with contextlib.suppress(ProcessLookupError):

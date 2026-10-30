@@ -17,7 +17,8 @@ from .client import Bridge, BridgeError, parse_url
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    resolve_username)
-from .background import ensure_running
+from .background import ensure_running, state_path, stop_managed
+from .control import ControlServer
 
 LOG = logging.getLogger('guac-ssh')
 CHUNK = 4096
@@ -164,16 +165,30 @@ async def serve(args):
         token = await authenticate(session, base, username, args)
         bridge = SSHBridge(args, session, base, conn, kind, source, token)
         listener = None
+        control = None
+        waiters = []
         try:
             await bridge.start()
             listener = await asyncio.start_server(bridge.accept, '127.0.0.1', args.port)
+            if getattr(args, 'managed_id', None):
+                control = await ControlServer(state_path(args.port), args.managed_id).start()
             LOG.info('Listening on 127.0.0.1:%s', args.port)
-            stop_hint()
-            await bridge.failed.wait()
-            raise BridgeError(bridge.failure)
+            if control:
+                LOG.info('Stop with guac-ssh-client --stop --port %s', args.port)
+            if control is None or getattr(args, 'visible_console', False):
+                stop_hint()
+            waiters = [asyncio.create_task(bridge.failed.wait())]
+            if control:
+                waiters.append(asyncio.create_task(control.stopped.wait()))
+            await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+            if bridge.failed.is_set():
+                raise BridgeError(bridge.failure)
         finally:
             if listener:
                 listener.close()
+            for task in waiters:
+                task.cancel()
+            await asyncio.gather(*waiters, return_exceptions=True)
             await bridge.close()
             if listener:
                 await listener.wait_closed()
@@ -181,16 +196,23 @@ async def serve(args):
                 async with session.delete(base + 'api/tokens/' + urllib.parse.quote(token, safe=''),
                                           timeout=aiohttp.ClientTimeout(total=5), allow_redirects=False) as response:
                     await response.read()
+            if control:
+                await control.close()
 
 
 def cli(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--url', required=True, help='Full Guacamole connection URL')
+    parser.add_argument('--url', help='Full Guacamole connection URL')
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
     parser.add_argument('--port', type=int, default=2222, help='Local loopback listener port')
-    parser.add_argument('--ensure-running', action='store_true',
+    management = parser.add_mutually_exclusive_group()
+    management.add_argument('--ensure-running', action='store_true',
                         help='Reuse a local listener or start a detached bridge; exit when ready')
+    management.add_argument('--stop', action='store_true', help='Stop the managed bridge on --port and exit')
+    parser.add_argument('--show-console', action='store_true', help='Open a visible bridge console on Windows with --ensure-running')
+    parser.add_argument('--managed-id', help=argparse.SUPPRESS)
+    parser.add_argument('--visible-console', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--ready-timeout', type=float, default=60,
                         help='Maximum seconds to wait for background startup (default: 60)')
     parser.add_argument('--background-log', help='Background log file (default: user cache/guac-bridge/ssh-PORT.log)')
@@ -206,17 +228,25 @@ def cli(argv=None):
     parser.add_argument('--ca-file', help='Corporate CA PEM bundle')
     parser.add_argument('--insecure', action='store_true', help='Disable Guacamole TLS verification')
     args = parser.parse_args(argv)
+    if not args.stop and not args.url:
+        parser.error('--url is required unless using --stop')
+    if args.show_console:
+        import sys
+        if not args.ensure_running or sys.platform != 'win32':
+            parser.error('--show-console requires --ensure-running on Windows')
     if not (1 <= args.port <= 65535 and 1 <= args.target_port <= 65535 and 1 <= args.max_connections <= 16):
         parser.error('Ports must be 1..65535 and connection limit must be 1..16')
     if not math.isfinite(args.connect_timeout) or not math.isfinite(args.startup_delay) or args.connect_timeout <= 0 or args.startup_delay < 0:
         parser.error('Timeout must be positive and startup delay cannot be negative')
     if not math.isfinite(args.ready_timeout) or args.ready_timeout <= 0:
         parser.error('Ready timeout must be positive and finite')
-    if args.ensure_running and (args.forget_password or args.save_password):
+    if (args.ensure_running or args.stop) and (args.forget_password or args.save_password):
         parser.error('Use credential management options in an interactive foreground invocation')
     setup_console('SSH')
     try:
-        if args.ensure_running:
+        if args.stop:
+            stop_managed(args.port, args.ready_timeout)
+        elif args.ensure_running:
             ensure_running(args)
         else:
             asyncio.run(serve(args))

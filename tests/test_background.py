@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from guac_bridge import background, ssh_client
+from guac_bridge.control import ControlServer, read_state, request
 from guac_bridge.errors import BridgeError
 
 
@@ -46,16 +47,21 @@ class BackgroundTests(unittest.TestCase):
 
     def listener_child(self):
         return self.fake_child(f'''
-import socket, sys, time
-assert sys.stdin is None or not sys.stdin.isatty()
-time.sleep(.2)
-sock = socket.socket()
-sock.bind(('127.0.0.1', {self.args.port}))
-print('fixture ready', flush=True)
-sock.listen()
-while True:
-    conn, addr = sock.accept()
-    conn.close()
+import asyncio, sys
+from pathlib import Path
+from guac_bridge.control import ControlServer
+if '--visible-console' not in sys.argv:
+    assert sys.stdin is None or not sys.stdin.isatty()
+async def main():
+    await asyncio.sleep(.2)
+    server = await asyncio.start_server(lambda r, w: w.close(), '127.0.0.1', {self.args.port})
+    print('fixture ready', flush=True)
+    control = await ControlServer(Path({str(background.state_path(self.args.port))!r}), sys.argv[sys.argv.index('--managed-id') + 1]).start()
+    await control.stopped.wait()
+    server.close()
+    await server.wait_closed()
+    await control.close()
+asyncio.run(main())
 ''')
 
     def test_existing_listener_returns_without_spawning(self):
@@ -102,13 +108,53 @@ while True:
         self.assertFalse(background.listening(self.args.port))
 
     def test_interrupted_startup_terminates_child(self):
-        # First two probes precede spawn; interruption happens while waiting.
+        # Interruption while waiting must clean up the owned startup process.
         with self.fake_child('import time; time.sleep(60)'), \
                 patch.object(background.subprocess, 'Popen', side_effect=self.spawn), \
-                patch.object(background, 'listening', side_effect=[False, False, KeyboardInterrupt]):
+                patch.object(background, 'read_state', side_effect=KeyboardInterrupt):
             with self.assertRaises(KeyboardInterrupt):
                 background.ensure_running(self.args)
         self.assertIsNotNone(self.processes[0].poll())
+
+    def test_stop_managed_bridge_shuts_down_listener_and_removes_state(self):
+        with self.listener_child(), patch.object(background.subprocess, 'Popen', side_effect=self.spawn):
+            background.ensure_running(self.args)
+        background.stop_managed(self.args.port, 10)
+        self.processes[0].wait(timeout=5)
+        self.assertFalse(background.listening(self.args.port))
+        self.assertFalse(background.state_path(self.args.port).exists())
+
+    def test_stop_does_not_kill_unmanaged_listener(self):
+        with socket.socket() as server:
+            server.bind(('127.0.0.1', self.args.port))
+            server.listen()
+            with self.assertRaisesRegex(BridgeError, 'not managed'):
+                background.stop_managed(self.args.port, 1)
+            self.assertTrue(background.listening(self.args.port))
+
+    def test_stop_cli_requires_no_url_or_username(self):
+        with patch.object(ssh_client, 'stop_managed') as stop, patch.object(ssh_client, 'setup_console'):
+            self.assertEqual(ssh_client.cli(['--stop', '--port', '2223']), 0)
+        stop.assert_called_once_with(2223, 60)
+
+    def test_stale_record_is_removed_without_killing_any_process(self):
+        import json
+        state = dict(control_port=self.args.port, token='0' * 64, instance='old', pid=1)
+        background.state_path(self.args.port).write_text(json.dumps(state))
+        with patch.object(background, 'stop_child') as stop:
+            background.stop_managed(self.args.port, 2)
+        stop.assert_not_called()
+        self.assertFalse(background.state_path(self.args.port).exists())
+
+    @unittest.skipUnless(sys.platform == 'win32', 'Visible consoles are a Windows option')
+    def test_windows_visible_console_is_ready_and_can_be_stopped(self):
+        self.args.show_console = True
+        with self.listener_child(), patch.object(background.subprocess, 'Popen', side_effect=self.spawn):
+            background.ensure_running(self.args)
+        self.assertTrue(background.listening(self.args.port))
+        background.stop_managed(self.args.port, 10)
+        self.processes[0].wait(timeout=5)
+        self.assertFalse(background.listening(self.args.port))
 
     def test_username_required_before_new_background_start(self):
         self.args.username = None
@@ -145,6 +191,28 @@ while True:
                 with self.assertRaises(SystemExit) as error:
                     ssh_client.cli(['--ensure-running', '--url', self.args.url, *option])
                 self.assertEqual(error.exception.code, 2)
+
+
+class ControlTests(unittest.IsolatedAsyncioTestCase):
+    async def test_shutdown_requires_token_and_removes_only_own_state(self):
+        import asyncio
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'control.json'
+            control = await ControlServer(path, 'test-instance').start()
+            try:
+                state = read_state(path)
+                bad = dict(state, token='0' * 64)
+                with self.assertRaises(BridgeError):
+                    await asyncio.to_thread(request, bad, 'stop')
+                self.assertFalse(control.stopped.is_set())
+                result = await asyncio.to_thread(request, state, 'status')
+                self.assertTrue(result['ok'])
+                self.assertNotIn('token', result)
+                await asyncio.to_thread(request, state, 'stop')
+                await asyncio.wait_for(control.stopped.wait(), 2)
+            finally:
+                await control.close()
+            self.assertFalse(path.exists())
 
 
 if __name__ == '__main__':
