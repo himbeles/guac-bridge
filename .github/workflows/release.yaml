@@ -1,0 +1,118 @@
+name: GitHub release
+
+on:
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths: [.github/workflows/release.yaml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: github-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Select successful PyPI publication
+        id: publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            run_id="$PUBLISH_RUN_ID"
+          else
+            run_id="$(gh api "repos/$GH_REPO/actions/workflows/publish.yaml/runs?status=success&branch=main&per_page=1" --jq '.workflow_runs[0].id')"
+          fi
+          if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+            echo "No successful PyPI publication found."
+            exit 1
+          fi
+          gh api "repos/$GH_REPO/actions/runs/$run_id" > publication.json
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          run = json.loads(Path("publication.json").read_text())
+          assert run["conclusion"] == "success", "Publication must have succeeded"
+          assert run["head_branch"] == "main", "Release must come from main"
+          assert run["path"] == ".github/workflows/publish.yaml", "Unexpected publication workflow"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"run-id={run['id']}", file=output)
+              print(f"sha={run['head_sha']}", file=output)
+          PY
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.publication.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Read published package version
+        id: package
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+          package = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          assert package["name"] == "guac-bridge", "Unexpected published project"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"version={package['version']}", file=output)
+              print(f"tag=v{package['version']}", file=output)
+          PY
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-distributions
+          path: dist/
+          run-id: ${{ steps.publication.outputs.run-id }}
+          github-token: ${{ github.token }}
+      - name: Create release and attach distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ steps.publication.outputs.sha }}
+          VERSION: ${{ steps.package.outputs.version }}
+          TAG: ${{ steps.package.outputs.tag }}
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'NOTES'
+          Bridge services through a Guacamole web terminal:
+          - OpenAI-compatible HTTP endpoint with streamed responses.
+          - SSH TCP relay for SSH, SCP, SFTP, and port forwarding.
+
+          Install on the client and server:
+          ```shell
+          uv tool install guac-bridge
+          ```
+
+          Commands: `guac-llm-client`, `guac-llm-server`, `guac-ssh-client`, and `guac-ssh-server`.
+          NOTES
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            existing_sha="$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.sha')"
+            if [ "$existing_sha" != "$RELEASE_SHA" ]; then
+              echo "Existing release tag points to another commit."
+              exit 1
+            fi
+            for file in dist/*; do
+              asset="$(basename "$file")"
+              if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                gh release upload "$TAG" "$file"
+              fi
+            done
+          else
+            gh release create "$TAG" dist/* --target "$RELEASE_SHA" --title "Guac Bridge $VERSION" --notes-file release-notes.md
+          fi
