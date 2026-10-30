@@ -141,34 +141,10 @@ uv run python -m unittest discover -s tests -v
 
 ## Architecture
 
-Each Python client logs into Guacamole over HTTP(S). Guacamole opens its
-configured SSH terminal to the server, where the client starts its matching
-helper automatically. Framed, Base64-encoded messages travel through that
-terminal's input and output pipes.
+Each client logs into Guacamole and starts its matching helper inside the
+server's SSH terminal. The SSH bridge relays TCP connections; the LLM bridge
+forwards HTTP API requests and streamed responses. Both use local loopback
+listeners and require no additional externally accessible server port.
 
-The SSH bridge relays bytes for a separate SSH session between your local SSH
-client and the server's SSH service:
-
-```mermaid
-flowchart LR
-    A["SSH client on your PC"] <--> B["guac-ssh-client — 127.0.0.1:2222"]
-    B <-->|"HTTP(S) tunnel"| C["Guacamole gateway"]
-    C <-->|"SSH terminal stream"| D["guac-ssh-server"]
-    D <-->|"Server loopback"| E["SSH service — 127.0.0.1:22"]
-```
-
-The LLM bridge forwards HTTP requests and streamed responses:
-
-```mermaid
-flowchart LR
-    A["LLM application on your PC"] <--> B["guac-llm-client — 127.0.0.1:8000"]
-    B <-->|"HTTP(S) tunnel"| C["Guacamole gateway"]
-    C <-->|"SSH terminal stream"| D["guac-llm-server"]
-    D <-->|"Server loopback HTTP"| E["OpenAI-compatible endpoint — 127.0.0.1:8000"]
-```
-
-The local listeners are on your PC; the helpers and destination services are
-on the server. No additional inbound server port is needed. One SSH bridge can
-carry several independent SSH connections. Closing an individual SSH connection
-leaves the bridge running; stopping the bridge or losing its Guacamole tunnel
-closes all connections using it.
+See [Connection details](docs/connections.md) for flowcharts, the two SSH
+connections, loopback addresses and ports, authentication, and bridge lifetime.
