@@ -84,15 +84,17 @@ SCP and SFTP work through the same local port.
 Use `--target-port` to select a different server-side SSH port and `--port`
 to change the local listener.
 
-To start the bridge automatically before SSH, save your Guacamole password once
-with `--save-password`, then use `--ensure-running`. It reuses a listener on the
-selected port or starts a background bridge and exits once the port is ready.
-Keep that port dedicated to this bridge: an existing listener is reused without
-checking its destination. Detached startup cannot prompt for credentials.
+On Windows, start the bridge automatically before SSH with a visible console:
 
 ```shell
-guac-ssh-client --ensure-running --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
+guac-ssh-client --ensure-running --show-console --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
 ```
+
+The command reuses a listener on the selected port or opens a bridge console
+and exits once the port is ready. Keep the port dedicated to this bridge:
+an existing listener is reused without checking its destination. Save your
+Guacamole password once with `--save-password` for automatic login; the visible
+console can also prompt for it.
 
 For example, in `~/.ssh/config` (replace both usernames):
 
@@ -102,32 +104,25 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-ssh-client --ensure-running --url https://SERVER_URL --username YOUR_USERNAME --port %p"
+Match originalhost guac-server exec "guac-ssh-client --ensure-running --show-console --url https://SERVER_URL --username YOUR_USERNAME --port %p"
 Match all
 ```
 
 Run `ssh guac-server`. The command must be on SSH's PATH; use its absolute path
-if needed. `--ready-timeout 60` limits startup waiting. A startup failure returns
-nonzero and reports the background log path. Override it with `--background-log`.
-On Windows, the default is `%LOCALAPPDATA%/guac-bridge/ssh-2222.log`; on macOS,
-`~/Library/Logs/guac-bridge/ssh-2222.log`; elsewhere,
-`${XDG_CACHE_HOME:-~/.cache}/guac-bridge/ssh-2222.log`.
-The bridge keeps running independently of SSH sessions, and an already running
-bridge keeps its original settings. Stop a managed bridge, including its active
-SSH connections, with:
+if needed. `--ready-timeout 60` limits startup waiting. The bridge keeps running
+independently of SSH sessions. Press **Ctrl+C** in the bridge console, or stop
+it and its active SSH connections from another terminal:
 
 ```shell
 guac-ssh-client --stop --port 2222
 ```
 
-On Windows, add `--show-console` to `--ensure-running` (including in the SSH
-configuration above) to open a visible console instead of running invisibly.
-Output appears in that console; press **Ctrl+C** there or use `--stop` to shut
-down. The visible console can also prompt for your password. Without this option,
-output is written to the background log. `--stop` only controls bridges started
-with `--ensure-running`; stop a foreground bridge in its original terminal.
-To change between visible and background mode, stop the existing bridge first,
-then start it with the desired options.
+Omit `--show-console` on macOS/Linux, or to run invisibly on Windows. Invisible
+startup uses a saved password or `GUAC_PASSWORD` and cannot prompt. Output goes
+to the log path printed at startup; customize it with `--background-log`.
+An existing bridge keeps its original settings. Stop it before switching
+between visible and invisible mode. `--stop` controls bridges started with
+`--ensure-running`; stop a foreground bridge in its original terminal.
 
 ## Other Remarks
 Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Run either client with `--help` for all options.
