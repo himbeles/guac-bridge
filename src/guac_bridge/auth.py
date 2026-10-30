@@ -107,7 +107,7 @@ class CredentialStore:
 def resolve_username(args):
     username = args.username
     if not username:
-        if not sys.stdin.isatty():
+        if sys.stdin is None or not sys.stdin.isatty():
             raise BridgeError('Supply --username when running without an interactive terminal')
         try:
             username = input('Guacamole username: ').strip()
@@ -119,7 +119,7 @@ def resolve_username(args):
 
 
 def prompt_password():
-    if not sys.stdin.isatty():
+    if sys.stdin is None or not sys.stdin.isatty():
         raise BridgeError('No password available; use GUAC_PASSWORD, a saved credential, or an interactive terminal')
     try:
         return getpass.getpass('Guacamole password: ')

@@ -24,6 +24,3 @@ guac-ssh-server = "guac_bridge.ssh_server:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-
-

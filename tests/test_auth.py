@@ -38,6 +38,13 @@ class MemoryStore:
 
 
 class CredentialTests(unittest.TestCase):
+    def test_detached_process_without_stdin_gets_clear_credential_errors(self):
+        with patch.object(auth.sys, 'stdin', None):
+            with self.assertRaisesRegex(BridgeError, 'No password available'):
+                auth.prompt_password()
+            with self.assertRaisesRegex(BridgeError, 'Supply --username'):
+                auth.resolve_username(SimpleNamespace(username=None))
+
     def test_deployment_identity_ignores_connection_fragment_and_query(self):
         self.assertEqual(auth.credential_service('https://EXAMPLE.org:443/guacamole/?token=secret#/client/one'),
                          'guac-bridge:https://example.org/guacamole')

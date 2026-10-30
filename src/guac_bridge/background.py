@@ -50,6 +50,15 @@ def child_command(args):
 
 def stop_child(process):
     if process.poll() is None:
+        if sys.platform == 'win32':
+            # A virtual environment's python.exe may be a redirector which
+            # starts another interpreter. Stop the tree, not just that wrapper.
+            subprocess.run([str(Path(os.environ.get('SystemRoot', r'C:\Windows')) /
+                                'System32' / 'taskkill.exe'), '/PID', str(process.pid), '/T', '/F'],
+                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=5, check=False)
+            if process.poll() is not None:
+                return
         process.terminate()
         try:
             process.wait(timeout=5)
@@ -65,9 +74,8 @@ def startup_lock(port, deadline):
     path = default_log(port).with_suffix('.lock')
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     with os.fdopen(os.open(path, os.O_RDWR | os.O_CREAT, 0o600), 'r+b') as handle:
-        if not handle.read(1):
-            handle.write(b'\0')
-            handle.flush()
+        # Lock beyond EOF without reading/writing: on Windows another owner's
+        # byte-range lock also forbids even an initialization read of that byte.
         while True:
             try:
                 handle.seek(0)

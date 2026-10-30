@@ -47,12 +47,12 @@ class BackgroundTests(unittest.TestCase):
     def listener_child(self):
         return self.fake_child(f'''
 import socket, sys, time
-assert not sys.stdin.isatty()
+assert sys.stdin is None or not sys.stdin.isatty()
 time.sleep(.2)
 sock = socket.socket()
 sock.bind(('127.0.0.1', {self.args.port}))
-sock.listen()
 print('fixture ready', flush=True)
+sock.listen()
 while True:
     conn, addr = sock.accept()
     conn.close()
@@ -68,7 +68,10 @@ while True:
 
     def test_delayed_child_is_ready_then_remains_running_and_is_reused(self):
         with self.listener_child(), patch.object(background.subprocess, 'Popen', side_effect=self.spawn) as spawn:
-            background.ensure_running(self.args)
+            try:
+                background.ensure_running(self.args)
+            except BridgeError as exc:
+                self.fail(str(exc) + '\n' + Path(self.args.background_log).read_text())
             self.assertTrue(background.listening(self.args.port))
             self.assertIsNone(self.processes[0].poll())
             background.ensure_running(self.args)
