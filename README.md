@@ -1,24 +1,19 @@
-# Guac Bridge
+# Guacamole Bridge
 
-Access an OpenAI-compatible endpoint or SSH service on a server through its
-Guacamole web terminal.
+Access an OpenAI-compatible endpoint or SSH service on a server through its Guacamole web terminal.
 
 ## Install
 
-Install on both your client computer and the server. Requires Python 3.11+ and
-[uv](https://docs.astral.sh/uv/).
+Install on both your client computer and the server. Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```shell
 uv tool install guac-bridge
 uv tool update-shell
 ```
 
-The client starts the appropriate server helper automatically. Keep the client
-running while using the bridge; stop it with **Ctrl+C**.
+The client starts the appropriate server helper automatically. Keep the client running while using the bridge; stop it with **Ctrl+C**.
 
-For the commands below, copy the full URL from your browser after opening the
-desired Guacamole connection. Replace `CLIENT_ID` and `YOUR_USERNAME` with
-your connection details. Your Guacamole password is prompted.
+For the commands below, copy the full URL from your browser after opening the desired Guacamole web terminal connection. Replace `SERVER_URL` and `YOUR_USERNAME` with your connection details. Your Guacamole password is prompted.
 
 ## Usage: LLM bridge
 
@@ -28,7 +23,7 @@ The server's OpenAI-compatible endpoint should be available at
 On your client computer:
 
 ```shell
-guac-llm-client --url "https://guacamole.example.com/#/client/CLIENT_ID" --username YOUR_USERNAME
+guac-llm-client --url "https://SERVER_URL" --username YOUR_USERNAME
 ```
 
 Configure your LLM application with:
@@ -53,7 +48,7 @@ The server's SSH service should be reachable at `127.0.0.1:22`.
 On your client computer:
 
 ```shell
-guac-ssh-client --url "https://guacamole.example.com/#/client/CLIENT_ID" --username YOUR_USERNAME
+guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME
 ```
 
 In another local terminal:
@@ -66,19 +61,11 @@ Use the server's SSH username and its usual password or SSH key. SSH
 authentication and host-key verification are handled by your SSH client.
 SCP and SFTP work through the same local port.
 
-To forward the server's OpenAI-compatible endpoint through SSH:
-
-```shell
-ssh -p 2222 -N -L 8000:127.0.0.1:8000 serveruser@127.0.0.1
-```
-
 Use `--target-port` to select a different server-side SSH port and `--port`
 to change the local listener.
 
-Both bridges support `--ca-file company-ca.pem` for a custom certificate
-authority and `--transport http` to use Guacamole's HTTP tunnel.
-If a helper is installed outside `~/.local/bin/`, pass its full path with
-`--server-command`. Run either client with `--help` for all options.
+## Other Remarks
+Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Run either client with `--help` for all options.
 
 ## Contribution
 
