@@ -162,7 +162,10 @@ def _start_and_wait(args, deadline):
     else:
         options['stdin'] = subprocess.PIPE
         if sys.platform == 'win32':
-            options['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            # DETACHED_PROCESS leaves the venv launcher without a console, so
+            # its interpreter child may allocate a visible, empty one. Give
+            # the entire interpreter tree a windowless console instead.
+            options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             options['start_new_session'] = True
         with os.fdopen(os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), 'ab') as output:

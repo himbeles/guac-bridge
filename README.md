@@ -126,6 +126,8 @@ Output appears in that console; press **Ctrl+C** there or use `--stop` to shut
 down. The visible console can also prompt for your password. Without this option,
 output is written to the background log. `--stop` only controls bridges started
 with `--ensure-running`; stop a foreground bridge in its original terminal.
+To change between visible and background mode, stop the existing bridge first,
+then start it with the desired options.
 
 ## Other Remarks
 Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Run either client with `--help` for all options.

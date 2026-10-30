@@ -50,6 +50,29 @@ class BackgroundTests(unittest.TestCase):
 import asyncio, sys
 from pathlib import Path
 from guac_bridge.control import ControlServer
+if sys.platform == 'win32':
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    user = ctypes.WinDLL('user32', use_last_error=True)
+    kernel.GetConsoleWindow.restype = wintypes.HWND
+    kernel.GetStdHandle.argtypes = [wintypes.DWORD]
+    kernel.GetStdHandle.restype = wintypes.HANDLE
+    kernel.GetFileType.argtypes = [wintypes.HANDLE]
+    kernel.GetConsoleMode.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    user.IsWindowVisible.argtypes = [wintypes.HWND]
+    visible = '--visible-console' in sys.argv
+    if not visible:
+        window = kernel.GetConsoleWindow()
+        assert not window or not user.IsWindowVisible(window), 'Unexpected visible background window'
+    for stream in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+        handle = kernel.GetStdHandle(stream & 0xffffffff)
+        if visible:
+            mode = wintypes.DWORD()
+            assert kernel.GetFileType(handle) == 2, 'Visible output is not a console character device'
+            assert kernel.GetConsoleMode(handle, ctypes.byref(mode)), 'Visible output is not attached to a console'
+        else:
+            assert kernel.GetFileType(handle) == 1, 'Background output is not the log file'
 if '--visible-console' not in sys.argv:
     assert sys.stdin is None or not sys.stdin.isatty()
 async def main():
