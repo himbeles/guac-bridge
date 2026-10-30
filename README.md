@@ -84,17 +84,17 @@ SCP and SFTP work through the same local port.
 Use `--target-port` to select a different server-side SSH port and `--port`
 to change the local listener.
 
-On Windows, start the bridge automatically before SSH with a visible console:
+Start the bridge automatically before SSH in the background:
 
 ```shell
-guac-ssh-client --ensure-running --show-console --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
+guac-ssh-client --ensure-running --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
 ```
 
-The command reuses a listener on the selected port or opens a bridge console
+The command reuses a listener on the selected port or starts a background bridge
 and exits once the port is ready. Keep the port dedicated to this bridge:
-an existing listener is reused without checking its destination. Save your
-Guacamole password once with `--save-password` for automatic login; the visible
-console can also prompt for it.
+an existing listener is reused without checking its destination. Background
+startup requires a saved password or `GUAC_PASSWORD` and cannot prompt. Save your
+Guacamole password once with `--save-password` in a foreground invocation.
 
 For example, in `~/.ssh/config` (replace both usernames):
 
@@ -104,24 +104,23 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-ssh-client --ensure-running --show-console --url https://SERVER_URL --username YOUR_USERNAME --port %p"
+Match originalhost guac-server exec "guac-ssh-client --ensure-running --url https://SERVER_URL --username YOUR_USERNAME --port %p"
 Match all
 ```
 
 Run `ssh guac-server`. The command must be on SSH's PATH; use its absolute path
 if needed. `--ready-timeout 60` limits startup waiting. The bridge keeps running
-independently of SSH sessions. Press **Ctrl+C** in the bridge console, or stop
-it and its active SSH connections from another terminal:
+independently of SSH sessions. Stop it and its active SSH connections with:
 
 ```shell
 guac-ssh-client --stop --port 2222
 ```
 
-Omit `--show-console` on macOS/Linux, or to run invisibly on Windows. Invisible
-startup uses a saved password or `GUAC_PASSWORD` and cannot prompt. Output goes
-to the log path printed at startup; customize it with `--background-log`.
-An existing bridge keeps its original settings. Stop it before switching
-between visible and invisible mode. `--stop` controls bridges started with
+Output goes to the log path printed at startup; customize it with
+`--background-log`. On Windows, optionally add `--show-console` to
+`--ensure-running` for a visible console with output, password prompting, and
+**Ctrl+C** shutdown. An existing bridge keeps its original settings; stop it
+before changing console mode. `--stop` controls bridges started with
 `--ensure-running`; stop a foreground bridge in its original terminal.
 
 ## Other Remarks
@@ -142,17 +141,34 @@ uv run python -m unittest discover -s tests -v
 
 ## Architecture
 
-Each client logs into Guacamole and starts its matching server helper inside
-the terminal session. Framed, Base64-encoded messages travel through Guacamole's
-input and output pipes.
+Each Python client logs into Guacamole over HTTP(S). Guacamole opens its
+configured SSH terminal to the server, where the client starts its matching
+helper automatically. Framed, Base64-encoded messages travel through that
+terminal's input and output pipes.
 
-| Bridge | Local listener | Server helper |
-| --- | --- | --- |
-| LLM | OpenAI-compatible HTTP API | Forwards requests and streamed responses to the server endpoint |
-| SSH | TCP port for your SSH client | Relays bytes to the server's SSH service |
+The SSH bridge relays bytes for a separate SSH session between your local SSH
+client and the server's SSH service:
 
-Listeners bind to local loopback. Helpers connect to services on the server's
-loopback interface, so no additional inbound server port is needed. Per-connection
-flow control bounds buffering; disconnecting Guacamole closes active connections.
+```mermaid
+flowchart LR
+    A["SSH client on your PC"] <--> B["guac-ssh-client — 127.0.0.1:2222"]
+    B <-->|"HTTP(S) tunnel"| C["Guacamole gateway"]
+    C <-->|"SSH terminal stream"| D["guac-ssh-server"]
+    D <-->|"Server loopback"| E["SSH service — 127.0.0.1:22"]
+```
 
+The LLM bridge forwards HTTP requests and streamed responses:
 
+```mermaid
+flowchart LR
+    A["LLM application on your PC"] <--> B["guac-llm-client — 127.0.0.1:8000"]
+    B <-->|"HTTP(S) tunnel"| C["Guacamole gateway"]
+    C <-->|"SSH terminal stream"| D["guac-llm-server"]
+    D <-->|"Server loopback HTTP"| E["OpenAI-compatible endpoint — 127.0.0.1:8000"]
+```
+
+The local listeners are on your PC; the helpers and destination services are
+on the server. No additional inbound server port is needed. One SSH bridge can
+carry several independent SSH connections. Closing an individual SSH connection
+leaves the bridge running; stopping the bridge or losing its Guacamole tunnel
+closes all connections using it.
