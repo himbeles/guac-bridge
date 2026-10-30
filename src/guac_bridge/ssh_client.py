@@ -4,6 +4,7 @@ import asyncio
 import base64
 import contextlib
 import logging
+import math
 import shlex
 import ssl
 import time
@@ -16,6 +17,7 @@ from .client import Bridge, BridgeError, parse_url
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    resolve_username)
+from .background import ensure_running
 
 LOG = logging.getLogger('guac-ssh')
 CHUNK = 4096
@@ -181,12 +183,17 @@ async def serve(args):
                     await response.read()
 
 
-def cli():
+def cli(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--url', required=True, help='Full Guacamole connection URL')
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
     parser.add_argument('--port', type=int, default=2222, help='Local loopback listener port')
+    parser.add_argument('--ensure-running', action='store_true',
+                        help='Reuse a local listener or start a detached bridge; exit when ready')
+    parser.add_argument('--ready-timeout', type=float, default=60,
+                        help='Maximum seconds to wait for background startup (default: 60)')
+    parser.add_argument('--background-log', help='Background log file (default: user cache/guac-bridge/ssh-PORT.log)')
     parser.add_argument('--target-host', choices=('127.0.0.1', 'localhost', '::1'), default='127.0.0.1')
     parser.add_argument('--target-port', type=int, default=22, help='Server-side loopback SSH port')
     parser.add_argument('--max-connections', type=int, default=8)
@@ -198,14 +205,21 @@ def cli():
     parser.add_argument('--connect-timeout', type=float, default=30)
     parser.add_argument('--ca-file', help='Corporate CA PEM bundle')
     parser.add_argument('--insecure', action='store_true', help='Disable Guacamole TLS verification')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if not (1 <= args.port <= 65535 and 1 <= args.target_port <= 65535 and 1 <= args.max_connections <= 16):
         parser.error('Ports must be 1..65535 and connection limit must be 1..16')
-    if args.connect_timeout <= 0 or args.startup_delay < 0:
+    if not math.isfinite(args.connect_timeout) or not math.isfinite(args.startup_delay) or args.connect_timeout <= 0 or args.startup_delay < 0:
         parser.error('Timeout must be positive and startup delay cannot be negative')
+    if not math.isfinite(args.ready_timeout) or args.ready_timeout <= 0:
+        parser.error('Ready timeout must be positive and finite')
+    if args.ensure_running and (args.forget_password or args.save_password):
+        parser.error('Use credential management options in an interactive foreground invocation')
     setup_console('SSH')
     try:
-        asyncio.run(serve(args))
+        if args.ensure_running:
+            ensure_running(args)
+        else:
+            asyncio.run(serve(args))
     except KeyboardInterrupt:
         pass
     except (BridgeError, OSError, aiohttp.ClientError, asyncio.TimeoutError) as exc:

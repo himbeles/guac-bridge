@@ -84,6 +84,37 @@ SCP and SFTP work through the same local port.
 Use `--target-port` to select a different server-side SSH port and `--port`
 to change the local listener.
 
+To start the bridge automatically before SSH, save your Guacamole password once
+with `--save-password`, then use `--ensure-running`. It reuses a listener on the
+selected port or starts a background bridge and exits once the port is ready.
+Keep that port dedicated to this bridge: an existing listener is reused without
+checking its destination. Background startup cannot prompt for credentials.
+
+```shell
+guac-ssh-client --ensure-running --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
+```
+
+For example, in `~/.ssh/config` (replace both usernames):
+
+```sshconfig
+Host guac-server
+    HostName 127.0.0.1
+    Port 2222
+    User SERVER_USERNAME
+
+Match originalhost guac-server exec "guac-ssh-client --ensure-running --url https://SERVER_URL --username YOUR_USERNAME --port %p"
+Match all
+```
+
+Run `ssh guac-server`. The command must be on SSH's PATH; use its absolute path
+if needed. `--ready-timeout 60` limits startup waiting. A startup failure returns
+nonzero and reports the background log path. Override it with `--background-log`.
+On Windows, the default is `%LOCALAPPDATA%/guac-bridge/ssh-2222.log`; on macOS,
+`~/Library/Logs/guac-bridge/ssh-2222.log`; elsewhere,
+`${XDG_CACHE_HOME:-~/.cache}/guac-bridge/ssh-2222.log`.
+The success message includes the background process ID; stop that process to
+close the bridge. An already running bridge keeps its original settings.
+
 ## Other Remarks
 Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Run either client with `--help` for all options.
 

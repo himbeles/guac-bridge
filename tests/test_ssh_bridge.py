@@ -3,10 +3,12 @@ import asyncio
 import base64
 import contextlib
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
 import signal
+import socket
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -108,6 +110,46 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         bridge, local, _ = await self.connect(target)
         await self.transfer(local, bytes(range(256)) * 2048)
         self.assertFalse(bridge.failed.is_set())
+
+    async def test_background_cli_starts_bridge_exits_and_reuses_listener(self):
+        target = await self.target(self.echo)
+        gateway = Gateway(True)
+        self.gateways.append(gateway)
+        runner, base = await start_app(gateway.app())
+        self.runners.append(runner)
+        with socket.socket() as sock:
+            sock.bind(('127.0.0.1', 0))
+            local = sock.getsockname()[1]
+        env = dict(os.environ, GUAC_PASSWORD='test',
+                   PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'src'),
+                   XDG_CACHE_HOME=self.temp.name)
+        command = [sys.executable, '-m', 'guac_bridge.ssh_client', '--ensure-running',
+                   '--url', base + 'guacamole/', '--connection-id', '1', '--data-source', 'mysql',
+                   '--username', 'test', '--no-keyring', '--port', str(local),
+                   '--target-port', str(target), '--server-command', str(self.helper),
+                   '--startup-delay', '.1', '--ready-timeout', '15',
+                   '--background-log', str(Path(self.temp.name) / 'background.log')]
+        pid = None
+        try:
+            process = await asyncio.create_subprocess_exec(*command, env=env,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await asyncio.wait_for(process.communicate(), 25)
+            self.assertEqual(process.returncode, 0, stderr.decode())
+            match = re.search(rb'PID (\d+)', stderr)
+            self.assertIsNotNone(match, stderr.decode())
+            pid = int(match[1])
+            self.assertEqual(stdout, b'')
+            await self.transfer(local, bytes(range(256)) * 256)
+            process = await asyncio.create_subprocess_exec(*command, env=env,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            _, stderr = await asyncio.wait_for(process.communicate(), 10)
+            self.assertEqual(process.returncode, 0, stderr.decode())
+            self.assertIn(b'Using existing listener', stderr)
+            self.assertEqual(len(gateway.tokens), 1)
+        finally:
+            if pid:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(pid, signal.SIGTERM)
 
     async def test_http_fallback_binary_roundtrip(self):
         target = await self.target(self.echo)
