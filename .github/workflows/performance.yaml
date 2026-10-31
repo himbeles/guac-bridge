@@ -2,7 +2,7 @@ name: Transport performance investigation
 
 on:
   push:
-    branches: [investigate/transport-performance]
+    branches: [investigate/transport-performance, investigate/transport-windows]
   workflow_dispatch:
 
 permissions:
@@ -31,8 +31,13 @@ jobs:
           python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20
           --transports websocket --workloads ssh-upload,ssh-download,llm-paced
           --output benchmarks/results/ci.json
+      - name: Window and frame integrity smoke test
+        run: >-
+          python -m benchmarks.windows --kib 32 --repeats 1 --rtts 0,20
+          --profiles current,windows32-chunk16k
+          --output benchmarks/results/window-ci.json
       - uses: actions/upload-artifact@v7
         with:
           name: transport-results-python-${{ matrix.python }}
-          path: benchmarks/results/ci.json
+          path: benchmarks/results/*ci.json
           if-no-files-found: error

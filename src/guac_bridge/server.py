@@ -132,7 +132,8 @@ def run(config):
                     if ident in states or len(states) >= config['max_requests']:
                         emit({'type': 'error', 'id': ident, 'message': 'Remote concurrency limit'})
                         continue
-                    state = {'credits': threading.Semaphore(8), 'cancel': threading.Event()}
+                    state = {'credits': threading.Semaphore(config.get('experimental_window', 8)),
+                             'cancel': threading.Event()}
                     states[ident] = state
                 threading.Thread(target=worker, args=(req, state), daemon=True).start()
     finally:

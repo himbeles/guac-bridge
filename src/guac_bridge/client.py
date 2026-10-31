@@ -178,6 +178,8 @@ class Tunnel:
 
 class Bridge:
     helper_name = 'guac-llm-server'
+    input_window = 8
+    response_queue_size = 16
 
     def helper_command(self):
         return bootstrap(self.args)
@@ -289,7 +291,7 @@ class Bridge:
                         raise BridgeError(self.failure or 'Guacamole tunnel is closed')
                     while pending and pending[0].done():
                         pending.popleft().result()
-                    if len(pending) >= 8:
+                    if len(pending) >= self.input_window:
                         await self.wait_for(pending.popleft(), self.args.connect_timeout)
                     pending.append(self.new_ack())
                     await self.tunnel.send('blob', self.input_stream,
@@ -449,7 +451,7 @@ class Bridge:
         if len(self.requests) >= self.args.max_requests:
             return web.json_response({'error': {'message': 'Bridge concurrency limit reached'}}, status=429)
         ident = uuid.uuid4().hex
-        queue = asyncio.Queue(maxsize=16)
+        queue = asyncio.Queue(maxsize=self.response_queue_size)
         self.requests[ident] = queue
         headers = {k: v for k, v in request.headers.items()
                    if k.lower() in ('authorization', 'content-type', 'accept', 'x-request-id')}

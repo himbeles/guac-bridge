@@ -22,6 +22,7 @@ import sys
 import tempfile
 import time
 from types import SimpleNamespace
+import urllib.parse
 
 import aiohttp
 from aiohttp import web
@@ -29,6 +30,7 @@ from aiohttp import web
 from guac_bridge.client import Bridge, Parser, instruction, login
 from guac_bridge.ssh_client import SSHBridge
 from .pipeline import LegacyBridge, LegacySSHBridge, PipelinedBridge, PipelinedSSHBridge
+from .latency import LatencyProxy
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
@@ -122,7 +124,8 @@ def child_cpu(pid):
 
 def start_meter(bridge, terminal):
     metrics = dict(input_calls=0, input_wait_s=0., ack_wait_s=0., client_to_gateway_bytes=0,
-                   client_to_gateway_instructions=0)
+                   client_to_gateway_instructions=0, client_to_gateway_writes=0)
+    bridge.tunnel.benchmark_metrics = metrics
     original_send = bridge.tunnel.send
     original_input = bridge.send_input
     original_wait = bridge.wait_for
@@ -130,6 +133,7 @@ def start_meter(bridge, terminal):
     async def send(*args):
         metrics['client_to_gateway_bytes'] += len(instruction(*args).encode())
         metrics['client_to_gateway_instructions'] += 1
+        metrics['client_to_gateway_writes'] += 1
         return await original_send(*args)
 
     async def send_input(data):
@@ -154,14 +158,26 @@ def start_meter(bridge, terminal):
     return metrics
 
 
-async def trial(payload, variant, transport, ack_ms, workload):
+async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0, helper_setup=None):
     runners, handlers, servers = [], set(), []
     gateway, bridge, session, terminal = TimedGateway(transport == 'websocket'), None, None, None
+    proxy = None
     with tempfile.TemporaryDirectory() as directory:
         helper = Path(directory) / 'helper'
         is_ssh = workload.startswith('ssh-')
         module = 'guac_bridge.ssh_server' if is_ssh else 'guac_bridge.server'
-        helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -m ' + module + ' "$@"\n')
+        if helper_setup:
+            if is_ssh:
+                code = (f'import guac_bridge.ssh_server as m;m.CHUNK={helper_setup["chunk"]};'
+                        f'm.WINDOW={helper_setup["app_window"]};raise SystemExit(m.cli())')
+            else:
+                code = ('import guac_bridge.server as m;original=m.run;'
+                        f'm.run=lambda c:original(dict(c,experimental_window={helper_setup["app_window"]}));'
+                        'raise SystemExit(m.cli())')
+            invocation = ' -c ' + shlex.quote(code)
+        else:
+            invocation = ' -m ' + module
+        helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + invocation + ' "$@"\n')
         helper.chmod(0o755)
         try:
             if is_ssh:
@@ -207,6 +223,10 @@ async def trial(payload, variant, transport, ack_ms, workload):
                 runners.append(runner)
             runner, base = await start_app(gateway.app())
             runners.append(runner)
+            if rtt_ms:
+                parts = urllib.parse.urlsplit(base)
+                proxy = await LatencyProxy(parts.hostname, parts.port, rtt_ms).start()
+                base = f'http://127.0.0.1:{proxy.port}/'
             session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180))
             base += 'guacamole/'
             token = await login(session, base, 'test', 'test', 10)
@@ -268,6 +288,7 @@ async def trial(payload, variant, transport, ack_ms, workload):
             elapsed = time.perf_counter() - started
             child_end = child_cpu(terminal.proc.pid)
             metrics.update(workload=workload, variant=variant, transport=transport, ack_delay_ms=ack_ms,
+                           application_rtt_ms=rtt_ms,
                            payload_bytes=measured_bytes, wall_s=elapsed, mib_s=measured_bytes / elapsed / 2**20,
                            parent_cpu_s=time.process_time() - parent_start,
                            helper_tree_cpu_s=(None if child_start is None or child_end is None
@@ -293,6 +314,8 @@ async def trial(payload, variant, transport, ack_ms, workload):
                 await runner.cleanup()
             if session:
                 await session.close()
+            if proxy:
+                await proxy.close()
 
 
 async def websocket_control(payload):
