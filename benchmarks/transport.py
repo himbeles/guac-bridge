@@ -156,7 +156,7 @@ def start_meter(bridge, terminal):
     return metrics
 
 
-async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0, flow_profile="current"):
+async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0):
     runners, handlers, servers = [], set(), []
     proxy = None
     gateway, bridge, session, terminal = TimedGateway(transport == 'websocket'), None, None, None
@@ -224,15 +224,6 @@ async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0, flow
                                    request_timeout=180, local_api_key=None, upstream_api_key=None)
             cls = ({'baseline': LegacySSHBridge, 'pipeline': PipelinedSSHBridge} if is_ssh else
                    {'baseline': LegacyBridge, 'pipeline': PipelinedBridge})[variant]
-            if flow_profile == 'legacy':
-                class PreviousFlow(cls):
-                    def dispatch(self, event):
-                        if event.get('type') == 'ready':
-                            event = dict(event, capabilities=['cleanup-ack'])
-                        return super().dispatch(event)
-                cls = PreviousFlow
-            elif flow_profile != 'current':
-                raise ValueError('Unknown flow profile')
             bridge = cls(args, session, base, '1', 'c', 'mysql', token)
             await bridge.start()
             terminal = gateway.terminals[0]
@@ -283,7 +274,7 @@ async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0, flow
                         assert await response.read() == payload, 'LLM payload corruption'
             elapsed = time.perf_counter() - started
             child_end = child_cpu(terminal.proc.pid)
-            metrics.update(workload=workload, variant=variant, transport=transport, ack_delay_ms=ack_ms, application_rtt_ms=rtt_ms, flow_profile=flow_profile,
+            metrics.update(workload=workload, variant=variant, transport=transport, ack_delay_ms=ack_ms, application_rtt_ms=rtt_ms, 
                            data_window=bridge.data_window, input_window=bridge.input_window,
                            ssh_chunk=bridge.tcp_chunk if is_ssh else None,
                            payload_bytes=measured_bytes, wall_s=elapsed, mib_s=measured_bytes / elapsed / 2**20,

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Remove older-server compatibility and use the faster transport limits directly.
+- Reject outdated helper protocols with clear server update instructions.
+
 ## 0.6.0
 
 - Speed up bulk SSH transfers and LLM responses with larger flow-control windows and SSH frames.

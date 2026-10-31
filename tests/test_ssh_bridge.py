@@ -50,7 +50,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         self.servers.append(server)
         return server.sockets[0].getsockname()[1]
 
-    async def connect(self, target_port, websocket=True, bridge_class=SSHBridge, **overrides):
+    async def connect(self, target_port, websocket=True, **overrides):
         gateway = Gateway(websocket)
         self.gateways.append(gateway)
         runner, base = await start_app(gateway.app())
@@ -60,7 +60,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         values = dict(target_host='127.0.0.1', target_port=target_port, max_connections=8,
                       server_command=str(self.helper), startup_delay=.1, connect_timeout=5, transport='auto')
         values.update(overrides)
-        bridge = bridge_class(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
+        bridge = SSHBridge(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
         self.bridges.append(bridge)
         await bridge.start()
         listener = await asyncio.start_server(bridge.accept, '127.0.0.1', 0)
@@ -105,27 +105,6 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         finally:
             writer.close()
             await writer.wait_closed()
-
-    async def test_old_client_contract_with_new_helper(self):
-        from legacy_flow import LegacyFlow
-        class OldClient(LegacyFlow, SSHBridge):
-            pass
-        target = await self.target(self.echo)
-        bridge, local, _ = await self.connect(target, bridge_class=OldClient)
-        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (8, 8, 4096))
-        await self.transfer(local, os.urandom(512 * 1024))
-        self.assertFalse(bridge.failed.is_set())
-
-    async def test_new_client_with_frozen_0_5_2_helper(self):
-        legacy = Path(__file__).parent / 'fixtures' / 'ssh_server_v0_5_2.py'
-        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
-                               shlex.quote(str(legacy)) + ' "$@"\n')
-        target = await self.target(self.echo)
-        with self.assertLogs('guac-llm', level='WARNING'):
-            bridge, local, _ = await self.connect(target)
-        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (8, 8, 4096))
-        await self.transfer(local, os.urandom(512 * 1024))
-        self.assertFalse(bridge.failed.is_set())
 
     async def test_binary_roundtrip_and_client_half_close(self):
         target = await self.target(self.echo)
@@ -178,30 +157,6 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
                 while bridge.requests:
                     await asyncio.sleep(.005)
             self.assertFalse(bridge.failed.is_set())
-
-    async def test_default_connects_to_frozen_0_4_2_helper_and_closes_without_cleanup_ack(self):
-        legacy = Path(__file__).parent / 'fixtures' / 'ssh_server_v0_4_2.py'
-        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
-                               shlex.quote(str(legacy)) + ' "$@"\n')
-        async def keep_open(reader, writer):
-            writer.write(await reader.readexactly(32))
-            await writer.drain()
-            await asyncio.Event().wait()
-        target = await self.target(keep_open)
-        with self.assertLogs('guac-llm', level='WARNING'):
-            bridge, local, _ = await self.connect(target)
-        self.assertFalse(bridge.cleanup_acks)
-        reader, writer = await asyncio.open_connection('127.0.0.1', local)
-        writer.write(b'legacy helper upgrade connection')
-        await writer.drain()
-        self.assertEqual(await asyncio.wait_for(reader.readexactly(32), 5), b'legacy helper upgrade connection')
-        # Close without half-closing first: the old helper does not emit a
-        # cancellation completion event. The upgrade connection must still end.
-        writer.close()
-        await writer.wait_closed()
-        await asyncio.wait_for(bridge.close(), 3)
-        self.assertFalse(bridge.requests)
-        self.assertFalse(bridge.failed.is_set())
 
     async def test_background_cli_starts_bridge_exits_and_reuses_listener(self):
         target = await self.target(self.echo)

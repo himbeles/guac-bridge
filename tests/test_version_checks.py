@@ -17,7 +17,7 @@ class VersionChecks(unittest.TestCase):
     def test_matching_version_becomes_ready_for_both_bridges(self):
         for cls in (Bridge, SSHBridge):
             bridge = self.bridge(cls)
-            bridge.dispatch(dict(type='ready', version=1, protocol='ssh-tcp', package_version=__version__))
+            bridge.dispatch(dict(type='ready', version=2, protocol='ssh-tcp', package_version=__version__))
             self.assertTrue(bridge.ready.is_set())
 
     def test_mismatch_or_missing_version_has_exact_server_install_command(self):
@@ -26,7 +26,7 @@ class VersionChecks(unittest.TestCase):
                 with self.subTest(cls=cls.__name__, remote=remote):
                     bridge = self.bridge(cls)
                     bridge.args.require_server_version = True
-                    event = dict(type='ready', version=1, protocol='ssh-tcp')
+                    event = dict(type='ready', version=2, protocol='ssh-tcp')
                     if remote is not None:
                         event['package_version'] = remote
                     with self.assertRaises(BridgeError) as caught:
@@ -48,23 +48,15 @@ class VersionChecks(unittest.TestCase):
 
     def test_default_allows_mismatched_or_missing_package_version_with_warning(self):
         for cls in (Bridge, SSHBridge):
-            for remote in ('0.4.2', None):
+            for remote in ('0.6.2', None):
                 bridge = self.bridge(cls)
-                event = dict(type='ready', version=1, protocol='ssh-tcp')
+                event = dict(type='ready', version=2, protocol='ssh-tcp')
                 if remote:
                     event['package_version'] = remote
                 with self.assertLogs('guac-llm', level='WARNING') as logs:
                     bridge.dispatch(event)
                 self.assertTrue(bridge.ready.is_set())
-                self.assertFalse(bridge.cleanup_acks)
                 self.assertIn('Server version mismatch:', '\n'.join(logs.output))
-
-    def test_mismatch_preserves_advertised_cleanup_capability(self):
-        bridge = self.bridge(SSHBridge)
-        with self.assertLogs('guac-llm', level='WARNING'):
-            bridge.dispatch(dict(type='ready', version=1, protocol='ssh-tcp',
-                                 package_version='0.0.0', capabilities=['cleanup-ack']))
-        self.assertTrue(bridge.cleanup_acks)
 
     def test_mismatch_does_not_allow_unsupported_protocol_or_wrong_helper(self):
         for cls in (Bridge, SSHBridge):
@@ -74,4 +66,4 @@ class VersionChecks(unittest.TestCase):
             self.assertFalse(bridge.ready.is_set())
         bridge = self.bridge(SSHBridge)
         with self.assertRaisesRegex(BridgeError, 'Expected guac-ssh-server'):
-            bridge.dispatch(dict(type='ready', version=1, package_version='0.0.0'))
+            bridge.dispatch(dict(type='ready', version=2, package_version='0.0.0'))

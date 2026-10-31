@@ -10,7 +10,7 @@ import sys
 import threading
 
 from . import __version__
-from .flow import CAPABILITY, request_limits
+from .flow import WINDOW, CHUNK
 
 
 async def relay(args):
@@ -99,8 +99,7 @@ async def relay(args):
     # LLM is the established transport pipe name, shared by both relay modes.
     sys.stdout.buffer.write(b'\x1b]482202;2;LLM\x07')
     sys.stdout.buffer.flush()
-    emit({'type': 'ready', 'version': 1, 'protocol': 'ssh-tcp', 'package_version': __version__,
-          'capabilities': ['cleanup-ack', CAPABILITY]})
+    emit({'type': 'ready', 'version': 2, 'protocol': 'ssh-tcp', 'package_version': __version__})
     main = asyncio.current_task()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         loop.add_signal_handler(sig, main.cancel)
@@ -121,9 +120,8 @@ async def relay(args):
                 if len(channels) >= args.max_connections:
                     emit({'type': 'error', 'id': ident, 'message': 'SSH connection limit reached'})
                     continue
-                window, chunk = request_limits(event, ssh=True)
-                state = {'input': asyncio.Queue(maxsize=window + 1), 'chunk': chunk,
-                         'credits': asyncio.BoundedSemaphore(window), 'eof': False}
+                state = {'input': asyncio.Queue(maxsize=WINDOW + 1), 'chunk': CHUNK,
+                         'credits': asyncio.BoundedSemaphore(WINDOW), 'eof': False}
                 channels[ident] = state
                 state['task'] = asyncio.create_task(connection(ident, state))
                 continue

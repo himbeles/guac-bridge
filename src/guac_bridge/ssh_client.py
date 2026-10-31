@@ -103,7 +103,7 @@ class SSHBridge(Bridge):
         tasks = []
         remote_closed = False
         try:
-            await self.send_event({'type': 'open', 'id': ident, 'window': self.data_window, 'chunk': self.tcp_chunk})
+            await self.send_event({'type': 'open', 'id': ident})
             event = await self.wait_for(queue.get(), self.args.connect_timeout)
             if event['type'] != 'opened':
                 remote_closed = event['type'] in ('error', 'closed')
@@ -170,9 +170,6 @@ class SSHBridge(Bridge):
 
     async def close_channel(self, ident, queue):
         await self.send_event({'type': 'close', 'id': ident})
-        if not self.cleanup_acks:
-            await self.drain_input()
-            return
         while True:
             event = await queue.get()
             if event['type'] in ('closed', 'error'):

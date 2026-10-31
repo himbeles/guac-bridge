@@ -83,15 +83,15 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         await self.bridge.send_event({'type': 'credit', 'id': 'b'})
         self.assertEqual(self.tunnel.inflight, 2)
 
-    async def test_eight_blob_bound_and_concurrent_frames_remain_intact(self):
+    async def test_32_blob_bound_and_concurrent_frames_remain_intact(self):
         events = [{'type': 'data', 'id': str(i), 'body': 'x' * 9000} for i in range(16)]
         await asyncio.gather(*(self.bridge.send_event(event) for event in events))
         lines = self.tunnel.data.splitlines()
         received = [json.loads(base64.b64decode(line, validate=True)) for line in lines]
         self.assertEqual(received, events)
-        self.assertEqual(self.tunnel.peak, 8)
+        self.assertEqual(self.tunnel.peak, 32)
 
-    async def test_negotiated_32_blob_bound_preserves_concurrent_frames(self):
+    async def test_large_concurrent_frames_preserve_32_blob_bound(self):
         self.bridge.input_window = 32
         events = [{'type': 'data', 'id': str(i), 'body': 'x' * 35000} for i in range(16)]
         await asyncio.gather(*(self.bridge.send_event(event) for event in events))
@@ -108,7 +108,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancelled_partial_frame_marks_transport_failed(self):
         self.tunnel.delay = 10
-        task = asyncio.create_task(self.bridge.send_input(b'x' * (3072 * 20)))
+        task = asyncio.create_task(self.bridge.send_input(b'x' * (3072 * 40)))
         await asyncio.sleep(0)
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):

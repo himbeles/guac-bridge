@@ -23,6 +23,7 @@ from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
 from .errors import BridgeError
+from .flow import WINDOW, CHUNK
 
 LOG = logging.getLogger('guac-llm')
 PATHS = {'/v1/models': 'GET', '/v1/chat/completions': 'POST', '/v1/completions': 'POST'}
@@ -177,8 +178,8 @@ class Tunnel:
 
 
 class Bridge:
-    input_window = 8
-    response_queue_size = 16
+    input_window = WINDOW
+    response_queue_size = WINDOW + 8
     helper_name = 'guac-llm-server'
 
     def helper_command(self):
@@ -205,12 +206,10 @@ class Bridge:
         self.requests = {}
         self.last_seen = time.monotonic()
         self.closing = False
-        self.cleanup_acks = True
         self.server_version_matched = False
         self.version_warning = None
-        self.data_window = 8
-        self.tcp_chunk = 4096
-        self.fast_flow = False
+        self.data_window = WINDOW
+        self.tcp_chunk = CHUNK
 
     async def start(self):
         params = [('token', self.token), ('GUAC_DATA_SOURCE', self.data_source),
@@ -387,8 +386,9 @@ class Bridge:
     def dispatch(self, event):
         self.last_seen = time.monotonic()
         if event['type'] == 'ready':
-            if event.get('version') != 1:
-                raise BridgeError('Unsupported remote helper version')
+            if event.get('version') != 2:
+                raise BridgeError('Unsupported remote helper protocol. Update the server with: '
+                                  f'uv tool install --force guac-bridge=={__version__}. Then reconnect.')
             remote_version = event.get('package_version')
             self.server_version_matched = remote_version == __version__
             if remote_version != __version__:
@@ -405,22 +405,9 @@ class Bridge:
                     raise BridgeError('Matching package versions required by --require-server-version. ' + message)
                 self.version_warning = (
                     f'Server version mismatch: {self.helper_name} reports {label}; client is {__version__}. '
-                    'Continuing with best-effort compatibility. To align versions on the server: '
+                    'Continuing with the supported protocol. To align versions on the server: '
                     f'uv tool install --force guac-bridge=={__version__}.')
                 LOG.warning('%s', self.version_warning)
-                capabilities = event.get('capabilities')
-                self.cleanup_acks = isinstance(capabilities, list) and 'cleanup-ack' in capabilities
-            from .flow import CAPABILITY, WINDOW, CHUNK
-            capabilities = event.get('capabilities')
-            self.fast_flow = isinstance(capabilities, list) and CAPABILITY in capabilities
-            if self.fast_flow:
-                self.input_window = self.data_window = WINDOW
-                self.response_queue_size = WINDOW + 8
-                self.tcp_chunk = CHUNK
-            else:
-                self.input_window = self.data_window = 8
-                self.response_queue_size = 16
-                self.tcp_chunk = 4096
             LOG.info('Flow control: %s data credits, %s input ACKs', self.data_window, self.input_window)
             self.ready.set()
         elif event['type'] != 'heartbeat':
@@ -479,7 +466,7 @@ class Bridge:
             async with asyncio.timeout(self.args.request_timeout):
                 await self.send_event({'type': 'request', 'id': ident, 'method': request.method,
                                        'path': request.path, 'body': base64.b64encode(body).decode(),
-                                       'headers': headers, 'window': self.data_window})
+                                       'headers': headers})
                 while True:
                     event = await self.next_event(queue, request)
                     kind = event['type']
@@ -525,11 +512,6 @@ class Bridge:
 
     async def cancel_request(self, ident, queue):
         await self.send_event({'type': 'cancel', 'id': ident})
-        if not self.cleanup_acks:
-            # Older helpers acknowledge the input bytes but do not report
-            # completion of remote cleanup. Preserve their best-effort behavior.
-            await self.drain_input()
-            return
         while True:
             event = await queue.get()
             if event['type'] in ('cancelled', 'end', 'error'):

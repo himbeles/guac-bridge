@@ -1,4 +1,4 @@
-"""Compare production negotiated flow control with pre-0.6 bounded limits."""
+"""Measure production flow control with delay in both directions."""
 import argparse
 import asyncio
 import json
@@ -23,21 +23,19 @@ async def main(args):
     for repeat in range(args.repeats):
         for rtt in map(float, args.rtts.split(',')):
             for workload in args.workloads.split(','):
-                for profile in (('legacy', 'current') if repeat % 2 == 0 else ('current', 'legacy')):
-                    row = await asyncio.wait_for(trial(payload, 'pipeline', args.transport, 0,
-                        workload, rtt_ms=rtt, flow_profile=profile), 180)
-                    row['repeat'] = repeat
-                    result['rows'].append(row)
-                    print(json.dumps(row), flush=True)
-                    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-                    Path(args.output).write_text(json.dumps(result, indent=2) + '\n')
-    print('Median MiB/s; current/legacy ratio:')
+                row = await asyncio.wait_for(trial(payload, 'pipeline', args.transport, 0,
+                    workload, rtt_ms=rtt), 180)
+                row['repeat'] = repeat
+                result['rows'].append(row)
+                print(json.dumps(row), flush=True)
+                Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+                Path(args.output).write_text(json.dumps(result, indent=2) + '\n')
+    print('Median MiB/s:')
     for rtt in map(float, args.rtts.split(',')):
         for workload in args.workloads.split(','):
-            medians = {profile: statistics.median(r['mib_s'] for r in result['rows']
-                if r['flow_profile'] == profile and r['application_rtt_ms'] == rtt
-                and r['workload'] == workload) for profile in ('legacy', 'current')}
-            print(rtt, workload, medians, 'speedup=', medians['current'] / medians['legacy'])
+            values = [r['mib_s'] for r in result['rows']
+                      if r['application_rtt_ms'] == rtt and r['workload'] == workload]
+            print(rtt, workload, statistics.median(values))
 
 
 if __name__ == '__main__':

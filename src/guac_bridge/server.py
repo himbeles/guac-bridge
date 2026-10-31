@@ -9,7 +9,7 @@ import threading
 import urllib.parse
 
 from . import __version__
-from .flow import CAPABILITY, request_limits
+from .flow import WINDOW
 
 def run(config):
     upstream = urllib.parse.urlsplit(config['upstream'])
@@ -107,7 +107,7 @@ def run(config):
     # Flag 2 enables per-frame autoflush, essential for readiness and SSE latency.
     output(b'\x1b]482202;2;LLM\x07')
     try:
-        emit({'type': 'ready', 'version': 1, 'package_version': __version__, 'capabilities': ['cleanup-ack', CAPABILITY]})
+        emit({'type': 'ready', 'version': 2, 'package_version': __version__})
         threading.Thread(target=heartbeat, daemon=True).start()
         while True:
             line = sys.stdin.buffer.readline(48 * 1024 * 1024)
@@ -133,8 +133,7 @@ def run(config):
                     if ident in states or len(states) >= config['max_requests']:
                         emit({'type': 'error', 'id': ident, 'message': 'Remote concurrency limit'})
                         continue
-                    window, _ = request_limits(req)
-                    state = {'credits': threading.Semaphore(window), 'cancel': threading.Event()}
+                    state = {'credits': threading.Semaphore(WINDOW), 'cancel': threading.Event()}
                     states[ident] = state
                 threading.Thread(target=worker, args=(req, state), daemon=True).start()
     finally:

@@ -158,17 +158,12 @@ foreground client must remain running while its bridge is in use.
 
 ## Flow control
 
-The helper advertises `flow-control-v1` at startup. A supporting client selects
-32 data credits per request/channel and up to 32 outstanding Guacamole input
-blobs. SSH channels use 16 KiB frames; LLM responses retain 4 KiB chunks to avoid
-waiting to fill a large frame during token streaming. Each open/request carries
-its selected data window; SSH opens also carry their frame size.
+Both bridges use 32 data credits and up to 32 outstanding Guacamole input blobs.
+SSH frames are 16 KiB; LLM response chunks remain 4 KiB for token streaming.
+These are fixed protocol-v2 limits. Outdated helper protocols are rejected with
+server installation instructions.
 
-A helper without this capability gets the previous 8-credit, 4 KiB profile. A
-new helper also defaults to that profile when an older client omits the fields.
-Package version warnings do not enable unsupported features. Queues remain
-bounded: the fast SSH profile permits up to 512 KiB of raw data credits per
-channel per direction, versus 32 KiB previously, plus encoding and queue overhead.
-The Guacamole input allowance grows from 24 to 96 KiB. Larger bursts improve bulk
-transfers on delayed paths, but can affect fairness and use more memory; gains
-are smaller or can reverse on very low-latency links.
+Queues remain bounded. SSH permits up to 512 KiB of raw data credits per channel
+per direction, plus encoding and queue overhead. The Guacamole input allowance
+is 96 KiB. Larger bursts improve bulk transfers on delayed paths, but use more
+memory and may affect fairness on slow links.
