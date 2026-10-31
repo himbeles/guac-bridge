@@ -37,22 +37,39 @@ Keep the bridge running while connected. Stop it with **Ctrl+C**.
 
 ### Use an SSH config
 
-Add an alias to `~/.ssh/config`:
+First, save your Guacamole login so the hook can connect without prompting:
+
+```shell
+guac-ssh-client --url "CONNECTION_URL" --username GUACAMOLE_USERNAME --save-password
+```
+
+Once connected, stop this foreground bridge with **Ctrl+C**. Add the following
+to `~/.ssh/config`, replacing the URL and both usernames:
 
 ```sshconfig
 Host guac-server
     HostName 127.0.0.1
     Port 2222
     User SERVER_USERNAME
+
+Match originalhost guac-server exec "guac-ssh-client --ensure-running --url \"CONNECTION_URL\" --username GUACAMOLE_USERNAME --port %p"
+Match all
 ```
 
-With the bridge running, connect using:
+Connect with:
 
 ```shell
 ssh guac-server
 ```
 
-For automatic bridge startup and background operation, see [Connection details](docs/connections.md).
+The `Match` hook starts or reuses the background bridge automatically.
+Use a dedicated local port for each destination.
+
+The bridge stays running after SSH exits. Stop it and its active connections with:
+
+```shell
+guac-ssh-client --stop --port 2222
+```
 
 ## LLM bridge
 
