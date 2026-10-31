@@ -25,6 +25,9 @@ From a checkout on Linux with Bash and PTY support:
 uv run python -m unittest discover -s tests -v
 ```
 
+Transport tuning uses three representative profiles: the defaults, 8 credits/4 KiB
+SSH frames, and 64 credits/32 KiB frames. LLM tests use the same window limits.
+
 The fixtures live in [test_bridge.py](../tests/test_bridge.py); SSH scenarios
 are in [test_ssh_bridge.py](../tests/test_ssh_bridge.py). An opt-in test also
 uses real OpenSSH for commands, SCP and port forwarding. Windows CI checks the

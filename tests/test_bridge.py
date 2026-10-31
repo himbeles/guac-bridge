@@ -248,6 +248,17 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         await self.session.close()
         self.temp.cleanup()
 
+    async def test_two_nondefault_windows(self):
+        payload = {'messages': [{'role': 'user', 'content': 'x' * 256000}]}
+        for window in (8, 64):
+            with self.subTest(window=window):
+                bridge, local, _ = await self.connect(window=window)
+                self.assertEqual(bridge.data_window, window)
+                async with self.session.post(local + 'v1/chat/completions', json=payload) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual((await response.json())['echo'], payload)
+                self.assertFalse(bridge.failed.is_set())
+
     async def test_websocket_models_and_unicode_large_request(self):
         bridge, local, _ = await self.connect()
         self.assertEqual((bridge.input_window, bridge.data_window), (32, 32))

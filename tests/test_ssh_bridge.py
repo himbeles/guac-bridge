@@ -106,6 +106,16 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
             writer.close()
             await writer.wait_closed()
 
+    async def test_two_nondefault_transport_profiles(self):
+        target = await self.target(self.echo)
+        for window, frame in ((8, 4096), (64, 32768)):
+            with self.subTest(window=window, frame=frame):
+                bridge, local, _ = await self.connect(target, window=window, frame_size=frame)
+                self.assertEqual(bridge.data_window, window)
+                self.assertEqual(bridge.tcp_chunk, frame)
+                await self.transfer(local, os.urandom(256 * 1024))
+                self.assertFalse(bridge.failed.is_set())
+
     async def test_binary_roundtrip_and_client_half_close(self):
         target = await self.target(self.echo)
         bridge, local, _ = await self.connect(target)

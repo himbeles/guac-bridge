@@ -131,7 +131,9 @@ before changing console mode. `--stop` controls bridges started with
 `--ensure-running`; stop a foreground bridge in its original terminal.
 
 ## Other Remarks
-Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Run either client with `--help` for all options.
+Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Optional `--window` tuning is available on both clients; SSH also supports
+`--frame-size`. Defaults retain the fast 32-credit/16 KiB profile. Run either
+client with `--help` for the performance and buffering tradeoffs.
 
 ## Contribution
 

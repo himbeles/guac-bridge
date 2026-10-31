@@ -23,7 +23,7 @@ from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
 from .errors import BridgeError
-from .flow import WINDOW, CHUNK
+from .flow import WINDOW, CHUNK, PROTOCOL_VERSION, add_flow_arguments, settings
 
 LOG = logging.getLogger('guac-llm')
 PATHS = {'/v1/models': 'GET', '/v1/chat/completions': 'POST', '/v1/completions': 'POST'}
@@ -96,7 +96,8 @@ def bootstrap(args):
                   if args.server_command.startswith('~/') else shlex.quote(args.server_command))
     command = executable + ' ' + ' '.join(shlex.quote(str(value)) for value in (
         '--upstream', args.upstream,
-        '--request-timeout', args.request_timeout, '--max-requests', args.max_requests)) + '\n'
+        '--request-timeout', args.request_timeout, '--max-requests', args.max_requests,
+        '--window', getattr(args, 'window', WINDOW))) + '\n'
     if len(command.encode()) > 3900:
         raise BridgeError('Remote bootstrap exceeds terminal canonical line limit')
     return command.encode()
@@ -208,8 +209,10 @@ class Bridge:
         self.closing = False
         self.server_version_matched = False
         self.version_warning = None
-        self.data_window = WINDOW
-        self.tcp_chunk = CHUNK
+        self.flow = settings(args, ssh=self.helper_name == 'guac-ssh-server')
+        self.input_window = self.data_window = self.flow['window']
+        self.response_queue_size = self.data_window + 8
+        self.tcp_chunk = self.flow.get('frame_size', CHUNK)
 
     async def start(self):
         params = [('token', self.token), ('GUAC_DATA_SOURCE', self.data_source),
@@ -386,9 +389,12 @@ class Bridge:
     def dispatch(self, event):
         self.last_seen = time.monotonic()
         if event['type'] == 'ready':
-            if event.get('version') != 2:
+            if event.get('version') != PROTOCOL_VERSION:
                 raise BridgeError('Unsupported remote helper protocol. Update the server with: '
                                   f'uv tool install --force guac-bridge=={__version__}. Then reconnect.')
+            if event.get('flow') != self.flow:
+                raise BridgeError('Server helper did not confirm the requested transport sizes. '
+                                  f'Update it with: uv tool install --force guac-bridge=={__version__}.')
             remote_version = event.get('package_version')
             self.server_version_matched = remote_version == __version__
             if remote_version != __version__:
@@ -409,6 +415,8 @@ class Bridge:
                     f'uv tool install --force guac-bridge=={__version__}.')
                 LOG.warning('%s', self.version_warning)
             LOG.info('Flow control: %s data credits, %s input ACKs', self.data_window, self.input_window)
+            if self.helper_name == 'guac-ssh-server':
+                LOG.info('SSH frame size: %s bytes', self.tcp_chunk)
             self.ready.set()
         elif event['type'] != 'heartbeat':
             queue = self.requests.get(event.get('id'))
@@ -607,6 +615,7 @@ def cli():
     parser.add_argument('--url', required=True, help='Guacamole URL, including #/client/...')
     parser.add_argument('--username', help='Guacamole login username; otherwise prompted')
     add_credential_arguments(parser)
+    add_flow_arguments(parser)
     versions = parser.add_mutually_exclusive_group()
     versions.add_argument('--require-server-version', action='store_true',
                           help='Require matching client/server package versions instead of warning')

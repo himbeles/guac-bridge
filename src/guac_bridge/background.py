@@ -92,7 +92,7 @@ def child_command(args):
     for name in ('url', 'username', 'port', 'target_host', 'target_port',
                  'max_connections', 'server_command', 'connection_id',
                  'data_source', 'transport', 'startup_delay', 'connect_timeout',
-                 'ca_file'):
+                 'ca_file', 'window', 'frame_size'):
         value = getattr(args, name, None)
         if value is not None:
             command.extend(['--' + name.replace('_', '-'), str(value)])

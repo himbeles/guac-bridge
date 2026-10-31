@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0
+
+- Add optional window and SSH frame-size tuning, retaining the fast 32-credit/16 KiB defaults.
+- Explain throughput and buffering tradeoffs in CLI help and confirm settings with the helper at startup.
+
 ## 0.6.1
 
 - Remove older-server compatibility and use the faster transport limits directly.

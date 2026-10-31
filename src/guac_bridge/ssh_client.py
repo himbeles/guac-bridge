@@ -15,6 +15,7 @@ import uuid
 import aiohttp
 
 from . import __version__
+from .flow import add_flow_arguments
 from .client import Bridge, BridgeError, parse_url
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
@@ -60,7 +61,8 @@ class SSHBridge(Bridge):
         executable = ('"$HOME"/' + shlex.quote(self.args.server_command[2:])
                       if self.args.server_command.startswith('~/') else shlex.quote(self.args.server_command))
         values = ('--stdio', '--target-host', self.args.target_host, '--target-port', self.args.target_port,
-                  '--max-connections', self.args.max_connections, '--connect-timeout', self.args.connect_timeout)
+                  '--max-connections', self.args.max_connections, '--connect-timeout', self.args.connect_timeout,
+                  '--window', self.data_window, '--frame-size', self.tcp_chunk)
         command = executable + ' ' + ' '.join(shlex.quote(str(v)) for v in values) + '\n'
         if len(command.encode()) > 3900:
             raise BridgeError('Helper command exceeds terminal line limit')
@@ -245,6 +247,7 @@ def cli(argv=None):
     parser.add_argument('--url', help='Full Guacamole connection URL')
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
+    add_flow_arguments(parser, ssh=True)
     versions = parser.add_mutually_exclusive_group()
     versions.add_argument('--require-server-version', action='store_true',
                           help='Require matching client/server package versions instead of warning')

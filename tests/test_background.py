@@ -112,6 +112,12 @@ asyncio.run(main())
             with self.assertRaisesRegex(BridgeError, '--require-server-version'):
                 background.ensure_running(self.args)
 
+    def test_transport_sizes_are_forwarded_to_background_child(self):
+        self.args.window, self.args.frame_size = 8, 8192
+        command = background.child_command(self.args)
+        self.assertEqual(command[command.index('--window') + 1], '8')
+        self.assertEqual(command[command.index('--frame-size') + 1], '8192')
+
     def test_strict_flag_is_forwarded_to_child(self):
         self.args.require_server_version = True
         self.assertIn('--require-server-version', background.child_command(self.args))

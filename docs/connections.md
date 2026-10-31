@@ -158,12 +158,23 @@ foreground client must remain running while its bridge is in use.
 
 ## Flow control
 
-Both bridges use 32 data credits and up to 32 outstanding Guacamole input blobs.
+Defaults are 32 data credits and up to 32 outstanding Guacamole input blobs.
 SSH frames are 16 KiB; LLM response chunks remain 4 KiB for token streaming.
-These are fixed protocol-v2 limits. Outdated helper protocols are rejected with
-server installation instructions.
 
-Queues remain bounded. SSH permits up to 512 KiB of raw data credits per channel
-per direction, plus encoding and queue overhead. The Guacamole input allowance
-is 96 KiB. Larger bursts improve bulk transfers on delayed paths, but use more
-memory and may affect fairness on slow links.
+Both clients accept `--window N` (1–64), which sets the data-credit and input-ACK
+budgets together. The SSH client also accepts `--frame-size BYTES` (4096, 8192,
+16384 or 32768). The client passes these settings to the helper at startup and
+checks its confirmation before forwarding. Outdated protocols are rejected.
+
+Larger windows keep delayed links busy; larger SSH frames reduce framing and
+encoding work per transferred byte. Smaller values reduce queued bursts and
+memory use. They do not change network round-trip time or model inference speed.
+Raw SSH data credits per channel/direction are approximately `window × frame-size`
+(512 KiB by default), plus encoding/queue overhead. Input blobs remain 3 KiB.
+
+```shell
+guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME --window 16 --frame-size 8192
+```
+
+The fast defaults remain recommended unless measurements suggest otherwise.
+Stop and restart an existing managed bridge to apply different settings.

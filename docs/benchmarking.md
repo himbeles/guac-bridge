@@ -114,7 +114,7 @@ uv run python -m benchmarks.flow --output benchmarks/results/flow.json
 uv run python -m benchmarks.flow --kib 2048 --repeats 3 --rtts 20,50 --output benchmarks/results/flow-large.json
 ```
 
-This measures the fixed production limits. The proxy delays application bytes
+This measures the production defaults. The proxy delays application bytes
 in both directions by half the selected RTT. Ping and bulk-echo controls validate
 the model; it does not model TCP congestion, loss, TLS or real guacd scheduling.
 Use `--transport http` to check HTTP fallback, or `--workloads llm-paced` for

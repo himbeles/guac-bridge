@@ -9,7 +9,7 @@ import threading
 import urllib.parse
 
 from . import __version__
-from .flow import WINDOW
+from .flow import WINDOW, PROTOCOL_VERSION, add_flow_arguments
 
 def run(config):
     upstream = urllib.parse.urlsplit(config['upstream'])
@@ -107,7 +107,7 @@ def run(config):
     # Flag 2 enables per-frame autoflush, essential for readiness and SSE latency.
     output(b'\x1b]482202;2;LLM\x07')
     try:
-        emit({'type': 'ready', 'version': 2, 'package_version': __version__})
+        emit({'type': 'ready', 'version': PROTOCOL_VERSION, 'package_version': __version__, 'flow': {'window': config.get('window', WINDOW)}})
         threading.Thread(target=heartbeat, daemon=True).start()
         while True:
             line = sys.stdin.buffer.readline(48 * 1024 * 1024)
@@ -133,7 +133,7 @@ def run(config):
                     if ident in states or len(states) >= config['max_requests']:
                         emit({'type': 'error', 'id': ident, 'message': 'Remote concurrency limit'})
                         continue
-                    state = {'credits': threading.Semaphore(WINDOW), 'cancel': threading.Event()}
+                    state = {'credits': threading.Semaphore(config.get('window', WINDOW)), 'cancel': threading.Event()}
                     states[ident] = state
                 threading.Thread(target=worker, args=(req, state), daemon=True).start()
     finally:
@@ -157,6 +157,7 @@ def cli():
     parser.add_argument('--upstream', default='http://127.0.0.1:8000')
     parser.add_argument('--request-timeout', type=float, default=1800)
     parser.add_argument('--max-requests', type=int, default=4)
+    add_flow_arguments(parser)
     args = parser.parse_args()
     url = urllib.parse.urlsplit(args.upstream)
     if (url.scheme != 'http' or url.hostname not in ('localhost', '127.0.0.1', '::1')
@@ -166,7 +167,7 @@ def cli():
         parser.error('--max-requests must be 1..16 and --request-timeout must be positive')
     try:
         run({'upstream': args.upstream, 'timeout': args.request_timeout,
-             'max_requests': args.max_requests})
+             'max_requests': args.max_requests, 'window': args.window})
     except (KeyboardInterrupt, BrokenPipeError, OSError):
         return 1
     return 0

@@ -10,7 +10,7 @@ import sys
 import threading
 
 from . import __version__
-from .flow import WINDOW, CHUNK
+from .flow import PROTOCOL_VERSION, add_flow_arguments, settings
 
 
 async def relay(args):
@@ -99,7 +99,7 @@ async def relay(args):
     # LLM is the established transport pipe name, shared by both relay modes.
     sys.stdout.buffer.write(b'\x1b]482202;2;LLM\x07')
     sys.stdout.buffer.flush()
-    emit({'type': 'ready', 'version': 2, 'protocol': 'ssh-tcp', 'package_version': __version__})
+    emit({'type': 'ready', 'version': PROTOCOL_VERSION, 'protocol': 'ssh-tcp', 'package_version': __version__, 'flow': settings(args, ssh=True)})
     main = asyncio.current_task()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         loop.add_signal_handler(sig, main.cancel)
@@ -120,8 +120,8 @@ async def relay(args):
                 if len(channels) >= args.max_connections:
                     emit({'type': 'error', 'id': ident, 'message': 'SSH connection limit reached'})
                     continue
-                state = {'input': asyncio.Queue(maxsize=WINDOW + 1), 'chunk': CHUNK,
-                         'credits': asyncio.BoundedSemaphore(WINDOW), 'eof': False}
+                state = {'input': asyncio.Queue(maxsize=args.window + 1), 'chunk': args.frame_size,
+                         'credits': asyncio.BoundedSemaphore(args.window), 'eof': False}
                 channels[ident] = state
                 state['task'] = asyncio.create_task(connection(ident, state))
                 continue
@@ -165,6 +165,7 @@ def cli():
     parser.add_argument('--target-port', type=int, default=22)
     parser.add_argument('--connect-timeout', type=float, default=30)
     parser.add_argument('--max-connections', type=int, default=8)
+    add_flow_arguments(parser, ssh=True)
     args = parser.parse_args()
     if not args.stdio:
         parser.error('This helper is started automatically by guac-ssh-client. Do not run it manually.')
