@@ -2,21 +2,18 @@
 
 OpenAI-compatible endpoints and SSH through Guacamole.
 
+Guac Bridge makes a remote OpenAI-compatible API or SSH service available on a
+local port through an existing Guacamole web terminal. Use your usual LLM
+clients and SSH tools without direct network access to the server.
+
 ## Install
 
-Install on both your client computer and the server. Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Install matching versions on your client computer and the server. Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```shell
 uv tool install guac-bridge
 uv tool update-shell
 ```
-
-Each new Guacamole connection checks the server helper's package version.
-Different or unreported versions produce a highlighted warning and a connection
-attempt. Use `--require-server-version` on either client for strict matching.
-Protocol compatibility is always required. Use `--version` on any command to
-check its installed version. Restart existing managed bridges to change their
-version policy.
 
 The client starts the appropriate server helper automatically. Keep the client running while using the bridge; stop it with **Ctrl+C**.
 
