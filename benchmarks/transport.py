@@ -22,12 +22,14 @@ import sys
 import tempfile
 import time
 from types import SimpleNamespace
+import urllib.parse
 
 import aiohttp
 from aiohttp import web
 
 from guac_bridge.client import Bridge, Parser, instruction, login
 from guac_bridge.ssh_client import SSHBridge
+from .latency import LatencyProxy
 from .pipeline import LegacyBridge, LegacySSHBridge, PipelinedBridge, PipelinedSSHBridge
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,8 +156,9 @@ def start_meter(bridge, terminal):
     return metrics
 
 
-async def trial(payload, variant, transport, ack_ms, workload):
+async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0, flow_profile="current"):
     runners, handlers, servers = [], set(), []
+    proxy = None
     gateway, bridge, session, terminal = TimedGateway(transport == 'websocket'), None, None, None
     with tempfile.TemporaryDirectory() as directory:
         helper = Path(directory) / 'helper'
@@ -208,6 +211,10 @@ async def trial(payload, variant, transport, ack_ms, workload):
             runner, base = await start_app(gateway.app())
             runners.append(runner)
             session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=180))
+            if rtt_ms:
+                parts = urllib.parse.urlsplit(base)
+                proxy = await LatencyProxy(parts.hostname, parts.port, rtt_ms).start()
+                base = f'http://127.0.0.1:{proxy.port}/'
             base += 'guacamole/'
             token = await login(session, base, 'test', 'test', 10)
             args = SimpleNamespace(server_command=str(helper), connect_timeout=30, startup_delay=.03,
@@ -217,6 +224,15 @@ async def trial(payload, variant, transport, ack_ms, workload):
                                    request_timeout=180, local_api_key=None, upstream_api_key=None)
             cls = ({'baseline': LegacySSHBridge, 'pipeline': PipelinedSSHBridge} if is_ssh else
                    {'baseline': LegacyBridge, 'pipeline': PipelinedBridge})[variant]
+            if flow_profile == 'legacy':
+                class PreviousFlow(cls):
+                    def dispatch(self, event):
+                        if event.get('type') == 'ready':
+                            event = dict(event, capabilities=['cleanup-ack'])
+                        return super().dispatch(event)
+                cls = PreviousFlow
+            elif flow_profile != 'current':
+                raise ValueError('Unknown flow profile')
             bridge = cls(args, session, base, '1', 'c', 'mysql', token)
             await bridge.start()
             terminal = gateway.terminals[0]
@@ -267,7 +283,9 @@ async def trial(payload, variant, transport, ack_ms, workload):
                         assert await response.read() == payload, 'LLM payload corruption'
             elapsed = time.perf_counter() - started
             child_end = child_cpu(terminal.proc.pid)
-            metrics.update(workload=workload, variant=variant, transport=transport, ack_delay_ms=ack_ms,
+            metrics.update(workload=workload, variant=variant, transport=transport, ack_delay_ms=ack_ms, application_rtt_ms=rtt_ms, flow_profile=flow_profile,
+                           data_window=bridge.data_window, input_window=bridge.input_window,
+                           ssh_chunk=bridge.tcp_chunk if is_ssh else None,
                            payload_bytes=measured_bytes, wall_s=elapsed, mib_s=measured_bytes / elapsed / 2**20,
                            parent_cpu_s=time.process_time() - parent_start,
                            helper_tree_cpu_s=(None if child_start is None or child_end is None
@@ -293,6 +311,8 @@ async def trial(payload, variant, transport, ack_ms, workload):
                 await runner.cleanup()
             if session:
                 await session.close()
+            if proxy:
+                await proxy.close()
 
 
 async def websocket_control(payload):

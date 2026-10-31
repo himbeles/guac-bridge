@@ -137,7 +137,8 @@ Both bridges support `--ca-file company-ca.pem` for a custom certificate authori
 
 Submit issues and pull requests on
 [GitHub](https://github.com/himbeles/guac-bridge).
-Include tests for behavior changes.
+Include tests for behavior changes. See [Testing connections](docs/testing.md)
+for the test architecture, coverage, and commands.
 
 From a repository checkout, run the test suite in an environment with Bash and
 PTY support:

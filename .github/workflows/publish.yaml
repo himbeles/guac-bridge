@@ -39,6 +39,12 @@ jobs:
           --transports websocket --workloads ssh-upload,ssh-download,llm-paced
           --output benchmarks/results/release-smoke.json
 
+      - name: Negotiated flow integrity and RTT smoke test
+        run: >-
+          python -m benchmarks.flow --kib 32 --repeats 1 --rtts 0,20
+          --workloads ssh-upload,ssh-download,llm-paced
+          --output benchmarks/results/flow-ci.json
+
   credentials-windows:
     name: Windows Python ${{ matrix.python }}
     runs-on: windows-latest
@@ -69,6 +75,9 @@ jobs:
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_input_pipeline.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_version_checks.py -v
+      - name: Test Windows flow negotiation
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_flow.py -v
       - name: Test Windows listener errors
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_listeners.py -v

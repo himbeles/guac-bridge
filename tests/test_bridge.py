@@ -1,4 +1,4 @@
-"""Integration tests: actual helper in a PTY, simulated Guacamole, mock vLLM."""
+"""Integration tests: actual helper in a PTY, simulated Guacamole, fake OpenAI-compatible API."""
 import asyncio
 import base64
 import contextlib
@@ -217,7 +217,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.upstream_done.set()
         return response
 
-    async def connect(self, websocket=True, mode='auto', **overrides):
+    async def connect(self, websocket=True, mode='auto', bridge_class=Bridge, **overrides):
         gateway = Gateway(websocket)
         self.gateways.append(gateway)
         runner, base = await start_app(gateway.app())
@@ -228,7 +228,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
                       transport=mode, startup_delay=.1, connect_timeout=5,
                       server_command=str(self.helper), local_api_key=None, upstream_api_key=None)
         values.update(overrides)
-        bridge = Bridge(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
+        bridge = bridge_class(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
         self.bridges.append(bridge)
         await bridge.start()
         app = web.Application(client_max_size=16 * 1024 * 1024)
@@ -248,8 +248,34 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         await self.session.close()
         self.temp.cleanup()
 
+    async def test_old_client_contract_with_new_helper(self):
+        from legacy_flow import LegacyFlow
+        class OldClient(LegacyFlow, Bridge):
+            pass
+        bridge, local, _ = await self.connect(bridge_class=OldClient)
+        self.assertEqual((bridge.input_window, bridge.data_window), (8, 8))
+        payload = {'model': 'test', 'messages': [{'role': 'user', 'content': 'x' * 512000}]}
+        async with self.session.post(local + 'v1/chat/completions', json=payload) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual((await response.json())['echo'], payload)
+        self.assertFalse(bridge.failed.is_set())
+
+    async def test_new_client_with_frozen_0_5_2_helper(self):
+        legacy = Path(__file__).parent / 'fixtures' / 'server_v0_5_2.py'
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
+                               shlex.quote(str(legacy)) + ' "$@"\n')
+        with self.assertLogs('guac-llm', level='WARNING'):
+            bridge, local, _ = await self.connect()
+        self.assertEqual((bridge.input_window, bridge.data_window), (8, 8))
+        payload = {'messages': [{'role': 'user', 'content': 'x' * 512000}]}
+        async with self.session.post(local + 'v1/chat/completions', json=payload) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual((await response.json())['echo'], payload)
+        self.assertFalse(bridge.failed.is_set())
+
     async def test_websocket_models_and_unicode_large_request(self):
-        _, local, _ = await self.connect()
+        bridge, local, _ = await self.connect()
+        self.assertEqual((bridge.input_window, bridge.data_window), (32, 32))
         async with self.session.get(local + 'v1/models') as r:
             self.assertEqual((await r.json())['data'][0]['id'], 'test-model')
         payload = {'model': 'test', 'messages': [{'role': 'user', 'content': 'Grüße 😀\n' * 20000}]}

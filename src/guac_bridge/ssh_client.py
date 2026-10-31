@@ -23,8 +23,6 @@ from .background import ensure_running, record_startup_error, state_path, stop_m
 from .control import ControlServer
 
 LOG = logging.getLogger('guac-ssh')
-CHUNK = 4096
-WINDOW = 8
 
 
 async def start_listener(accept, port):
@@ -99,13 +97,13 @@ class SSHBridge(Bridge):
             return
         self.connections.add(task)
         ident = uuid.uuid4().hex
-        queue = asyncio.Queue(maxsize=WINDOW + 4)
+        queue = asyncio.Queue(maxsize=self.data_window + 4)
         self.requests[ident] = queue
-        self.credits[ident] = asyncio.BoundedSemaphore(WINDOW)
+        self.credits[ident] = asyncio.BoundedSemaphore(self.data_window)
         tasks = []
         remote_closed = False
         try:
-            await self.send_event({'type': 'open', 'id': ident})
+            await self.send_event({'type': 'open', 'id': ident, 'window': self.data_window, 'chunk': self.tcp_chunk})
             event = await self.wait_for(queue.get(), self.args.connect_timeout)
             if event['type'] != 'opened':
                 remote_closed = event['type'] in ('error', 'closed')
@@ -114,7 +112,7 @@ class SSHBridge(Bridge):
             async def upload():
                 while True:
                     await self.credits[ident].acquire()
-                    data = await reader.read(CHUNK)
+                    data = await reader.read(self.tcp_chunk)
                     if not data:
                         self.credits[ident].release()
                         await self.send_event({'type': 'eof', 'id': ident})
@@ -129,7 +127,7 @@ class SSHBridge(Bridge):
                     kind = event['type']
                     if kind == 'data':
                         data = base64.b64decode(event['body'], validate=True)
-                        if len(data) > CHUNK:
+                        if len(data) > self.tcp_chunk:
                             raise BridgeError('TCP frame exceeds limit')
                         writer.write(data)
                         await writer.drain()

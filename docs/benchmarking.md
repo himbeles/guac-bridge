@@ -1,8 +1,10 @@
 # Benchmarking Guac Bridge
 
-Version 0.5.0 pipelines up to eight Guacamole input blobs across requests and
-credit events. Both bridges use it automatically. This improves transport
-utilization; it does not accelerate model inference. Use matching client and helper versions for meaningful benchmark comparisons;
+New clients and helpers automatically select up to 32 Guacamole input blobs and
+32 data credits in flight, with 16 KiB SSH frames. Older peers retain eight
+credits and 4 KiB SSH frames. LLM response chunks remain 4 KiB for streaming.
+This improves bulk transport utilization; it does not accelerate model inference.
+Use matching client and helper versions for meaningful benchmark comparisons;
 version mismatches warn by default unless strict checking is requested.
 
 ## Measure an existing SSH bridge
@@ -105,3 +107,29 @@ available. The simulator does not include real guacd scheduling, proxies, TLS,
 SSH encryption, or your network, so its absolute rates are not deployment
 guarantees. See the [original investigation](performance-investigation.md) for
 the historical measurements and limitations.
+
+## Compare negotiated limits
+
+The current-production comparison uses the real negotiation path. `legacy`
+suppresses the flow capability at the simulated client's handshake, selecting
+8 credits and 4 KiB SSH frames. `current` negotiates 32 credits and 16 KiB frames.
+Both profiles use the same current helpers and lifecycle code.
+
+```shell
+uv run python -m benchmarks.flow --output benchmarks/results/flow.json
+uv run python -m benchmarks.flow --kib 2048 --repeats 3 --rtts 20,50 --output benchmarks/results/flow-large.json
+```
+
+This proxy delays application bytes in both directions by half the selected
+RTT; ping and bulk-echo controls validate the model. It does not model TCP
+congestion, packet loss, TLS or real guacd scheduling. The default is WebSocket;
+use `--transport http` to check HTTP fallback. `--workloads llm-paced` checks
+stream delivery lag separately from bulk throughput. See
+[the investigation report](https://github.com/himbeles/guac-bridge/blob/investigate/transport-windows/docs/performance-next.md)
+for the original screening results, memory costs and low-latency tradeoffs.
+
+The [v0.6.0 release check](../benchmarks/results/release-0.6.0-flow.json) used
+2 MiB transfers and three repeats at each simulated RTT. Median gains over
+legacy limits were 4.6–4.7× for SSH uploads, 10.8–12.4× for SSH downloads and
+3.7–3.8× for bulk LLM responses. These are local simulator observations, not
+measurements through a deployed Guacamole server.

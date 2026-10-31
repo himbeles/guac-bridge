@@ -1,6 +1,7 @@
 # Transport performance experiments
 
-See [the findings and limitations](../docs/performance-investigation.md).
+See [the findings and limitations](../docs/performance-investigation.md) and
+[the current flow-control comparison](../docs/benchmarking.md#compare-negotiated-limits).
 The production clients use the bounded pipeline by default. The benchmark also
 retains the legacy per-event drain policy for comparison. No extra dependencies
 are required. See [Benchmarking](../docs/benchmarking.md) for deployment tests.
@@ -63,3 +64,9 @@ comparing sustained throughput. It has not been run against your network.
 For context, record the selected Guacamole transport, client/helper CPU use, and
 Guacamole/guacd CPU load during the transfer. A real model/API latency test is
 separate: first compare its server-local performance with the forwarded endpoint.
+
+Compare the production flow profiles with delay in both directions:
+
+```shell
+uv run python -m benchmarks.flow --output benchmarks/results/flow.json
+```

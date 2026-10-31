@@ -10,8 +10,7 @@ import sys
 import threading
 
 from . import __version__
-CHUNK = 4096
-WINDOW = 8
+from .flow import CAPABILITY, request_limits
 
 
 async def relay(args):
@@ -55,7 +54,7 @@ async def relay(args):
             async def receive_tcp():
                 while True:
                     await state['credits'].acquire()
-                    data = await reader.read(CHUNK)
+                    data = await reader.read(state['chunk'])
                     if not data:
                         state['credits'].release()
                         emit({'type': 'eof', 'id': ident})
@@ -101,7 +100,7 @@ async def relay(args):
     sys.stdout.buffer.write(b'\x1b]482202;2;LLM\x07')
     sys.stdout.buffer.flush()
     emit({'type': 'ready', 'version': 1, 'protocol': 'ssh-tcp', 'package_version': __version__,
-          'capabilities': ['cleanup-ack']})
+          'capabilities': ['cleanup-ack', CAPABILITY]})
     main = asyncio.current_task()
     for sig in (signal.SIGTERM, signal.SIGHUP):
         loop.add_signal_handler(sig, main.cancel)
@@ -122,8 +121,9 @@ async def relay(args):
                 if len(channels) >= args.max_connections:
                     emit({'type': 'error', 'id': ident, 'message': 'SSH connection limit reached'})
                     continue
-                state = {'input': asyncio.Queue(maxsize=WINDOW + 1),
-                         'credits': asyncio.BoundedSemaphore(WINDOW), 'eof': False}
+                window, chunk = request_limits(event, ssh=True)
+                state = {'input': asyncio.Queue(maxsize=window + 1), 'chunk': chunk,
+                         'credits': asyncio.BoundedSemaphore(window), 'eof': False}
                 channels[ident] = state
                 state['task'] = asyncio.create_task(connection(ident, state))
                 continue
@@ -134,7 +134,7 @@ async def relay(args):
                 continue
             if kind == 'data':
                 data = base64.b64decode(event['body'], validate=True)
-                if len(data) > CHUNK or state['eof']:
+                if len(data) > state['chunk'] or state['eof']:
                     raise ValueError('Invalid TCP data frame')
                 state['input'].put_nowait(data)
             elif kind == 'credit':

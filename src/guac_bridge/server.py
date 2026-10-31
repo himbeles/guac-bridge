@@ -9,6 +9,7 @@ import threading
 import urllib.parse
 
 from . import __version__
+from .flow import CAPABILITY, request_limits
 
 def run(config):
     upstream = urllib.parse.urlsplit(config['upstream'])
@@ -106,7 +107,7 @@ def run(config):
     # Flag 2 enables per-frame autoflush, essential for readiness and SSE latency.
     output(b'\x1b]482202;2;LLM\x07')
     try:
-        emit({'type': 'ready', 'version': 1, 'package_version': __version__, 'capabilities': ['cleanup-ack']})
+        emit({'type': 'ready', 'version': 1, 'package_version': __version__, 'capabilities': ['cleanup-ack', CAPABILITY]})
         threading.Thread(target=heartbeat, daemon=True).start()
         while True:
             line = sys.stdin.buffer.readline(48 * 1024 * 1024)
@@ -132,7 +133,8 @@ def run(config):
                     if ident in states or len(states) >= config['max_requests']:
                         emit({'type': 'error', 'id': ident, 'message': 'Remote concurrency limit'})
                         continue
-                    state = {'credits': threading.Semaphore(8), 'cancel': threading.Event()}
+                    window, _ = request_limits(req)
+                    state = {'credits': threading.Semaphore(window), 'cancel': threading.Event()}
                     states[ident] = state
                 threading.Thread(target=worker, args=(req, state), daemon=True).start()
     finally:
@@ -151,7 +153,7 @@ def run(config):
 
 def cli():
     import argparse
-    parser = argparse.ArgumentParser(description='Relay vLLM HTTP through a Guacamole SSH terminal.')
+    parser = argparse.ArgumentParser(description='Relay an OpenAI-compatible HTTP endpoint through a Guacamole terminal.')
     parser.add_argument('--version', action='version', version='%(prog)s ' + __version__)
     parser.add_argument('--upstream', default='http://127.0.0.1:8000')
     parser.add_argument('--request-timeout', type=float, default=1800)

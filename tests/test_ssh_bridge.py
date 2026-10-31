@@ -50,7 +50,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         self.servers.append(server)
         return server.sockets[0].getsockname()[1]
 
-    async def connect(self, target_port, websocket=True, **overrides):
+    async def connect(self, target_port, websocket=True, bridge_class=SSHBridge, **overrides):
         gateway = Gateway(websocket)
         self.gateways.append(gateway)
         runner, base = await start_app(gateway.app())
@@ -60,7 +60,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         values = dict(target_host='127.0.0.1', target_port=target_port, max_connections=8,
                       server_command=str(self.helper), startup_delay=.1, connect_timeout=5, transport='auto')
         values.update(overrides)
-        bridge = SSHBridge(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
+        bridge = bridge_class(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
         self.bridges.append(bridge)
         await bridge.start()
         listener = await asyncio.start_server(bridge.accept, '127.0.0.1', 0)
@@ -106,9 +106,31 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
             writer.close()
             await writer.wait_closed()
 
+    async def test_old_client_contract_with_new_helper(self):
+        from legacy_flow import LegacyFlow
+        class OldClient(LegacyFlow, SSHBridge):
+            pass
+        target = await self.target(self.echo)
+        bridge, local, _ = await self.connect(target, bridge_class=OldClient)
+        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (8, 8, 4096))
+        await self.transfer(local, os.urandom(512 * 1024))
+        self.assertFalse(bridge.failed.is_set())
+
+    async def test_new_client_with_frozen_0_5_2_helper(self):
+        legacy = Path(__file__).parent / 'fixtures' / 'ssh_server_v0_5_2.py'
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
+                               shlex.quote(str(legacy)) + ' "$@"\n')
+        target = await self.target(self.echo)
+        with self.assertLogs('guac-llm', level='WARNING'):
+            bridge, local, _ = await self.connect(target)
+        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (8, 8, 4096))
+        await self.transfer(local, os.urandom(512 * 1024))
+        self.assertFalse(bridge.failed.is_set())
+
     async def test_binary_roundtrip_and_client_half_close(self):
         target = await self.target(self.echo)
         bridge, local, _ = await self.connect(target)
+        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (32, 32, 16384))
         await self.transfer(local, bytes(range(256)) * 2048)
         self.assertFalse(bridge.failed.is_set())
 

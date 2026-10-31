@@ -91,6 +91,15 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(received, events)
         self.assertEqual(self.tunnel.peak, 8)
 
+    async def test_negotiated_32_blob_bound_preserves_concurrent_frames(self):
+        self.bridge.input_window = 32
+        events = [{'type': 'data', 'id': str(i), 'body': 'x' * 35000} for i in range(16)]
+        await asyncio.gather(*(self.bridge.send_event(event) for event in events))
+        received = [json.loads(base64.b64decode(line, validate=True))
+                    for line in self.tunnel.data.splitlines()]
+        self.assertEqual(received, events)
+        self.assertEqual(self.tunnel.peak, 32)
+
     async def test_rejected_last_ack_fails_transport_without_another_send(self):
         self.tunnel.reject = True
         await self.bridge.send_event({'type': 'credit', 'id': 'a'})

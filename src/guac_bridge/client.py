@@ -177,6 +177,8 @@ class Tunnel:
 
 
 class Bridge:
+    input_window = 8
+    response_queue_size = 16
     helper_name = 'guac-llm-server'
 
     def helper_command(self):
@@ -206,6 +208,9 @@ class Bridge:
         self.cleanup_acks = True
         self.server_version_matched = False
         self.version_warning = None
+        self.data_window = 8
+        self.tcp_chunk = 4096
+        self.fast_flow = False
 
     async def start(self):
         params = [('token', self.token), ('GUAC_DATA_SOURCE', self.data_source),
@@ -289,7 +294,7 @@ class Bridge:
                         raise BridgeError(self.failure or 'Guacamole tunnel is closed')
                     while pending and pending[0].done():
                         pending.popleft().result()
-                    if len(pending) >= 8:
+                    if len(pending) >= self.input_window:
                         await self.wait_for(pending.popleft(), self.args.connect_timeout)
                     pending.append(self.new_ack())
                     await self.tunnel.send('blob', self.input_stream,
@@ -405,6 +410,18 @@ class Bridge:
                 LOG.warning('%s', self.version_warning)
                 capabilities = event.get('capabilities')
                 self.cleanup_acks = isinstance(capabilities, list) and 'cleanup-ack' in capabilities
+            from .flow import CAPABILITY, WINDOW, CHUNK
+            capabilities = event.get('capabilities')
+            self.fast_flow = isinstance(capabilities, list) and CAPABILITY in capabilities
+            if self.fast_flow:
+                self.input_window = self.data_window = WINDOW
+                self.response_queue_size = WINDOW + 8
+                self.tcp_chunk = CHUNK
+            else:
+                self.input_window = self.data_window = 8
+                self.response_queue_size = 16
+                self.tcp_chunk = 4096
+            LOG.info('Flow control: %s data credits, %s input ACKs', self.data_window, self.input_window)
             self.ready.set()
         elif event['type'] != 'heartbeat':
             queue = self.requests.get(event.get('id'))
@@ -449,7 +466,7 @@ class Bridge:
         if len(self.requests) >= self.args.max_requests:
             return web.json_response({'error': {'message': 'Bridge concurrency limit reached'}}, status=429)
         ident = uuid.uuid4().hex
-        queue = asyncio.Queue(maxsize=16)
+        queue = asyncio.Queue(maxsize=self.response_queue_size)
         self.requests[ident] = queue
         headers = {k: v for k, v in request.headers.items()
                    if k.lower() in ('authorization', 'content-type', 'accept', 'x-request-id')}
@@ -462,7 +479,7 @@ class Bridge:
             async with asyncio.timeout(self.args.request_timeout):
                 await self.send_event({'type': 'request', 'id': ident, 'method': request.method,
                                        'path': request.path, 'body': base64.b64encode(body).decode(),
-                                       'headers': headers})
+                                       'headers': headers, 'window': self.data_window})
                 while True:
                     event = await self.next_event(queue, request)
                     kind = event['type']
