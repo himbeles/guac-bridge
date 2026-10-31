@@ -6,49 +6,120 @@ Guac Bridge makes a remote OpenAI-compatible API or SSH service available on a
 local port through an existing Guacamole web terminal. Use your usual LLM
 clients and SSH tools without direct network access to the server.
 
-## Install
+## Common first-time setup
 
-Install matching versions on your client computer and the server. Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
+Install matching versions on your client computer and the server. Requires
+Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```shell
 uv tool install guac-bridge
 uv tool update-shell
 ```
 
-The client starts the appropriate server helper automatically. Keep the client running while using the bridge; stop it with **Ctrl+C**.
+Open the desired Guacamole web terminal in your browser and copy its full URL.
+Replace `SERVER_URL` and `YOUR_USERNAME` below with that URL and your Guacamole
+username. The client starts the installed server helper automatically.
 
-For the commands below, copy the full URL from your browser after opening the desired Guacamole web terminal connection. Replace `SERVER_URL` and `YOUR_USERNAME` with your connection details. Your Guacamole password is prompted.
+Your Guacamole password is prompted. Optionally add `--save-password` on your
+first connection to store it in the system credential store, including Windows
+Credential Manager. Both bridges reuse saved credentials for the same deployment
+and username. `GUAC_PASSWORD` takes precedence.
 
-Append `--save-password` to either client command to remember the Guacamole
-password in your system credential store after successful login. On Windows,
-this uses Windows Credential Manager for your current user on this computer.
-Both bridges automatically reuse the saved password for the same deployment URL
-and username, regardless of the selected Guacamole connection.
-
-| Option | Behavior |
+| Option | Purpose |
 | --- | --- |
-| `--save-password` | Save after successful authentication |
+| `--save-password` | Save after successful login |
 | `--forget-password` | Delete the saved credential and exit |
-| `--no-keyring` | Ignore saved credentials for this invocation |
+| `--no-keyring` | Ignore stored credentials for this invocation |
 
-`GUAC_PASSWORD` takes precedence over stored credentials. If no password is
-available, the client prompts; saving is opt-in. A rejected saved password gets
-one replacement prompt and is updated only after the replacement succeeds.
-macOS Keychain and available Secret Service/KWallet stores are also supported.
-An unavailable store falls back to prompting, without saving to a plaintext file.
-These options store only the Guacamole login, not the inner SSH password or an
-OpenAI API key.
+Only the Guacamole password is stored; SSH credentials and API keys are separate.
+If the credential store is unavailable, the client prompts without saving.
 
-## Usage: LLM bridge
+Apply these options to the client commands below when needed:
 
-The server's OpenAI-compatible endpoint should be available at
-`http://127.0.0.1:8000`.
+- `--ca-file company-ca.pem` for your certificate authority.
+- `--transport http` to use the HTTP tunnel instead of WebSocket.
+- `--server-command PATH` if the matching helper is outside `~/.local/bin/`.
 
-On your client computer:
+## SSH bridge
+
+### Setup
+
+The server's SSH service must be reachable at `127.0.0.1:22`. Use
+`--target-port` for a different server-side port and `--port` for a different
+local listener.
+
+Optionally add an alias to your client's `~/.ssh/config`:
+
+```sshconfig
+Host guac-server
+    HostName 127.0.0.1
+    Port 2222
+    User SERVER_USERNAME
+```
+
+For automatic bridge startup, first save your Guacamole password by running:
 
 ```shell
-guac-llm-client --url "https://SERVER_URL" --username YOUR_USERNAME
+guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME --save-password
 ```
+
+Once connected, stop it with **Ctrl+C**, then append to `~/.ssh/config`:
+
+```sshconfig
+Match originalhost guac-server exec "guac-ssh-client --ensure-running --url https://SERVER_URL --username YOUR_USERNAME --port %p"
+Match all
+```
+
+The command must be on SSH's PATH; use its absolute path if needed. Automatic
+startup requires saved credentials or `GUAC_PASSWORD`. It reuses an existing
+listener, so keep the chosen port dedicated to this destination.
+
+Optional tuning: `--window` defaults to 32 and `--frame-size` to 16384 bytes.
+See `guac-ssh-client --help` for throughput and buffering tradeoffs.
+
+### Usage
+
+With automatic startup configured, connect with:
+
+```shell
+ssh guac-server
+```
+
+Otherwise start the bridge manually:
+
+```shell
+guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME
+```
+
+Then connect from another local terminal:
+
+```shell
+ssh -p 2222 SERVER_USERNAME@127.0.0.1
+```
+
+SSH handles the server's password/key and host-key verification. SCP and SFTP
+also work through the local port.
+
+Stop a foreground bridge with **Ctrl+C**. An automatically started bridge keeps
+running after SSH exits; stop it and its active connections with:
+
+```shell
+guac-ssh-client --stop --port 2222
+```
+
+Background output goes to the log path printed at startup; customize it with
+`--background-log`. On Windows, optionally add `--show-console` to the
+`--ensure-running` command for a visible console with output and **Ctrl+C**.
+Stop and restart an existing bridge to change its settings.
+
+## LLM bridge
+
+### Setup
+
+The server's OpenAI-compatible endpoint should be available at
+`http://127.0.0.1:8000`. For a different endpoint, add
+`--upstream http://127.0.0.1:9000` to the client command (omit `/v1`).
+Use `--port 18000` to change the local listener.
 
 Configure your LLM application with:
 
@@ -57,80 +128,22 @@ Configure your LLM application with:
 | OpenAI base URL | `http://127.0.0.1:8000/v1` |
 | Chat completions URL | `http://127.0.0.1:8000/v1/chat/completions` |
 | Model | A model ID from `/v1/models` |
-| API key | The key required by the server endpoint, or a placeholder if none is required |
+| API key | The server endpoint's key, or a placeholder if none is required |
 
-Requests, streamed responses, and the application's API key are forwarded to
-the server endpoint.
+Adjust the application's local port if you change `--port`.
+Optional `--window` tuning defaults to 32; see `guac-llm-client --help`.
 
-Use `--upstream http://127.0.0.1:9000` for a different server-side endpoint
-(omit `/v1`), or `--port 18000` for a different local port.
+### Usage
 
-## Usage: SSH bridge
-
-The server's SSH service should be reachable at `127.0.0.1:22`.
-
-On your client computer:
+Start the bridge on your client computer:
 
 ```shell
-guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME
+guac-llm-client --url "https://SERVER_URL" --username YOUR_USERNAME
 ```
 
-In another local terminal:
-
-```shell
-ssh -p 2222 serveruser@127.0.0.1
-```
-
-Use the server's SSH username and its usual password or SSH key. SSH
-authentication and host-key verification are handled by your SSH client.
-SCP and SFTP work through the same local port.
-
-Use `--target-port` to select a different server-side SSH port and `--port`
-to change the local listener.
-
-Start the bridge automatically before SSH in the background:
-
-```shell
-guac-ssh-client --ensure-running --url "https://SERVER_URL" --username YOUR_USERNAME --port 2222
-```
-
-The command reuses a listener on the selected port or starts a background bridge
-and exits once the port is ready. Keep the port dedicated to this bridge:
-an existing listener is reused without checking its destination. Background
-startup requires a saved password or `GUAC_PASSWORD` and cannot prompt. Save your
-Guacamole password once with `--save-password` in a foreground invocation.
-
-For example, in `~/.ssh/config` (replace both usernames):
-
-```sshconfig
-Host guac-server
-    HostName 127.0.0.1
-    Port 2222
-    User SERVER_USERNAME
-
-Match originalhost guac-server exec "guac-ssh-client --ensure-running --url https://SERVER_URL --username YOUR_USERNAME --port %p"
-Match all
-```
-
-Run `ssh guac-server`. The command must be on SSH's PATH; use its absolute path
-if needed. `--ready-timeout 60` limits startup waiting. The bridge keeps running
-independently of SSH sessions. Stop it and its active SSH connections with:
-
-```shell
-guac-ssh-client --stop --port 2222
-```
-
-Output goes to the log path printed at startup; customize it with
-`--background-log`. On Windows, optionally add `--show-console` to
-`--ensure-running` for a visible console with output, password prompting, and
-**Ctrl+C** shutdown. An existing bridge keeps its original settings; stop it
-before changing console mode. `--stop` controls bridges started with
-`--ensure-running`; stop a foreground bridge in its original terminal.
-
-## Other Remarks
-Both bridges support `--ca-file company-ca.pem` for a custom certificate authority and `--transport http` to use Guacamole's HTTP tunnel instead of websockets. If the server-side helper is installed outside `~/.local/bin/`, pass its full path with `--server-command`. Optional `--window` tuning is available on both clients; SSH also supports
-`--frame-size`. Defaults retain the fast 32-credit/16 KiB profile. Run either
-client with `--help` for the performance and buffering tradeoffs.
+Use your configured LLM application. Requests, streamed responses and its API
+key are forwarded to the server endpoint. Keep the bridge running while using
+it; stop with **Ctrl+C**.
 
 ## Contribution
 
