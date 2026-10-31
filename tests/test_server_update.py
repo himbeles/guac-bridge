@@ -151,6 +151,18 @@ if os.name == 'posix':
             self.assertEqual((home / 'index').read_text(), env['UV_INDEX_URL'])
             self.assertTrue(bridge.ready.is_set())
 
+        async def test_interactive_enter_updates_in_the_same_connection(self):
+            _, record, env = fake_installation(self.temp.name, self.helper)
+            import io
+            with patch.dict(os.environ, env), patch('sys.stdin.isatty', return_value=True), \
+                 patch('sys.stderr', io.StringIO()) as output, patch('builtins.input', return_value=''):
+                bridge, local, _ = await self.connect(server_command='~/.local/bin/guac-llm-server')
+                async with self.session.get(local + 'v1/models') as response:
+                    self.assertEqual(response.status, 200)
+            self.assertTrue(record.exists())
+            self.assertTrue(bridge.ready.is_set())
+            self.assertIn('Update server now? [Y/n]', output.getvalue())
+
         async def test_failed_install_stops_before_helper_and_explains_manual_action(self):
             _, _, env = fake_installation(self.temp.name, self.helper, fail=True)
             with patch.dict(os.environ, env), self.assertRaisesRegex(BridgeError, 'Update manually'):

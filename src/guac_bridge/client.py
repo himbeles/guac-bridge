@@ -24,7 +24,7 @@ from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
 from .errors import BridgeError
 from .flow import WINDOW, CHUNK, PROTOCOL_VERSION, add_flow_arguments, settings
-from .update import HelperProbe, ServerUpdate, add_update_argument, validate_update
+from .update import HelperProbe, ServerUpdate, add_update_argument, offer_update, validate_update
 
 LOG = logging.getLogger('guac-llm')
 PATHS = {'/v1/models': 'GET', '/v1/chat/completions': 'POST', '/v1/completions': 'POST'}
@@ -231,11 +231,21 @@ class Bridge:
         ack = self.new_ack()
         await self.tunnel.send('pipe', self.input_stream, 'text/plain', 'STDIN')
         await self.wait_for(ack, self.args.connect_timeout)
-        self.updater = (ServerUpdate(self) if getattr(self.args, 'update_server', False) else HelperProbe(self))
+        stage = ServerUpdate(self) if getattr(self.args, 'update_server', False) else HelperProbe(self)
+        self.updater = stage
         try:
-            await self.updater.run()
+            await stage.run()
         finally:
             self.updater = None
+        if isinstance(stage, HelperProbe):
+            if await offer_update(self, stage):
+                self.updater = ServerUpdate(self)
+                try:
+                    await self.updater.run()
+                finally:
+                    self.updater = None
+            else:
+                stage.check_result()
         await self.send_input(self.helper_command())
         try:
             await self.wait_for(self.ready.wait(), self.args.connect_timeout)

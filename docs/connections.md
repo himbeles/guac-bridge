@@ -203,3 +203,11 @@ An older helper lacking required options produces an immediate version/update
 message. Background startup relays progress and errors to the calling SSH
 command; details also remain in the printed log file. If an SSH hook produces
 no output at all, `ssh -vvv YOUR_ALIAS` shows whether the hook was evaluated.
+
+Interactive foreground connections offer `Update server now? [Y/n]` when the
+helper version differs. Enter accepts; `n` declines. The prompt explains that
+installation uses server-side uv, the configured package index and an explicit
+Python selection. Declining continues only if the helper supports the required
+protocol/options and strict version matching was not requested. SSH hooks and
+managed/noninteractive connections never prompt; they report update instructions.
+`--update-server` remains the explicit option for attempting the update directly.

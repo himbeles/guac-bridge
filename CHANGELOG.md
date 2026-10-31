@@ -2,7 +2,7 @@
 
 ## 0.8.1
 
-- Check helper versions before startup and identify unsupported arguments promptly.
+- Check helper versions before startup and offer an interactive update on mismatch (`[Y/n]`).
 - Show background SSH startup progress and errors, including Windows hook output.
 - Preserve the helper Python during server updates; add `--server-python` for explicit selection.
 

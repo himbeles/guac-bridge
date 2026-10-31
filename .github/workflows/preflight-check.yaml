@@ -75,6 +75,9 @@ jobs:
       - name: Test Windows update command validation
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_server_update.py -v
+      - name: Test Windows interactive update consent
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_update_prompt.py -v
       - name: Test Windows hook console output
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_console.py -v

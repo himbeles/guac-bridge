@@ -4,6 +4,8 @@ import base64
 import json
 import logging
 import shlex
+import sys
+import threading
 import uuid
 
 from . import __version__
@@ -37,7 +39,8 @@ def add_update_argument(parser):
     parser.add_argument('--update-server', action='store_true',
         help=f'Before connecting, check and, if needed, attempt uv tool install --force guac-bridge=={__version__} '
              'on the server using its configured package index and an explicit --python selection. Requires server-side uv and index access; '
-             'otherwise update manually. Supports the default helper path; foreground connections only.')
+             'otherwise update manually. Supports the default helper path; foreground connections only. '
+             'Without this flag, interactive foreground connections offer an update on mismatch [Y/n].')
 
 
 def validate_update(args, helper):
@@ -51,6 +54,43 @@ def validate_update(args, helper):
     if any(getattr(args, name, False) for name in ('ensure_running', 'stop', 'forget_password', 'managed_id')):
         raise BridgeError('--update-server requires a foreground connection. Stop an existing managed bridge '
                           'and run the client with --url and --update-server; otherwise update manually.')
+
+
+async def offer_update(bridge, probe):
+    args = bridge.args
+    if (probe.result not in ('mismatched', 'unsupported-options')
+            or any(getattr(args, name, False) for name in ('managed_id', 'ensure_running'))
+            or sys.stdin is None or not sys.stdin.isatty()
+            or args.server_command != '~/.local/bin/' + bridge.helper_name):
+        return False
+    LOG.warning('Server helper version: %s; client version: %s.', probe.remote_version, __version__)
+    LOG.warning(NOTICE.format(version=__version__))
+    loop = asyncio.get_running_loop()
+    answer = loop.create_future()
+
+    def deliver(value):
+        if not answer.done():
+            answer.set_result(value)
+
+    def read_answer():
+        while True:
+            try:
+                print('Update server now? [Y/n] ', end='', file=sys.stderr, flush=True)
+                value = input().strip().lower()
+            except (EOFError, OSError):
+                value = 'n'
+            if value in ('', 'y', 'yes', 'n', 'no'):
+                try:
+                    loop.call_soon_threadsafe(deliver, value in ('', 'y', 'yes'))
+                except RuntimeError:
+                    pass  # The connection/process may have been cancelled.
+                return
+            print('Please enter yes or no.', file=sys.stderr, flush=True)
+
+    # Keep the websocket reader alive while waiting. A daemon thread avoids
+    # blocking interpreter shutdown if Ctrl+C or a disconnect cancels the prompt.
+    threading.Thread(target=read_answer, daemon=True).start()
+    return await bridge.wait_for(answer, None)
 
 
 class ServerUpdate:
@@ -189,20 +229,27 @@ class HelperProbe(ServerUpdate):
                               'and shell readiness, or use --update-server.') from None
 
     def ended(self):
+        if self.future.done():
+            self.active = False
+            return
         if self.result in ('mismatched', 'unsupported-options'):
             self.active = False
-            strict = getattr(self.bridge.args, 'require_server_version', False)
-            if self.result == 'mismatched' and not strict:
-                self.future.set_result(None)
-                return
-            reason = ('does not support the required bridge arguments' if self.result == 'unsupported-options'
-                      else 'does not match --require-server-version')
-            self.future.set_exception(BridgeError(
-                f'Server helper {self.bridge.helper_name} version: {self.remote_version or "unknown"}; '
-                f'client version: {__version__}. The helper {reason}. '
-                f'On the server, run: uv tool install --force --python 3.XX guac-bridge=={__version__} '
-                '(use the helper Python version). Or reconnect with --update-server; '
-                'this attempts uv tool installation using the server package index. '
-                'For a custom --server-command, update that installation manually.'))
+            self.future.set_result(None)
             return
         super().ended()
+
+    def check_result(self):
+        if self.result not in ('mismatched', 'unsupported-options'):
+            return
+        strict = getattr(self.bridge.args, 'require_server_version', False)
+        if self.result == 'mismatched' and not strict:
+            return
+        reason = ('does not support the required bridge arguments' if self.result == 'unsupported-options'
+                  else 'does not match --require-server-version')
+        raise BridgeError(
+            f'Server helper {self.bridge.helper_name} version: {self.remote_version or "unknown"}; '
+            f'client version: {__version__}. The helper {reason}. '
+            f'On the server, run: uv tool install --force --python 3.XX guac-bridge=={__version__} '
+            '(use the helper Python version). Or reconnect with --update-server; '
+            'this attempts uv tool installation using the server package index. '
+            'For a custom --server-command, update that installation manually.')
