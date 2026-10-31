@@ -118,7 +118,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
         target = await self.target(self.echo)
         with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force guac-bridge=='):
-            await self.connect(target)
+            await self.connect(target, require_server_version=True)
         self.assertFalse(self.bridges[-1].ready.is_set())
 
     async def test_managed_startup_reports_version_mismatch_before_listening(self):
@@ -135,7 +135,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         env = dict(os.environ, GUAC_PASSWORD='test', XDG_CACHE_HOME=self.temp.name,
                    PYTHONPATH=str(Path(__file__).resolve().parents[1] / 'src'))
         process = await asyncio.create_subprocess_exec(sys.executable, '-m', 'guac_bridge.ssh_client',
-            '--ensure-running', '--url', base + 'guacamole/', '--connection-id', '1', '--data-source', 'mysql',
+            '--ensure-running', '--require-server-version', '--url', base + 'guacamole/', '--connection-id', '1', '--data-source', 'mysql',
             '--username', 'test', '--no-keyring', '--port', str(local), '--server-command', str(self.helper),
             '--startup-delay', '.1', '--ready-timeout', '10', env=env,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
@@ -157,7 +157,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
                     await asyncio.sleep(.005)
             self.assertFalse(bridge.failed.is_set())
 
-    async def test_override_connects_to_frozen_0_4_2_helper_and_closes_without_cleanup_ack(self):
+    async def test_default_connects_to_frozen_0_4_2_helper_and_closes_without_cleanup_ack(self):
         legacy = Path(__file__).parent / 'fixtures' / 'ssh_server_v0_4_2.py'
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
                                shlex.quote(str(legacy)) + ' "$@"\n')
@@ -167,7 +167,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
         target = await self.target(keep_open)
         with self.assertLogs('guac-llm', level='WARNING'):
-            bridge, local, _ = await self.connect(target, ignore_server_version=True)
+            bridge, local, _ = await self.connect(target)
         self.assertFalse(bridge.cleanup_acks)
         reader, writer = await asyncio.open_connection('127.0.0.1', local)
         writer.write(b'legacy helper upgrade connection')

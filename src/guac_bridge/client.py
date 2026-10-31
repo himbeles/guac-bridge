@@ -204,6 +204,8 @@ class Bridge:
         self.last_seen = time.monotonic()
         self.closing = False
         self.cleanup_acks = True
+        self.server_version_matched = False
+        self.version_warning = None
 
     async def start(self):
         params = [('token', self.token), ('GUAC_DATA_SOURCE', self.data_source),
@@ -383,6 +385,7 @@ class Bridge:
             if event.get('version') != 1:
                 raise BridgeError('Unsupported remote helper version')
             remote_version = event.get('package_version')
+            self.server_version_matched = remote_version == __version__
             if remote_version != __version__:
                 label = (remote_version if isinstance(remote_version, str) and remote_version
                          and len(remote_version) <= 64
@@ -390,13 +393,16 @@ class Bridge:
                          else 'not reported (older or incompatible helper)')
                 message = (
                     f'Server helper {self.helper_name} version: {label}; client version: {__version__}. '
-                    'Client and server package versions must match by default. On the server, run: '
+                    'On the server, run: '
                     f'uv tool install --force guac-bridge=={__version__}. '
                     'Then reconnect. If using --server-command, update the installation at that path.')
-                if not getattr(self.args, 'ignore_server_version', False):
-                    raise BridgeError(message)
-                LOG.warning('Ignoring server version mismatch because --ignore-server-version was supplied. '
-                            'Compatibility is not guaranteed. %s', message)
+                if getattr(self.args, 'require_server_version', False):
+                    raise BridgeError('Matching package versions required by --require-server-version. ' + message)
+                self.version_warning = (
+                    f'Server version mismatch: {self.helper_name} reports {label}; client is {__version__}. '
+                    'Continuing with best-effort compatibility. To align versions on the server: '
+                    f'uv tool install --force guac-bridge=={__version__}.')
+                LOG.warning('%s', self.version_warning)
                 capabilities = event.get('capabilities')
                 self.cleanup_acks = isinstance(capabilities, list) and 'cleanup-ack' in capabilities
             self.ready.set()
@@ -602,8 +608,10 @@ def cli():
     parser.add_argument('--url', required=True, help='Guacamole URL, including #/client/...')
     parser.add_argument('--username', help='Guacamole login username; otherwise prompted')
     add_credential_arguments(parser)
-    parser.add_argument('--ignore-server-version', action='store_true',
-                        help='Attempt a temporary connection despite a helper package version mismatch')
+    versions = parser.add_mutually_exclusive_group()
+    versions.add_argument('--require-server-version', action='store_true',
+                          help='Require matching client/server package versions instead of warning')
+    versions.add_argument('--ignore-server-version', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--port', type=int, default=8000, help='Local loopback port (default: 8000)')
     parser.add_argument('--upstream', default='http://127.0.0.1:8000', help='Server-side loopback vLLM URL')
     parser.add_argument('--connection-id', help='Override URL connection identifier')

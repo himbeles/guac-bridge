@@ -41,17 +41,20 @@ def request(state, command):
 
 
 class ControlServer:
-    def __init__(self, path, instance):
+    def __init__(self, path, instance, *, version_verified=False, version_warning=None):
         self.path, self.instance = path, instance
         self.token = secrets.token_hex(32)
         self.stopped = asyncio.Event()
         self.server = None
         self.handlers = set()
+        self.version_verified = version_verified
+        self.version_warning = version_warning
 
     async def start(self):
         self.server = await asyncio.start_server(self.handle, '127.0.0.1', 0, limit=1024)
         state = dict(control_port=self.server.sockets[0].getsockname()[1], token=self.token,
-                     instance=self.instance, pid=os.getpid())
+                     instance=self.instance, pid=os.getpid(), version_verified=self.version_verified,
+                     version_warning=self.version_warning)
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = self.path.with_name(self.path.name + '.' + self.instance)
         try:
@@ -77,7 +80,9 @@ class ControlServer:
             command = data.get('command')
             if command not in ('status', 'stop'):
                 return
-            writer.write(json.dumps(dict(ok=True, instance=self.instance, pid=os.getpid())).encode() + b'\n')
+            writer.write(json.dumps(dict(ok=True, instance=self.instance, pid=os.getpid(),
+                                         version_verified=self.version_verified,
+                                         version_warning=self.version_warning)).encode() + b'\n')
             await writer.drain()
             stop = command == 'stop'
         except (ValueError, TypeError, AttributeError, OSError, asyncio.TimeoutError):

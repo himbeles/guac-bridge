@@ -10,8 +10,8 @@ server where the helper and destination service are available.
 1. The client authenticates to Guacamole over HTTP(S).
 2. Guacamole opens its configured SSH terminal on the server.
 3. The client starts the matching server helper inside that terminal.
-4. The client verifies that the helper reports the same package version. After
-   the helper is ready, the client opens a listener on your PC.
+4. The client checks the helper package version. A mismatch produces a
+   highlighted warning; after the helper is ready, a listener opens on your PC.
 5. Local applications connect to that listener. Requests and responses travel
    through Guacamole and the helper.
 
@@ -25,34 +25,30 @@ boundaries and backpressure. Missing or rejected input acknowledgements fail the
 connection instead of allowing unbounded buffering. See
 [Benchmarking](benchmarking.md) for measurement instructions.
 
-## Matching client and server versions
+## Client and server versions
 
-The package versions must match exactly. A missing version report from an older
-helper also prevents the local listener from opening. The error identifies the
-client and helper versions and supplies a server-side command such as:
+Package version matching is advisory by default. Different versions, or an older
+helper without a version report, produce a highlighted warning and a best-effort
+connection attempt. Protocol versions and helper types must still be compatible.
+Warnings appear in the foreground console and in the caller of managed SSH
+startup, including when reusing a managed bridge with mismatched versions.
 
-```shell
-uv tool install --force guac-bridge==0.5.1
-```
+Use `--require-server-version` on either client to reject package mismatches
+before opening its local listener. It is forwarded by `--ensure-running`; strict
+reuse also requires the existing bridge to report verified matching versions.
 
-Reconnect after installing the required version. If `--server-command` selects
-a custom helper path, update that installation. Run the selected helper with
-`--version` to check it. Stop and restart existing managed bridges to use a newly
-installed client; reusing a listener keeps its original running process.
-
-If you need SSH access to update the server first, temporarily allow a package
-version mismatch:
+The warning or strict-mode error supplies the matching server installation
+command, for example:
 
 ```shell
-guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME --ignore-server-version
+uv tool install --force guac-bridge==0.5.2
 ```
 
-The same flag works for `guac-llm-client` and is forwarded by `--ensure-running`.
-It also permits attempting connections to older helpers without version reports.
-The client logs a warning; unsupported protocol versions and incorrect helper
-types are still rejected. Compatibility is not guaranteed. Old helpers without
-cleanup acknowledgements use best-effort cleanup for this temporary connection.
-Install the matching package on the server, reconnect, and remove the flag.
+Update a custom installation selected by `--server-command` at that path. Run
+commands with `--version` to check installed versions. Stop and restart managed
+bridges after updating the client or changing its version policy. Reusing a
+listener retains its original running process. Older helpers without cleanup
+acknowledgements use best-effort cleanup.
 
 ## SSH bridge
 

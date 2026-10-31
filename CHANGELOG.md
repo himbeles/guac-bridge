@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2
+
+- Warn on server version mismatches by default; add `--require-server-version` for strict checks.
+
 ## 0.5.1
 
 - Add `--ignore-server-version` for temporary upgrade connections, including older helpers.

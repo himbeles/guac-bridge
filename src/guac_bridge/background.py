@@ -96,7 +96,7 @@ def child_command(args):
         value = getattr(args, name, None)
         if value is not None:
             command.extend(['--' + name.replace('_', '-'), str(value)])
-    for name in ('insecure', 'no_keyring', 'ignore_server_version'):
+    for name in ('insecure', 'no_keyring', 'ignore_server_version', 'require_server_version'):
         if getattr(args, name, False):
             command.append('--' + name.replace('_', '-'))
     return command
@@ -147,17 +147,36 @@ def startup_lock(port, deadline):
         yield
 
 
+def report_version_policy(args, report):
+    if getattr(args, 'require_server_version', False) and (not report or report.get('version_verified') is not True):
+        raise BridgeError('Cannot verify matching versions for this running bridge. '
+                          f'Stop it with guac-ssh-client --stop --port {args.port}, '
+                          'then reconnect with --require-server-version.')
+    if report and isinstance(report.get('version_warning'), str):
+        LOG.warning('%s', report['version_warning'])
+
+
+def use_existing(args):
+    report = None
+    state = read_state(state_path(args.port))
+    if state:
+        with contextlib.suppress(BridgeError):
+            report = request(state, 'status')
+    report_version_policy(args, report)
+    LOG.info('Using existing listener on 127.0.0.1:%s', args.port)
+
+
 def ensure_running(args):
     """Exit successfully only once a listener exists; own failed startups are stopped."""
     if listening(args.port):
-        LOG.info('Using existing listener on 127.0.0.1:%s', args.port)
+        use_existing(args)
         return
     if not args.username:
         raise BridgeError('--ensure-running requires --username for background authentication')
     deadline = time.monotonic() + args.ready_timeout
     with startup_lock(args.port, deadline):
         if listening(args.port):
-            LOG.info('Using existing listener on 127.0.0.1:%s', args.port)
+            use_existing(args)
             return
         _start_and_wait(args, deadline)
 
@@ -203,7 +222,8 @@ def _start_and_wait(args, deadline):
                 raise BridgeError(f'Background bridge exited with status {code}; see {destination}')
             state = read_state(state_path(args.port))
             if state and state['instance'] == instance:
-                request(state, 'status')
+                report = request(state, 'status')
+                report_version_policy(args, report)
                 ready = True
                 LOG.info('Bridge ready on 127.0.0.1:%s (PID %s; output: %s)',
                          args.port, state['pid'], destination)

@@ -262,7 +262,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
                    "runpy.run_module('guac_bridge.server',run_name='__main__',alter_sys=True)")
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
         with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force guac-bridge=='):
-            await self.connect()
+            await self.connect(require_server_version=True)
         self.assertFalse(self.bridges[-1].ready.is_set())
 
     async def test_streaming_arrives_before_completion_and_flow_control(self):

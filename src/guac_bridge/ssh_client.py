@@ -213,7 +213,8 @@ async def serve(args):
             await bridge.start()
             listener = await start_listener(bridge.accept, args.port)
             if getattr(args, 'managed_id', None):
-                control = await ControlServer(state_path(args.port), args.managed_id).start()
+                control = await ControlServer(state_path(args.port), args.managed_id,
+                    version_verified=bridge.server_version_matched, version_warning=bridge.version_warning).start()
                 args._managed_ready = True
             LOG.info('Listening on 127.0.0.1:%s', args.port)
             if control:
@@ -249,8 +250,10 @@ def cli(argv=None):
     parser.add_argument('--url', help='Full Guacamole connection URL')
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
-    parser.add_argument('--ignore-server-version', action='store_true',
-                        help='Attempt a temporary connection despite a helper package version mismatch')
+    versions = parser.add_mutually_exclusive_group()
+    versions.add_argument('--require-server-version', action='store_true',
+                          help='Require matching client/server package versions instead of warning')
+    versions.add_argument('--ignore-server-version', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--port', type=int, default=2222, help='Local loopback listener port')
     management = parser.add_mutually_exclusive_group()
     management.add_argument('--ensure-running', action='store_true',

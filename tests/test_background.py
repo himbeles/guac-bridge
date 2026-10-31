@@ -95,6 +95,27 @@ asyncio.run(main())
                 background.ensure_running(self.args)
             spawn.assert_not_called()
 
+    def test_existing_managed_listener_repeats_version_warning(self):
+        report = dict(version_verified=False, version_warning='Server version mismatch: old helper')
+        with patch.object(background, 'listening', return_value=True), \
+                patch.object(background, 'read_state', return_value={'instance': 'test'}), \
+                patch.object(background, 'request', return_value=report):
+            with self.assertLogs('guac-ssh', level='WARNING') as logs:
+                background.ensure_running(self.args)
+        self.assertIn('Server version mismatch', '\n'.join(logs.output))
+
+    def test_strict_reuse_rejects_unverified_listener(self):
+        self.args.require_server_version = True
+        with patch.object(background, 'listening', return_value=True), \
+                patch.object(background, 'read_state', return_value={'instance': 'test'}), \
+                patch.object(background, 'request', return_value={'version_verified': False}):
+            with self.assertRaisesRegex(BridgeError, '--require-server-version'):
+                background.ensure_running(self.args)
+
+    def test_strict_flag_is_forwarded_to_child(self):
+        self.args.require_server_version = True
+        self.assertIn('--require-server-version', background.child_command(self.args))
+
     def test_delayed_child_is_ready_then_remains_running_and_is_reused(self):
         with self.listener_child(), patch.object(background.subprocess, 'Popen', side_effect=self.spawn) as spawn:
             try:
@@ -237,7 +258,8 @@ class ControlTests(unittest.IsolatedAsyncioTestCase):
         import asyncio
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'control.json'
-            control = await ControlServer(path, 'test-instance').start()
+            control = await ControlServer(path, 'test-instance', version_verified=False,
+                                          version_warning='Server version mismatch: old helper').start()
             try:
                 state = read_state(path)
                 bad = dict(state, token='0' * 64)
@@ -246,6 +268,8 @@ class ControlTests(unittest.IsolatedAsyncioTestCase):
                 self.assertFalse(control.stopped.is_set())
                 result = await asyncio.to_thread(request, state, 'status')
                 self.assertTrue(result['ok'])
+                self.assertIs(result['version_verified'], False)
+                self.assertEqual(result['version_warning'], 'Server version mismatch: old helper')
                 self.assertNotIn('token', result)
                 await asyncio.to_thread(request, state, 'stop')
                 await asyncio.wait_for(control.stopped.wait(), 2)

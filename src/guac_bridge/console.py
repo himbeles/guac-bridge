@@ -84,6 +84,8 @@ class StatusFormatter(logging.Formatter):
         else:
             symbol, plain, color = '·', '[info]', ''
         prefix = symbol if self.console.unicode else plain
+        if record.levelno == logging.WARNING and message.startswith('Server version mismatch:'):
+            return self.console.compatible(self.console.paint(prefix + ' ' + message, '\x1b[1m' + AMBER))
         if color:
             prefix = self.console.paint(prefix, color)
         return self.console.compatible(prefix + ' ' + message)

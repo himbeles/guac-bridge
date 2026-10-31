@@ -2,8 +2,8 @@
 
 Version 0.5.0 pipelines up to eight Guacamole input blobs across requests and
 credit events. Both bridges use it automatically. This improves transport
-utilization; it does not accelerate model inference. Client and server helpers
-must have the same package version before starting a benchmark.
+utilization; it does not accelerate model inference. Use matching client and helper versions for meaningful benchmark comparisons;
+version mismatches warn by default unless strict checking is requested.
 
 ## Measure an existing SSH bridge
 

@@ -11,17 +11,12 @@ uv tool install guac-bridge
 uv tool update-shell
 ```
 
-Install the same package version on client and server. Each new Guacamole
-connection checks the helper version and stops with a matching installation
-command if it differs or cannot be identified. Use `--version` on any of the
-four commands to check its installed version. If using `--server-command`, the
-installation at that path must match the client too.
-
-For a temporary connection to install the matching version on the server, append
-`--ignore-server-version` to either client command. It warns and attempts the
-connection, including with older helpers that do not report a package version.
-Protocol compatibility is still required. Remove the flag after updating the
-server; it is also supported with `--ensure-running`.
+Each new Guacamole connection checks the server helper's package version.
+Different or unreported versions produce a highlighted warning and a connection
+attempt. Use `--require-server-version` on either client for strict matching.
+Protocol compatibility is always required. Use `--version` on any command to
+check its installed version. Restart existing managed bridges to change their
+version policy.
 
 The client starts the appropriate server helper automatically. Keep the client running while using the bridge; stop it with **Ctrl+C**.
 
