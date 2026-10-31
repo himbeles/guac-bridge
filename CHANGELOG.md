@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.1
+
+- Check helper versions before startup and identify unsupported arguments promptly.
+- Show background SSH startup progress and errors, including Windows hook output.
+- Preserve the helper Python during server updates; add `--server-python` for explicit selection.
+
 ## 0.8.0
 
 - Add opt-in server updates before connecting, using uv tool and the server’s configured package index.

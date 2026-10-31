@@ -259,6 +259,15 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual((await response.json())['echo'], payload)
                 self.assertFalse(bridge.failed.is_set())
 
+    async def test_old_helper_is_identified_before_unsupported_bridge_arguments(self):
+        marker = Path(self.temp.name) / 'started'
+        self.helper.write_text('#!/bin/sh\ncase "$1" in\n--version) echo "helper 0.5.0";;\n'
+            '--help) echo "old helper usage";;\n*) touch ' + shlex.quote(str(marker)) + ';;\nesac\n')
+        with self.assertRaisesRegex(BridgeError, 'version: 0.5.0; client version:'):
+            await self.connect()
+        self.assertFalse(marker.exists())
+        self.assertFalse(self.bridges[-1].ready.is_set())
+
     async def test_websocket_models_and_unicode_large_request(self):
         bridge, local, _ = await self.connect()
         self.assertEqual((bridge.input_window, bridge.data_window), (32, 32))
@@ -273,7 +282,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         command = ("import guac_bridge,runpy;guac_bridge.__version__='0.0.0';"
                    "runpy.run_module('guac_bridge.server',run_name='__main__',alter_sys=True)")
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
-        with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force guac-bridge=='):
+        with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force.*guac-bridge=='):
             await self.connect(require_server_version=True)
         self.assertFalse(self.bridges[-1].ready.is_set())
 

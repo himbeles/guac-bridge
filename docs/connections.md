@@ -192,3 +192,14 @@ print a manual update command. Custom helper paths require manual installation.
 Stop an existing managed SSH bridge before using this option. An installation
 attempt is limited to 180 seconds. The bootstrap uses the terminal directly,
 without relying on the installed helper's protocol.
+
+Server updates select Python explicitly: the default is the base interpreter
+identified from the installed helper's shebang. Override it with
+`--update-server --server-python 3.11` (use a version available on the server).
+If the interpreter cannot be identified, choose it explicitly or update manually.
+
+Every new bridge checks the helper's version before passing bridge arguments.
+An older helper lacking required options produces an immediate version/update
+message. Background startup relays progress and errors to the calling SSH
+command; details also remain in the printed log file. If an SSH hook produces
+no output at all, `ssh -vvv YOUR_ALIAS` shows whether the hook was evaluated.

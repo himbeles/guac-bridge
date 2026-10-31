@@ -87,6 +87,29 @@ async def main():
 asyncio.run(main())
 ''')
 
+    def test_child_startup_output_is_relayed_without_old_log_lines(self):
+        path = self.root / 'progress.log'
+        path.write_bytes(b'old error\n')
+        offset = path.stat().st_size
+        with path.open('ab') as output:
+            output.write(b'[info] Checking helper\npartial')
+        with self.assertLogs('guac-ssh', level='INFO') as logs:
+            offset, pending = background.relay_startup_output(path, offset, b'')
+        self.assertIn('Checking helper', '\n'.join(logs.output))
+        self.assertNotIn('old error', '\n'.join(logs.output))
+        self.assertEqual(pending, b'partial')
+        with path.open('ab') as output:
+            output.write(b' line\n')
+        with self.assertLogs('guac-ssh', level='INFO') as logs:
+            _, pending = background.relay_startup_output(path, offset, pending)
+        self.assertIn('partial line', '\n'.join(logs.output))
+        self.assertEqual(pending, b'')
+
+    def test_hook_error_is_also_saved_when_terminal_output_is_hidden(self):
+        self.args.ensure_running = True
+        background.record_hook_error(self.args, 'Server helper 0.5.0 needs updating')
+        self.assertIn('Server helper 0.5.0', Path(self.args.background_log).read_text())
+
     def test_existing_listener_returns_without_spawning(self):
         with socket.socket() as server:
             server.bind(('127.0.0.1', self.args.port))

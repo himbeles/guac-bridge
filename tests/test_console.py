@@ -3,6 +3,7 @@ import io
 import logging
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from guac_bridge.console import AMBER, RESET, Console, StatusFormatter
@@ -32,3 +33,19 @@ class ConsoleTests(unittest.TestCase):
             self.assertNotIn('\x1b', self.render(TTY()))
         self.assertIn('[warning]', self.render(io.StringIO()))
         self.assertNotIn('\x1b', self.render(io.StringIO()))
+
+    def test_hook_uses_existing_windows_console_only_for_discarded_output(self):
+        import io
+        from guac_bridge import console
+        discarded = io.StringIO()
+        terminal = io.StringIO()
+        for kind in (0, 1, 2, 3):
+            with patch.object(console.sys, 'platform', 'win32'), \
+                 patch.object(console.sys, 'stderr', discarded), \
+                 patch.dict('sys.modules', {'msvcrt': SimpleNamespace(get_osfhandle=lambda fd: 1)}), \
+                 patch('ctypes.windll', SimpleNamespace(kernel32=SimpleNamespace(GetFileType=lambda h: kind)), create=True), \
+                 patch.object(discarded, 'fileno', return_value=1), \
+                 patch.object(console, '_windows_console_output', return_value=terminal) as target:
+                stream = console.hook_output_stream()
+                self.assertIs(stream, terminal if kind in (0, 2) else discarded)
+                self.assertEqual(target.called, kind in (0, 2))

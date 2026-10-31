@@ -128,7 +128,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
                    "runpy.run_module('guac_bridge.ssh_server',run_name='__main__',alter_sys=True)")
         self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
         target = await self.target(self.echo)
-        with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force guac-bridge=='):
+        with self.assertRaisesRegex(BridgeError, 'server, run: uv tool install --force.*guac-bridge=='):
             await self.connect(target, require_server_version=True)
         self.assertFalse(self.bridges[-1].ready.is_set())
 
@@ -153,7 +153,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         _, stderr = await asyncio.wait_for(process.communicate(), 15)
         self.assertEqual(process.returncode, 1, stderr.decode())
         self.assertIn(b'version: 0.0.0', stderr)
-        self.assertIn(b'uv tool install --force guac-bridge==', stderr)
+        self.assertIn(b'uv tool install --force --python 3.XX guac-bridge==', stderr)
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', local))
         self.assertFalse(list(Path(self.temp.name).rglob('*.startup-*.json')))

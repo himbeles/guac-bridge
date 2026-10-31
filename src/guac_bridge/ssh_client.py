@@ -21,7 +21,7 @@ from .client import Bridge, BridgeError, parse_url
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    resolve_username)
-from .background import ensure_running, record_startup_error, state_path, stop_managed
+from .background import ensure_running, record_hook_error, record_startup_error, state_path, stop_managed
 from .control import ControlServer
 
 LOG = logging.getLogger('guac-ssh')
@@ -291,7 +291,7 @@ def cli(argv=None):
         parser.error('Ready timeout must be positive and finite')
     if (args.ensure_running or args.stop) and (args.forget_password or args.save_password):
         parser.error('Use credential management options in an interactive foreground invocation')
-    setup_console('SSH')
+    setup_console('SSH', hook=args.ensure_running)
     try:
         validate_update(args, 'guac-ssh-server')
         if args.stop:
@@ -306,6 +306,7 @@ def cli(argv=None):
         message = (str(exc) if isinstance(exc, BridgeError) else type(exc).__name__ +
                    ': check network, proxy, TLS trust, and local port')
         record_startup_error(args, message)
+        record_hook_error(args, message)
         LOG.error('%s', message)
         return 1
     return 0

@@ -181,6 +181,33 @@ def ensure_running(args):
         _start_and_wait(args, deadline)
 
 
+def relay_startup_output(path, offset, pending):
+    try:
+        with path.open('rb') as output:
+            output.seek(offset)
+            data = output.read(16384)
+            offset = output.tell()
+    except OSError:
+        return offset, pending
+    lines = (pending + data).split(b'\n')
+    for line in lines[:-1]:
+        message = line.decode('utf-8', errors='replace').strip()
+        if message:
+            report = LOG.error if message.startswith('[error]') else LOG.warning if message.startswith('[warning]') else LOG.info
+            report('%s', message)
+    return offset, lines[-1][-8192:]
+
+
+def record_hook_error(args, message):
+    if not getattr(args, 'ensure_running', False):
+        return
+    path = Path(args.background_log).expanduser() if args.background_log else default_log(args.port)
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), 'a', encoding='utf-8') as output:
+            output.write('[error] ' + message + '\n')
+
+
 def _start_and_wait(args, deadline):
     log_path = Path(args.background_log).expanduser() if args.background_log else default_log(args.port)
     log_path = log_path.absolute()
@@ -206,13 +233,19 @@ def _start_and_wait(args, deadline):
             options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         else:
             options['start_new_session'] = True
+        log_start = log_path.stat().st_size if log_path.exists() else 0
         with os.fdopen(os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600), 'ab') as output:
             process = subprocess.Popen(command, stdout=output, stderr=output, **options)
         process.stdin.close()
         destination = str(log_path)
+    offset = 0 if visible else log_start
+    pending = b''
     ready = False
+    LOG.info('Starting bridge on 127.0.0.1:%s; output: %s', args.port, destination)
     try:
         while time.monotonic() < deadline:
+            if not visible:
+                offset, pending = relay_startup_output(log_path, offset, pending)
             code = process.poll()
             if code is not None:
                 with contextlib.suppress(OSError, ValueError, TypeError, KeyError):

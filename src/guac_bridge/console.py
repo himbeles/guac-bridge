@@ -32,7 +32,7 @@ def _enable_windows_colors(stream):
 
 class Console:
     def __init__(self, stream=None):
-        self.stream = sys.stderr if stream is None else stream
+        self.stream = (sys.stderr if stream is None else stream) or sys.stdout or open(os.devnull, 'w')
         self.encoding = getattr(self.stream, 'encoding', None) or 'utf-8'
         self.interactive = self.stream.isatty() and os.environ.get('TERM') != 'dumb'
         self.color = (self.interactive and 'NO_COLOR' not in os.environ
@@ -91,8 +91,41 @@ class StatusFormatter(logging.Formatter):
         return self.console.compatible(prefix + ' ' + message)
 
 
-def setup_console(mode):
-    console = Console()
+def _windows_console_output():
+    try:
+        return open('CONOUT$', 'w', encoding='utf-8', buffering=1)
+    except OSError:
+        import ctypes
+        try:
+            if ctypes.windll.kernel32.AttachConsole(0xFFFFFFFF):
+                return open('CONOUT$', 'w', encoding='utf-8', buffering=1)
+        except (AttributeError, OSError):
+            pass
+    return None
+
+
+def hook_output_stream():
+    stream = sys.stderr
+    if sys.platform != 'win32' or (stream and stream.isatty()):
+        return stream
+    # Respect intentional redirection to files/pipes. A non-TTY character
+    # handle is usually NUL in a Windows SSH Match exec child.
+    try:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+        get_type = ctypes.windll.kernel32.GetFileType
+        get_type.argtypes, get_type.restype = (wintypes.HANDLE,), wintypes.DWORD
+        kind = get_type(msvcrt.get_osfhandle(stream.fileno())) if stream else 0
+        if kind not in (0, 2):
+            return stream
+    except (AttributeError, OSError, ValueError):
+        return stream
+    return _windows_console_output() or stream
+
+
+def setup_console(mode, *, hook=False):
+    console = Console(hook_output_stream() if hook else None)
     handler = logging.StreamHandler(console.stream)
     handler.setFormatter(StatusFormatter(console))
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)

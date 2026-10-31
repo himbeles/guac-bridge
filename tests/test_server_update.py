@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -22,8 +23,11 @@ def fake_installation(root, helper, *, matching=False, fail=False):
     bindir.mkdir(parents=True)
     state, record = home / 'updated', home / 'uv-args'
     original = helper.read_text()
-    wrapper = ("#!/bin/sh\nif [ \"$1\" = --version ] && [ ! -f " + shlex.quote(str(state)) +
-               " ]; then printf '%s\\n' 'helper 0.0.0'; exit 0; fi\n" + original.split('\n', 1)[1])
+    module = 'guac_bridge.ssh_server' if helper.name == 'guac-ssh-server' else 'guac_bridge.server'
+    wrapper = ('#!' + sys.executable + '\nimport sys, pathlib\n'
+        'if sys.argv[1:] == ["--version"] and not pathlib.Path(' + repr(str(state)) + ').exists():\n'
+        ' print("helper 0.0.0"); raise SystemExit(0)\n'
+        'from ' + module + ' import cli\nraise SystemExit(cli())\n')
     if matching:
         wrapper = original
     destination = bindir / helper.name
@@ -51,6 +55,15 @@ class UpdateCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('uv tool install --force guac-bridge==' + __version__, text)
         self.assertIn('configured package index', text)
         self.assertIn('otherwise update manually', text)
+
+    async def test_explicit_server_python_overrides_detection(self):
+        bridge = SimpleNamespace(helper_name='guac-ssh-server', args=SimpleNamespace(server_python='3.11'))
+        update = ServerUpdate(bridge)
+        self.assertIn(b'server_python=3.11;', update.command())
+        self.assertIn(b'--python "$server_python"', update.command())
+        update.future.cancel()
+        with self.assertRaisesRegex(BridgeError, '--server-python requires --update-server'):
+            validate_update(SimpleNamespace(update_server=False, server_python='3.11'), 'guac-ssh-server')
 
     async def test_custom_installation_and_background_mode_require_manual_action(self):
         for values in (dict(server_command='/custom/helper'),
@@ -134,7 +147,7 @@ if os.name == 'posix':
                 async with self.session.get(local + 'v1/models') as response:
                     self.assertEqual(response.status, 200)
                     self.assertEqual((await response.json())['data'][0]['id'], 'test-model')
-            self.assertEqual(record.read_text().splitlines(), ['tool', 'install', '--force', 'guac-bridge==' + __version__])
+            self.assertEqual(record.read_text().splitlines(), ['tool', 'install', '--force', '--python', getattr(sys, '_base_executable', sys.executable), 'guac-bridge==' + __version__])
             self.assertEqual((home / 'index').read_text(), env['UV_INDEX_URL'])
             self.assertTrue(bridge.ready.is_set())
 
