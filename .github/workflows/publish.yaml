@@ -84,6 +84,9 @@ jobs:
       - name: Test Windows interactive update consent
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_update_prompt.py -v
+      - name: Test Windows hook credential setup
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_hook_auth.py -v
       - name: Test Windows hook console output
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_console.py -v

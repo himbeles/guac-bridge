@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2
+
+- Allow `--ensure-running --save-password` in SSH config hooks, prompting in the calling console on first login.
+- Verify and save credentials before background startup; reuse them on later connections.
+
 ## 0.8.1
 
 - Check helper versions before startup and offer an interactive update on mismatch (`[Y/n]`).

@@ -9,7 +9,7 @@ import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from guac_bridge import background, ssh_client
 from guac_bridge.control import ControlServer, read_state, request
@@ -109,6 +109,40 @@ asyncio.run(main())
         self.args.ensure_running = True
         background.record_hook_error(self.args, 'Server helper 0.5.0 needs updating')
         self.assertIn('Server helper 0.5.0', Path(self.args.background_log).read_text())
+
+    def test_ensure_accepts_save_password_without_forwarding_secret_or_flag(self):
+        with patch.object(ssh_client, 'ensure_running') as ensure, patch.object(ssh_client, 'setup_console'):
+            code = ssh_client.cli(['--ensure-running', '--save-password', '--url', self.args.url, '--username', 'alice'])
+        self.assertEqual(code, 0)
+        self.assertTrue(ensure.call_args.args[0].save_password)
+        self.assertNotIn('--save-password', background.child_command(ensure.call_args.args[0]))
+
+    def test_existing_listener_does_not_repeat_credential_setup(self):
+        self.args.save_password = True
+        with patch.object(background, 'listening', return_value=True), \
+             patch.object(background, 'use_existing'), patch('guac_bridge.hook_auth.prepare_credentials') as auth:
+            background.ensure_running(self.args)
+        auth.assert_not_called()
+
+    def test_save_password_prepares_credentials_before_starting_child(self):
+        self.args.save_password = True
+        prepare = AsyncMock()
+        def start(*args, **kwargs):
+            self.assertEqual(prepare.await_count, 1)
+            return self.spawn(*args, **kwargs)
+        with self.listener_child(), patch.object(background.subprocess, 'Popen', side_effect=start), \
+             patch('guac_bridge.hook_auth.prepare_credentials', prepare):
+            background.ensure_running(self.args)
+        prepare.assert_awaited_once_with(self.args)
+
+    def test_failed_credential_setup_does_not_start_background_child(self):
+        self.args.save_password = True
+        with patch.object(background, 'listening', return_value=False), \
+             patch.object(background.subprocess, 'Popen') as spawn, \
+             patch('guac_bridge.hook_auth.prepare_credentials', AsyncMock(side_effect=BridgeError('Login failed'))):
+            with self.assertRaisesRegex(BridgeError, 'Login failed'):
+                background.ensure_running(self.args)
+        spawn.assert_not_called()
 
     def test_existing_listener_returns_without_spawning(self):
         with socket.socket() as server:
@@ -274,7 +308,7 @@ sys.exit(1)
         run.assert_not_called()
 
     def test_cli_rejects_invalid_background_flags_and_timeouts(self):
-        for option in (['--save-password'], ['--forget-password'], ['--ready-timeout', 'nan'],
+        for option in (['--forget-password'], ['--ready-timeout', 'nan'],
                        ['--ready-timeout', 'inf'], ['--ready-timeout', '0']):
             with self.subTest(option=option), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as error:

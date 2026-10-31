@@ -211,3 +211,12 @@ Python selection. Declining continues only if the helper supports the required
 protocol/options and strict version matching was not requested. SSH hooks and
 managed/noninteractive connections never prompt; they report update instructions.
 `--update-server` remains the explicit option for attempting the update directly.
+
+With `--ensure-running --save-password`, a new background startup first checks
+credentials in the calling process. Missing or rejected credentials prompt in
+the existing console (Windows) or controlling terminal (Unix), without echo.
+Only a successful login is saved. The setup login session is then closed and
+the child authenticates from the system credential store. Passwords are not
+passed in child arguments or written to the bridge log. If the store or an
+interactive terminal is unavailable, the command gives manual instructions.
+An already running listener is reused without another login.

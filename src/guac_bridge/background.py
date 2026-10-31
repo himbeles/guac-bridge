@@ -178,6 +178,11 @@ def ensure_running(args):
         if listening(args.port):
             use_existing(args)
             return
+        if getattr(args, 'save_password', False):
+            from .hook_auth import prepare_credentials
+            import asyncio
+            asyncio.run(prepare_credentials(args))
+            deadline = time.monotonic() + args.ready_timeout
         _start_and_wait(args, deadline)
 
 

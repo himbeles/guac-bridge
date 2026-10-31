@@ -16,7 +16,7 @@ LOG = logging.getLogger('guac-auth')
 def add_credential_arguments(parser):
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--save-password', action='store_true',
-                       help='Save the Guacamole password in the system credential store after successful login')
+                       help='Save after successful login; with --ensure-running, first login prompts in the calling console')
     group.add_argument('--forget-password', action='store_true',
                        help='Delete the saved Guacamole password for this URL and username, then exit')
     group.add_argument('--no-keyring', action='store_true',
@@ -154,7 +154,8 @@ async def login(session, base, username, password, timeout):
             raise BridgeError('Login did not return a Guacamole authToken; check the URL base path') from None
 
 
-async def authenticate(session, base, username, args, store=None):
+async def authenticate(session, base, username, args, store=None, prompt=None):
+    ask = prompt_password if prompt is None else prompt
     service = credential_service(base)
     enabled = not getattr(args, 'no_keyring', False)
     save = getattr(args, 'save_password', False)
@@ -169,7 +170,7 @@ async def authenticate(session, base, username, args, store=None):
             LOG.info('System credential store unavailable; using a password prompt')
             store = None
     if password is None:
-        password = prompt_password()
+        password = ask()
     try:
         try:
             token = await login(session, base, username, password, args.connect_timeout)
@@ -178,7 +179,7 @@ async def authenticate(session, base, username, args, store=None):
                 raise
             password = None
             LOG.warning('Saved Guacamole password was rejected; enter a replacement')
-            password = prompt_password()
+            password = ask()
             token = await login(session, base, username, password, args.connect_timeout)
             save = True  # Replace the credential only after the new password works.
         if save and enabled:

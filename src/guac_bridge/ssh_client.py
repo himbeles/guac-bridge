@@ -289,7 +289,7 @@ def cli(argv=None):
         parser.error('Timeout must be positive and startup delay cannot be negative')
     if not math.isfinite(args.ready_timeout) or args.ready_timeout <= 0:
         parser.error('Ready timeout must be positive and finite')
-    if (args.ensure_running or args.stop) and (args.forget_password or args.save_password):
+    if ((args.ensure_running or args.stop) and args.forget_password) or (args.stop and args.save_password):
         parser.error('Use credential management options in an interactive foreground invocation')
     setup_console('SSH', hook=args.ensure_running)
     try:
