@@ -1,0 +1,478 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "orjson": "3.13.0",
+  "msgspec": "0.22.0",
+  "encoder_output_check": "isascii+DEL; serializers escape C0 controls",
+  "seconds": 4.0,
+  "repeats": 5,
+  "conformance": 54,
+  "rows": [
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.277050487,
+      "wall_s": 4.007387992,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-upload",
+      "repeat": 0
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.240668091,
+      "wall_s": 3.998016173,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-upload",
+      "repeat": 0
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.288300694,
+      "wall_s": 3.999164096,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-upload",
+      "repeat": 0
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.256629988,
+      "wall_s": 3.999886712,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-upload",
+      "repeat": 1
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.228239073,
+      "wall_s": 4.002505811,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-upload",
+      "repeat": 1
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.210578037,
+      "wall_s": 4.001043361,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-upload",
+      "repeat": 1
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.28076443,
+      "wall_s": 3.999873163,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-upload",
+      "repeat": 2
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.23839759,
+      "wall_s": 3.997510482,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-upload",
+      "repeat": 2
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.259185199,
+      "wall_s": 3.999865305,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-upload",
+      "repeat": 2
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.241245693,
+      "wall_s": 4.000519103,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-upload",
+      "repeat": 3
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.239043138,
+      "wall_s": 4.00829208,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-upload",
+      "repeat": 3
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.26969395,
+      "wall_s": 3.997859959,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-upload",
+      "repeat": 3
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.283759524,
+      "wall_s": 4.000416767,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-upload",
+      "repeat": 4
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.321650825,
+      "wall_s": 4.000046813,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-upload",
+      "repeat": 4
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.23983668,
+      "wall_s": 4.006788405,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-upload",
+      "repeat": 4
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.56053579,
+      "wall_s": 3.994000116,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 0
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.373884484,
+      "wall_s": 3.991081967,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-download",
+      "repeat": 0
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.257867229,
+      "wall_s": 3.991486523,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 0
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.284837908,
+      "wall_s": 3.992747848,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 1
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.225859976,
+      "wall_s": 3.991433655,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-download",
+      "repeat": 1
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.255511502,
+      "wall_s": 3.993311151,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 1
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.280701775,
+      "wall_s": 3.994188501,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 2
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.2477472,
+      "wall_s": 3.991974628,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-download",
+      "repeat": 2
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.225571545,
+      "wall_s": 3.993703331,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 2
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.231697711,
+      "wall_s": 3.991609876,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 3
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.353868554,
+      "wall_s": 3.99308756,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-download",
+      "repeat": 3
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.445412356,
+      "wall_s": 3.99326429,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 3
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.417655433,
+      "wall_s": 4.027369002,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 4
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.268927363,
+      "wall_s": 3.990062672,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-download",
+      "repeat": 4
+    },
+    {
+      "bytes": 4194304,
+      "integrity": true,
+      "client_cpu_s": 0.243821132,
+      "wall_s": 3.990621521,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 4
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 3.3186079999723006,
+      "client_cpu_s": 0.197579132,
+      "wall_s": 3.994202763,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "llm-paced",
+      "repeat": 0
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 5.333369000027233,
+      "client_cpu_s": 0.203424524,
+      "wall_s": 3.996432632,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "llm-paced",
+      "repeat": 0
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 3.9062969999577035,
+      "client_cpu_s": 0.176122504,
+      "wall_s": 3.996561248,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "llm-paced",
+      "repeat": 0
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 2.0056809999005054,
+      "client_cpu_s": 0.18281008,
+      "wall_s": 3.993973284,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "llm-paced",
+      "repeat": 1
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 2.1856019998267584,
+      "client_cpu_s": 0.203939339,
+      "wall_s": 3.998179546,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "llm-paced",
+      "repeat": 1
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 2.4723740000354155,
+      "client_cpu_s": 0.209348033,
+      "wall_s": 3.995692646,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "llm-paced",
+      "repeat": 1
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 21.17819800014331,
+      "client_cpu_s": 0.363178942,
+      "wall_s": 3.994987971,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "llm-paced",
+      "repeat": 2
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 17.075915999839708,
+      "client_cpu_s": 0.243246622,
+      "wall_s": 4.026619494,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "llm-paced",
+      "repeat": 2
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 1.9794009999714035,
+      "client_cpu_s": 0.172638993,
+      "wall_s": 3.995274848,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "llm-paced",
+      "repeat": 2
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 3.315372000088246,
+      "client_cpu_s": 0.199487132,
+      "wall_s": 3.99669048,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "llm-paced",
+      "repeat": 3
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 7.732092999958695,
+      "client_cpu_s": 0.217902608,
+      "wall_s": 3.995683911,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "llm-paced",
+      "repeat": 3
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 2.27264200020727,
+      "client_cpu_s": 0.186497075,
+      "wall_s": 3.99456067,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "llm-paced",
+      "repeat": 3
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 3.0485839999983,
+      "client_cpu_s": 0.180183419,
+      "wall_s": 3.995261106,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "llm-paced",
+      "repeat": 4
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 6.093913999848155,
+      "client_cpu_s": 0.251629991,
+      "wall_s": 3.995292687,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "llm-paced",
+      "repeat": 4
+    },
+    {
+      "events": 400,
+      "integrity": true,
+      "p95_lag_ms": 2.626033000069583,
+      "client_cpu_s": 0.164925742,
+      "wall_s": 3.993682534,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "llm-paced",
+      "repeat": 4
+    }
+  ],
+  "mib": 4
+}

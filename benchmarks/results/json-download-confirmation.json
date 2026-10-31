@@ -1,0 +1,113 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "orjson": "3.13.0",
+  "msgspec": "0.22.0",
+  "encoder_output_check": "isascii+DEL; serializers escape C0 controls",
+  "seconds": 8.0,
+  "repeats": 5,
+  "mib": 16,
+  "conformance": 54,
+  "rows": [
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.053079393,
+      "wall_s": 8.031728409,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 0
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.032447407,
+      "wall_s": 8.004032764,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 0
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.110072128,
+      "wall_s": 8.012872018,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 1
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.006306771,
+      "wall_s": 8.013305643,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 1
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.017986009,
+      "wall_s": 8.00574369,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 2
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 0.938587815,
+      "wall_s": 8.007687196,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 2
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 0.901832157,
+      "wall_s": 8.030149901,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 3
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.098997919,
+      "wall_s": 8.004576951,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 3
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 1.11054982,
+      "wall_s": 8.004683676,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-download",
+      "repeat": 4
+    },
+    {
+      "bytes": 16777216,
+      "integrity": true,
+      "client_cpu_s": 0.883656149,
+      "wall_s": 8.007109174,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-download",
+      "repeat": 4
+    }
+  ]
+}

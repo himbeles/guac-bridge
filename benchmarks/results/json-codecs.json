@@ -1,0 +1,2260 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "orjson": "3.13.0",
+  "msgspec": "0.22.0",
+  "conformance_checks": 54,
+  "micro": [
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 3025.1253722334004,
+      "events": 49700,
+      "cpu_ns": 150348731,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 1991.623925729443,
+      "events": 75400,
+      "cpu_ns": 150168444,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 1601.8309818569903,
+      "events": 93700,
+      "cpu_ns": 150091563,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 2603.7496880415943,
+      "events": 57700,
+      "cpu_ns": 150236357,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 1678.5638882681565,
+      "events": 89500,
+      "cpu_ns": 150231468,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 2581.9997934595526,
+      "events": 58100,
+      "cpu_ns": 150014188,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 2821.721951219512,
+      "events": 53300,
+      "cpu_ns": 150397780,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 1665.583307436182,
+      "events": 90100,
+      "cpu_ns": 150069056,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 1656.586335540839,
+      "events": 90600,
+      "cpu_ns": 150086722,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 1598.6910649627264,
+      "events": 93900,
+      "cpu_ns": 150117091,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 1706.6255176336747,
+      "events": 87900,
+      "cpu_ns": 150012383,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 2800.743600746269,
+      "events": 53600,
+      "cpu_ns": 150119857,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 2602.7994627383014,
+      "events": 57700,
+      "cpu_ns": 150181529,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 1568.8551515151514,
+      "events": 95700,
+      "cpu_ns": 150139438,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 1692.4334385569334,
+      "events": 88700,
+      "cpu_ns": 150118846,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 3154.950945378151,
+      "events": 47600,
+      "cpu_ns": 150175665,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 1915.8920280612244,
+      "events": 78400,
+      "cpu_ns": 150205935,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 1736.5406481481482,
+      "events": 86400,
+      "cpu_ns": 150037112,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 1838.3648529411764,
+      "events": 81600,
+      "cpu_ns": 150010572,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 1864.5114658385094,
+      "events": 80500,
+      "cpu_ns": 150093173,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 3603.016282973621,
+      "events": 41700,
+      "cpu_ns": 150245779,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 3559.379739336493,
+      "events": 42200,
+      "cpu_ns": 150205825,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 1907.0631766200763,
+      "events": 78700,
+      "cpu_ns": 150085872,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 1687.9862992125984,
+      "events": 88900,
+      "cpu_ns": 150061982,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 1958.4090078328982,
+      "events": 76600,
+      "cpu_ns": 150014130,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 1947.0804792746114,
+      "events": 77200,
+      "cpu_ns": 150314613,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 3264.7579347826086,
+      "events": 46000,
+      "cpu_ns": 150178865,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 3333.620842572062,
+      "events": 45100,
+      "cpu_ns": 150346300,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 1906.7410673443455,
+      "events": 78700,
+      "cpu_ns": 150060522,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 1739.5247045191193,
+      "events": 86300,
+      "cpu_ns": 150120982,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 6709.565491071428,
+      "events": 22400,
+      "cpu_ns": 150294267,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 3752.793825,
+      "events": 40000,
+      "cpu_ns": 150111753,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 3863.1222879177376,
+      "events": 38900,
+      "cpu_ns": 150275457,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 3994.775319148936,
+      "events": 37600,
+      "cpu_ns": 150203552,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 4609.548680981595,
+      "events": 32600,
+      "cpu_ns": 150271287,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 8402.38561111111,
+      "events": 18000,
+      "cpu_ns": 151242941,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 7178.538373205742,
+      "events": 20900,
+      "cpu_ns": 150031452,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 4734.006940063092,
+      "events": 31700,
+      "cpu_ns": 150068020,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 6390.099063829787,
+      "events": 23500,
+      "cpu_ns": 150167328,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 6238.344481327801,
+      "events": 24100,
+      "cpu_ns": 150344102,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 4039.347258064516,
+      "events": 37200,
+      "cpu_ns": 150263718,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 6857.164885844749,
+      "events": 21900,
+      "cpu_ns": 150171911,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 6625.971189427313,
+      "events": 22700,
+      "cpu_ns": 150409546,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 3736.998184079602,
+      "events": 40200,
+      "cpu_ns": 150227327,
+      "wire_bytes": 69
+    },
+    {
+      "case": "credit",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 3847.6207692307694,
+      "events": 39000,
+      "cpu_ns": 150057210,
+      "wire_bytes": 69
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 15868.807578947368,
+      "events": 9500,
+      "cpu_ns": 150753672,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 2415.843526570048,
+      "events": 62100,
+      "cpu_ns": 150023883,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 4882.481428571428,
+      "events": 30800,
+      "cpu_ns": 150380428,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 4815.364423076923,
+      "events": 31200,
+      "cpu_ns": 150239370,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 2308.2406923076924,
+      "events": 65000,
+      "cpu_ns": 150035645,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 16296.107634408601,
+      "events": 9300,
+      "cpu_ns": 151553801,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 16366.25152173913,
+      "events": 9200,
+      "cpu_ns": 150569514,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 2315.393590138675,
+      "events": 64900,
+      "cpu_ns": 150269044,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 4753.457626582279,
+      "events": 31600,
+      "cpu_ns": 150209261,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 4965.474884488449,
+      "events": 30300,
+      "cpu_ns": 150453889,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 2334.5369720496897,
+      "events": 64400,
+      "cpu_ns": 150344181,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 16551.677692307694,
+      "events": 9100,
+      "cpu_ns": 150620267,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 17206.431704545455,
+      "events": 8800,
+      "cpu_ns": 151416599,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 2341.9525585023403,
+      "events": 64100,
+      "cpu_ns": 150119159,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 4890.323094462541,
+      "events": 30700,
+      "cpu_ns": 150132919,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 26219.52448275862,
+      "events": 5800,
+      "cpu_ns": 152073242,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 16993.69247191011,
+      "events": 8900,
+      "cpu_ns": 151243863,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 16162.175698924731,
+      "events": 9300,
+      "cpu_ns": 150308234,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 16310.62505376344,
+      "events": 9300,
+      "cpu_ns": 151688813,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 17718.292235294117,
+      "events": 8500,
+      "cpu_ns": 150605484,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 26641.365614035087,
+      "events": 5700,
+      "cpu_ns": 151855784,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 25982.116101694915,
+      "events": 5900,
+      "cpu_ns": 153294485,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 18372.53451219512,
+      "events": 8200,
+      "cpu_ns": 150654783,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 17354.98436781609,
+      "events": 8700,
+      "cpu_ns": 150988364,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 17130.808863636365,
+      "events": 8800,
+      "cpu_ns": 150751118,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 17692.606,
+      "events": 8500,
+      "cpu_ns": 150387151,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 26491.41859649123,
+      "events": 5700,
+      "cpu_ns": 151001086,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 25863.431034482757,
+      "events": 5800,
+      "cpu_ns": 150007900,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 18474.966463414636,
+      "events": 8200,
+      "cpu_ns": 151494725,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 17959.404166666667,
+      "events": 8400,
+      "cpu_ns": 150858995,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 45942.79575757576,
+      "events": 3300,
+      "cpu_ns": 151611226,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 21853.126376811593,
+      "events": 6900,
+      "cpu_ns": 150786572,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 24801.508852459017,
+      "events": 6100,
+      "cpu_ns": 151289204,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 24876.73786885246,
+      "events": 6100,
+      "cpu_ns": 151748101,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 20753.246438356164,
+      "events": 7300,
+      "cpu_ns": 151498699,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 48426.347096774196,
+      "events": 3100,
+      "cpu_ns": 150121676,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 45553.14939393939,
+      "events": 3300,
+      "cpu_ns": 150325393,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 21088.960277777776,
+      "events": 7200,
+      "cpu_ns": 151840514,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 22853.184545454544,
+      "events": 6600,
+      "cpu_ns": 150831018,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 22512.101791044777,
+      "events": 6700,
+      "cpu_ns": 150831082,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 21432.76585714286,
+      "events": 7000,
+      "cpu_ns": 150029361,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 43870.384,
+      "events": 3500,
+      "cpu_ns": 153546344,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 42822.05972222222,
+      "events": 3600,
+      "cpu_ns": 154159415,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 21373.680563380283,
+      "events": 7100,
+      "cpu_ns": 151753132,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-4096",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 22996.868636363637,
+      "events": 6600,
+      "cpu_ns": 151779333,
+      "wire_bytes": 5530
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 61098.6532,
+      "events": 2500,
+      "cpu_ns": 152746633,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 5076.900808080808,
+      "events": 29700,
+      "cpu_ns": 150783954,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 14546.619807692308,
+      "events": 10400,
+      "cpu_ns": 151284846,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 14866.896336633663,
+      "events": 10100,
+      "cpu_ns": 150155653,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 4660.2768322981365,
+      "events": 32200,
+      "cpu_ns": 150060914,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 57374.72148148148,
+      "events": 2700,
+      "cpu_ns": 154911748,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 63351.8875,
+      "events": 2400,
+      "cpu_ns": 152044530,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 4808.147147435898,
+      "events": 31200,
+      "cpu_ns": 150014191,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 15612.149587628866,
+      "events": 9700,
+      "cpu_ns": 151437851,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 14469.855,
+      "events": 10400,
+      "cpu_ns": 150486492,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 5173.600724137931,
+      "events": 29000,
+      "cpu_ns": 150034421,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 61005.4836,
+      "events": 2500,
+      "cpu_ns": 152513709,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 54569.428928571426,
+      "events": 2800,
+      "cpu_ns": 152794401,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 4898.049869706841,
+      "events": 30700,
+      "cpu_ns": 150370131,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 17277.417816091955,
+      "events": 8700,
+      "cpu_ns": 150313535,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 125583.42583333333,
+      "events": 1200,
+      "cpu_ns": 150700111,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 68367.73636363636,
+      "events": 2200,
+      "cpu_ns": 150409020,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 70220.22363636363,
+      "events": 2200,
+      "cpu_ns": 154484492,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 85383.75277777777,
+      "events": 1800,
+      "cpu_ns": 153690755,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 69283.50318181819,
+      "events": 2200,
+      "cpu_ns": 152423707,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 107995.06071428572,
+      "events": 1400,
+      "cpu_ns": 151193085,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 100173.89666666667,
+      "events": 1500,
+      "cpu_ns": 150260845,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 67806.13826086957,
+      "events": 2300,
+      "cpu_ns": 155954118,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 64209.58458333334,
+      "events": 2400,
+      "cpu_ns": 154103003,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 66766.99130434783,
+      "events": 2300,
+      "cpu_ns": 153564080,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 66477.20695652174,
+      "events": 2300,
+      "cpu_ns": 152897576,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 107929.75071428572,
+      "events": 1400,
+      "cpu_ns": 151101651,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 103277.43333333333,
+      "events": 1500,
+      "cpu_ns": 154916150,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 131770.35166666665,
+      "events": 1200,
+      "cpu_ns": 158124422,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 132954.96166666667,
+      "events": 1200,
+      "cpu_ns": 159545954,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 328904.402,
+      "events": 500,
+      "cpu_ns": 164452201,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 81707.8594736842,
+      "events": 1900,
+      "cpu_ns": 155244933,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 86030.85,
+      "events": 1800,
+      "cpu_ns": 154855530,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 84530.00333333333,
+      "events": 1800,
+      "cpu_ns": 152154006,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 73994.39142857143,
+      "events": 2100,
+      "cpu_ns": 155388222,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 152272.216,
+      "events": 1000,
+      "cpu_ns": 152272216,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 172571.18555555557,
+      "events": 900,
+      "cpu_ns": 155314067,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 73713.02,
+      "events": 2100,
+      "cpu_ns": 154797342,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 95542.685,
+      "events": 1600,
+      "cpu_ns": 152868296,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 92565.19647058824,
+      "events": 1700,
+      "cpu_ns": 157360834,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 143715.9309090909,
+      "events": 1100,
+      "cpu_ns": 158087524,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 216577.28,
+      "events": 700,
+      "cpu_ns": 151604096,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 181288.14222222223,
+      "events": 900,
+      "cpu_ns": 163159328,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 75018.0185,
+      "events": 2000,
+      "cpu_ns": 150036037,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-16384",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 188933.2075,
+      "events": 800,
+      "cpu_ns": 151146566,
+      "wire_bytes": 21914
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 1132086.045,
+      "events": 200,
+      "cpu_ns": 226417209,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 18157.680344827586,
+      "events": 11600,
+      "cpu_ns": 210629092,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 33463.682,
+      "events": 4500,
+      "cpu_ns": 150586569,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 29499.762352941176,
+      "events": 5100,
+      "cpu_ns": 150448788,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 9556.927324840764,
+      "events": 15700,
+      "cpu_ns": 150043759,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 125721.7676923077,
+      "events": 1300,
+      "cpu_ns": 163438298,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 124417.70384615385,
+      "events": 1300,
+      "cpu_ns": 161743015,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 7920.206157894737,
+      "events": 19000,
+      "cpu_ns": 150483917,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 28447.51641509434,
+      "events": 5300,
+      "cpu_ns": 150771837,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 30523.2816,
+      "events": 5000,
+      "cpu_ns": 152616408,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 7559.853366834171,
+      "events": 19900,
+      "cpu_ns": 150441082,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 118288.92,
+      "events": 1300,
+      "cpu_ns": 153775596,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 118144.135,
+      "events": 1400,
+      "cpu_ns": 165401789,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 7705.186512820513,
+      "events": 19500,
+      "cpu_ns": 150251137,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 35932.52095238095,
+      "events": 4200,
+      "cpu_ns": 150916588,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 314341.94666666666,
+      "events": 600,
+      "cpu_ns": 188605168,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 150618.115,
+      "events": 1000,
+      "cpu_ns": 150618115,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 148252.99272727274,
+      "events": 1100,
+      "cpu_ns": 163078292,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 150419.16,
+      "events": 1000,
+      "cpu_ns": 150419160,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 148279.8790909091,
+      "events": 1100,
+      "cpu_ns": 163107867,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 201564.03125,
+      "events": 800,
+      "cpu_ns": 161251225,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 197973.25,
+      "events": 800,
+      "cpu_ns": 158378600,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 134334.99166666667,
+      "events": 1200,
+      "cpu_ns": 161201990,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 151667.348,
+      "events": 1000,
+      "cpu_ns": 151667348,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 450309.1625,
+      "events": 400,
+      "cpu_ns": 180123665,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 130934.3475,
+      "events": 1200,
+      "cpu_ns": 157121217,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 210512.6525,
+      "events": 800,
+      "cpu_ns": 168410122,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 236765.33285714284,
+      "events": 700,
+      "cpu_ns": 165735733,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 170927.803,
+      "events": 1000,
+      "cpu_ns": 170927803,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 192744.86375,
+      "events": 800,
+      "cpu_ns": 154195891,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 408579.6075,
+      "events": 400,
+      "cpu_ns": 163431843,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 196213.85777777777,
+      "events": 900,
+      "cpu_ns": 176592472,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 186435.41888888887,
+      "events": 900,
+      "cpu_ns": 167791877,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 158539.088,
+      "events": 1000,
+      "cpu_ns": 158539088,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 145046.1,
+      "events": 1100,
+      "cpu_ns": 159550710,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 319812.532,
+      "events": 500,
+      "cpu_ns": 159906266,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 313155.512,
+      "events": 500,
+      "cpu_ns": 156577756,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 150291.575,
+      "events": 1000,
+      "cpu_ns": 150291575,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 161195.891,
+      "events": 1000,
+      "cpu_ns": 161195891,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 157283.624,
+      "events": 1000,
+      "cpu_ns": 157283624,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 171293.49777777778,
+      "events": 900,
+      "cpu_ns": 154164148,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 401386.615,
+      "events": 400,
+      "cpu_ns": 160554646,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 374388.072,
+      "events": 500,
+      "cpu_ns": 187194036,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 184926.04222222223,
+      "events": 900,
+      "cpu_ns": 166433438,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "data-32768",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 162216.435,
+      "events": 1000,
+      "cpu_ns": 162216435,
+      "wire_bytes": 43758
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 2601.9348873483536,
+      "events": 57700,
+      "cpu_ns": 150131643,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 5437.208188405797,
+      "events": 27600,
+      "cpu_ns": 150066946,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 4175.370694444445,
+      "events": 36000,
+      "cpu_ns": 150313345,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 4896.556188925081,
+      "events": 30700,
+      "cpu_ns": 150324275,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 4634.347407407407,
+      "events": 32400,
+      "cpu_ns": 150152856,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 2889.391846153846,
+      "events": 52000,
+      "cpu_ns": 150248376,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 2615.7323304347824,
+      "events": 57500,
+      "cpu_ns": 150404609,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 4184.416462395543,
+      "events": 35900,
+      "cpu_ns": 150220551,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 3900.1014805194804,
+      "events": 38500,
+      "cpu_ns": 150153907,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 3741.670024937656,
+      "events": 40100,
+      "cpu_ns": 150040968,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 3964.06681462141,
+      "events": 38300,
+      "cpu_ns": 151823759,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 2531.7960202360878,
+      "events": 59300,
+      "cpu_ns": 150135504,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 2452.6060130718956,
+      "events": 61200,
+      "cpu_ns": 150099488,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 4667.656708074534,
+      "events": 32200,
+      "cpu_ns": 150298546,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "encode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 3881.8962015503876,
+      "events": 38700,
+      "cpu_ns": 150229383,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 3580.8913095238095,
+      "events": 42000,
+      "cpu_ns": 150397435,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 1938.2614687100895,
+      "events": 78300,
+      "cpu_ns": 151765873,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 2742.4097257769654,
+      "events": 54700,
+      "cpu_ns": 150009812,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 4017.4498128342248,
+      "events": 37400,
+      "cpu_ns": 150252623,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 2102.6388655462183,
+      "events": 71400,
+      "cpu_ns": 150128415,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 4135.447685950413,
+      "events": 36300,
+      "cpu_ns": 150116751,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 3665.939683698297,
+      "events": 41100,
+      "cpu_ns": 150670121,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 1860.2828128872368,
+      "events": 80700,
+      "cpu_ns": 150124823,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 1779.820225385528,
+      "events": 84300,
+      "cpu_ns": 150038845,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 1872.0479426433915,
+      "events": 80200,
+      "cpu_ns": 150138245,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 1901.7360963244614,
+      "events": 78900,
+      "cpu_ns": 150046978,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 3377.7630337078654,
+      "events": 44500,
+      "cpu_ns": 150310455,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 3382.612117117117,
+      "events": 44400,
+      "cpu_ns": 150187978,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 1734.2321040462427,
+      "events": 86500,
+      "cpu_ns": 150011077,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "decode",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 1742.9162717770034,
+      "events": 86100,
+      "cpu_ns": 150065091,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 0,
+      "ns_per_event": 6977.866926605505,
+      "events": 21800,
+      "cpu_ns": 152117499,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 0,
+      "ns_per_event": 5913.722677165354,
+      "events": 25400,
+      "cpu_ns": 150208556,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 0,
+      "ns_per_event": 5752.173180076628,
+      "events": 26100,
+      "cpu_ns": 150131720,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 1,
+      "ns_per_event": 5977.353107569721,
+      "events": 25100,
+      "cpu_ns": 150031563,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 1,
+      "ns_per_event": 5410.277805755396,
+      "events": 27800,
+      "cpu_ns": 150405723,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 1,
+      "ns_per_event": 6699.341244444445,
+      "events": 22500,
+      "cpu_ns": 150735178,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 2,
+      "ns_per_event": 6573.783318777292,
+      "events": 22900,
+      "cpu_ns": 150539638,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 2,
+      "ns_per_event": 5665.090981132075,
+      "events": 26500,
+      "cpu_ns": 150124911,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 2,
+      "ns_per_event": 6444.7565236051505,
+      "events": 23300,
+      "cpu_ns": 150162827,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 3,
+      "ns_per_event": 13508.573430656934,
+      "events": 13700,
+      "cpu_ns": 185067456,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 3,
+      "ns_per_event": 7323.036243902439,
+      "events": 20500,
+      "cpu_ns": 150122243,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 3,
+      "ns_per_event": 8310.882872928178,
+      "events": 18100,
+      "cpu_ns": 150426980,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "stdlib",
+      "repeat": 4,
+      "ns_per_event": 6571.2897379912665,
+      "events": 22900,
+      "cpu_ns": 150482535,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "orjson",
+      "repeat": 4,
+      "ns_per_event": 6789.641900452489,
+      "events": 22100,
+      "cpu_ns": 150051086,
+      "wire_bytes": 70
+    },
+    {
+      "case": "unicode",
+      "operation": "roundtrip",
+      "codec": "msgspec",
+      "repeat": 4,
+      "ns_per_event": 5995.205873015873,
+      "events": 25200,
+      "cpu_ns": 151079188,
+      "wire_bytes": 70
+    }
+  ],
+  "encoder_output_check": "isascii+DEL; serializers escape C0 controls"
+}

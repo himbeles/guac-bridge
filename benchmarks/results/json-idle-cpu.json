@@ -1,0 +1,40 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "orjson": "3.13.0",
+  "msgspec": "0.22.0",
+  "encoder_output_check": "isascii+DEL; serializers escape C0 controls",
+  "seconds": 4.0,
+  "repeats": 1,
+  "mib": 4,
+  "conformance": 54,
+  "rows": [
+    {
+      "idle": true,
+      "client_cpu_s": 0.000691482,
+      "wall_s": 4.005020646,
+      "helper_cpu_s": null,
+      "codec": "stdlib",
+      "workload": "ssh-idle",
+      "repeat": 0
+    },
+    {
+      "idle": true,
+      "client_cpu_s": 0.000666972,
+      "wall_s": 4.004993158,
+      "helper_cpu_s": null,
+      "codec": "orjson",
+      "workload": "ssh-idle",
+      "repeat": 0
+    },
+    {
+      "idle": true,
+      "client_cpu_s": 0.000796797,
+      "wall_s": 4.005193993,
+      "helper_cpu_s": null,
+      "codec": "msgspec",
+      "workload": "ssh-idle",
+      "repeat": 0
+    }
+  ]
+}

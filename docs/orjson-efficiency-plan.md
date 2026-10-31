@@ -1,5 +1,8 @@
 # Plan: measure orjson CPU and energy efficiency
 
+See [the completed JSON codec screening](json-codec-results.md) for measurements
+with orjson and msgspec, including isolated client CPU counters.
+
 This is a measurement plan, not an implemented dependency change or evidence of
 power savings. Keep the protocol, window sizes and SSH frame sizes identical.
 

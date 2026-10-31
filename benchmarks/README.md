@@ -3,8 +3,8 @@
 See [the findings and limitations](../docs/performance-investigation.md) and
 [the current flow-control benchmark](../docs/benchmarking.md#measure-flow-control-with-simulated-rtt).
 The production clients use the bounded pipeline by default. The benchmark also
-retains the legacy per-event drain policy for comparison. No extra dependencies
-are required. See [Benchmarking](../docs/benchmarking.md) for deployment tests.
+retains the legacy per-event drain policy for comparison. The transport harness
+needs no extra dependencies. See [Benchmarking](../docs/benchmarking.md) for deployment tests.
 
 From a checkout on Linux with Bash and PTY support:
 
@@ -70,3 +70,9 @@ Measure production flow control with delay in both directions:
 ```shell
 uv run python -m benchmarks.flow --output benchmarks/results/flow.json
 ```
+
+## JSON codec experiment
+
+See [the orjson/msgspec CPU comparison](../docs/json-codec-results.md) for results,
+optional dependencies and commands. These adapters only run in benchmarks;
+the installed bridge continues to use the standard library.
