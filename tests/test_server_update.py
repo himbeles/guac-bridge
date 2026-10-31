@@ -182,6 +182,43 @@ if os.name == 'posix':
             self.assertTrue(bridge.ready.is_set())
             self.assertTrue(record.exists())
 
+        async def test_managed_child_waits_for_caller_approval_then_updates_and_connects(self):
+            import asyncio
+            from guac_bridge import background, startup_prompt
+            home, record, env = fake_installation(self.temp.name, self.helper)
+            executable = home / '.local/bin/guac-ssh-server'
+            source = executable.read_text().replace('helper 0.0.0', 'helper 0.5.0')
+            source = source.replace('from guac_bridge.ssh_server import cli',
+                'if sys.argv[1:] == ["--help"] and not pathlib.Path(' + repr(str(home / 'updated')) + ').exists():\n'
+                ' print("old helper usage"); raise SystemExit(0)\nfrom guac_bridge.ssh_server import cli')
+            executable.write_text(source)
+            target = await self.target(self.echo)
+            instance = 'b' * 32
+            args = SimpleNamespace(port=2223)
+            with patch.dict(os.environ, env), \
+                 patch.object(background, 'default_log', return_value=Path(self.temp.name) / 'bridge.log'), \
+                 patch('guac_bridge.hook_auth.confirm_hook_update', return_value=True):
+                task = asyncio.create_task(self.connect(target, managed_id=instance, port=2223,
+                                          server_command='~/.local/bin/guac-ssh-server'))
+                request, response = startup_prompt.paths(2223, instance)
+                try:
+                    async with asyncio.timeout(5):
+                        while not request.exists():
+                            if task.done():
+                                await task
+                            await asyncio.sleep(.01)
+                    self.assertFalse(record.exists())
+                    self.assertTrue(startup_prompt.service_request(args, instance))
+                    bridge, local, _ = await task
+                    await self.transfer(local, b'caller approved update')
+                    self.assertTrue(record.exists())
+                    self.assertTrue(bridge.ready.is_set())
+                    self.assertFalse(response.exists())
+                finally:
+                    if not task.done():
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+
         async def test_matching_version_skips_installation(self):
             _, record, env = fake_installation(self.temp.name, self.helper, matching=True)
             target = await self.target(self.echo)

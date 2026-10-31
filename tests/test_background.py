@@ -144,6 +144,25 @@ asyncio.run(main())
                 background.ensure_running(self.args)
         spawn.assert_not_called()
 
+    def test_child_error_is_printed_once_by_caller(self):
+        body = """
+import json, sys
+from pathlib import Path
+from guac_bridge.background import startup_error_path
+ident = sys.argv[sys.argv.index('--managed-id') + 1]
+message = 'Server helper is outdated'
+print('[error] ' + message, flush=True)
+print('[error] ' + message, flush=True)
+startup_error_path(PORT, ident).write_text(json.dumps(dict(error=message)))
+raise SystemExit(1)
+""".replace('PORT', str(self.args.port))
+        with self.fake_child(body), patch.object(background.subprocess, 'Popen', side_effect=self.spawn), \
+             patch.object(ssh_client, 'setup_console'), self.assertLogs('guac-ssh', level='ERROR') as logs:
+            result = ssh_client.cli(['--ensure-running', '--url', self.args.url, '--username', 'alice',
+                '--port', str(self.args.port), '--background-log', self.args.background_log])
+        self.assertEqual(result, 1)
+        self.assertEqual(sum('Server helper is outdated' in value for value in logs.output), 1)
+
     def test_existing_listener_returns_without_spawning(self):
         with socket.socket() as server:
             server.bind(('127.0.0.1', self.args.port))

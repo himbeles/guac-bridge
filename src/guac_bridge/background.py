@@ -186,7 +186,7 @@ def ensure_running(args):
         _start_and_wait(args, deadline)
 
 
-def relay_startup_output(path, offset, pending):
+def relay_startup_output(path, offset, pending, errors=None):
     try:
         with path.open('rb') as output:
             output.seek(offset)
@@ -198,7 +198,11 @@ def relay_startup_output(path, offset, pending):
     for line in lines[:-1]:
         message = line.decode('utf-8', errors='replace').strip()
         if message:
-            report = LOG.error if message.startswith('[error]') else LOG.warning if message.startswith('[warning]') else LOG.info
+            if message.startswith('[error]'):
+                if errors is not None:
+                    errors[:] = [message[len('[error]'):].strip()]
+                continue
+            report = LOG.warning if message.startswith('[warning]') else LOG.info
             report('%s', message)
     return offset, lines[-1][-8192:]
 
@@ -245,18 +249,29 @@ def _start_and_wait(args, deadline):
         destination = str(log_path)
     offset = 0 if visible else log_start
     pending = b''
+    errors = []
+    from .startup_prompt import cleanup, service_request
     ready = False
     LOG.info('Starting bridge on 127.0.0.1:%s; output: %s', args.port, destination)
     try:
         while time.monotonic() < deadline:
             if not visible:
-                offset, pending = relay_startup_output(log_path, offset, pending)
+                offset, pending = relay_startup_output(log_path, offset, pending, errors)
+            before_prompt = time.monotonic()
+            approved = service_request(args, instance)
+            if approved is not None:
+                deadline += time.monotonic() - before_prompt
+                if approved:
+                    from .update import UPDATE_TIMEOUT
+                    deadline = max(deadline, time.monotonic() + UPDATE_TIMEOUT + getattr(args, 'connect_timeout', 30) + 10)
             code = process.poll()
             if code is not None:
                 with contextlib.suppress(OSError, ValueError, TypeError, KeyError):
                     error = json.loads(error_path.read_text())['error']
                     if isinstance(error, str):
                         raise BridgeError(error)
+                if errors:
+                    raise BridgeError(errors[-1])
                 raise BridgeError(f'Background bridge exited with status {code}; see {destination}')
             state = read_state(state_path(args.port))
             if state and state['instance'] == instance:
@@ -267,10 +282,11 @@ def _start_and_wait(args, deadline):
                          args.port, state['pid'], destination)
                 return
             time.sleep(.1)
-        raise BridgeError(f'Bridge did not become ready within {args.ready_timeout:g}s; see {destination}')
+        raise BridgeError(f'Bridge did not become ready within the startup deadline; see {destination}')
     finally:
         if not ready:
             with contextlib.suppress(OSError):
                 stop_child(process)
         with contextlib.suppress(OSError):
             error_path.unlink(missing_ok=True)
+        cleanup(args.port, instance)

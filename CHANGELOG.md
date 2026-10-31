@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.3
+
+- Relay server update approval from SSH hooks to the calling console.
+- Print startup failures once while keeping full details in the log.
+
 ## 0.8.2
 
 - Allow `--ensure-running --save-password` in SSH config hooks, prompting in the calling console on first login.

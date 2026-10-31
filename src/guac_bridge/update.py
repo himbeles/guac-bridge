@@ -40,7 +40,7 @@ def add_update_argument(parser):
         help=f'Before connecting, check and, if needed, attempt uv tool install --force guac-bridge=={__version__} '
              'on the server using its configured package index and an explicit --python selection. Requires server-side uv and index access; '
              'otherwise update manually. Supports the default helper path; foreground connections only. '
-             'Without this flag, interactive foreground connections offer an update on mismatch [Y/n].')
+             'Without this flag, foreground connections and SSH hooks with a console offer an update on mismatch [Y/n].')
 
 
 def validate_update(args, helper):
@@ -59,9 +59,12 @@ def validate_update(args, helper):
 async def offer_update(bridge, probe):
     args = bridge.args
     if (probe.result not in ('mismatched', 'unsupported-options')
-            or any(getattr(args, name, False) for name in ('managed_id', 'ensure_running'))
-            or sys.stdin is None or not sys.stdin.isatty()
             or args.server_command != '~/.local/bin/' + bridge.helper_name):
+        return False
+    if getattr(args, 'managed_id', None):
+        from .startup_prompt import request_update
+        return await request_update(bridge, probe)
+    if (getattr(args, 'ensure_running', False) or sys.stdin is None or not sys.stdin.isatty()):
         return False
     LOG.warning('Server helper version: %s; client version: %s.', probe.remote_version, __version__)
     LOG.warning(NOTICE.format(version=__version__))

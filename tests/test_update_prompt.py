@@ -37,7 +37,7 @@ class UpdatePromptTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(await offer_update(FakeBridge(), SimpleNamespace(result='mismatched', remote_version='0.5.0')))
 
     async def test_background_custom_path_and_noninteractive_never_prompt(self):
-        for values, tty in [(dict(managed_id='child'), True), (dict(ensure_running=True), True),
+        for values, tty in [(dict(ensure_running=True), True),
                             (dict(server_command='/custom/helper'), True), ({}, False)]:
             bridge = FakeBridge()
             for key, value in values.items():
@@ -45,6 +45,17 @@ class UpdatePromptTests(unittest.IsolatedAsyncioTestCase):
             with patch('sys.stdin.isatty', return_value=tty), patch('builtins.input') as question:
                 self.assertFalse(await offer_update(bridge, SimpleNamespace(result='unsupported-options', remote_version='0.5.0')))
                 question.assert_not_called()
+
+    async def test_managed_child_asks_caller_instead_of_reading_its_stdin(self):
+        from unittest.mock import AsyncMock
+        bridge = FakeBridge()
+        bridge.args.managed_id = 'a' * 32
+        probe = SimpleNamespace(result='unsupported-options', remote_version='0.5.0')
+        with patch('guac_bridge.startup_prompt.request_update', AsyncMock(return_value=True)) as ask, \
+             patch('builtins.input') as child_input:
+            self.assertTrue(await offer_update(bridge, probe))
+        ask.assert_awaited_once_with(bridge, probe)
+        child_input.assert_not_called()
 
     async def test_declining_does_not_relax_protocol_or_strict_checks(self):
         for result, strict, rejected in [('unsupported-options', False, True),

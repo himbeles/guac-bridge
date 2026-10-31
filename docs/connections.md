@@ -208,8 +208,8 @@ Interactive foreground connections offer `Update server now? [Y/n]` when the
 helper version differs. Enter accepts; `n` declines. The prompt explains that
 installation uses server-side uv, the configured package index and an explicit
 Python selection. Declining continues only if the helper supports the required
-protocol/options and strict version matching was not requested. SSH hooks and
-managed/noninteractive connections never prompt; they report update instructions.
+protocol/options and strict version matching was not requested. SSH hooks relay this question to the calling console. Without an available
+console, no approval is inferred; the client reports update instructions.
 `--update-server` remains the explicit option for attempting the update directly.
 
 With `--ensure-running --save-password`, a new background startup first checks
@@ -220,3 +220,10 @@ the child authenticates from the system credential store. Passwords are not
 passed in child arguments or written to the bridge log. If the store or an
 interactive terminal is unavailable, the command gives manual instructions.
 An already running listener is reused without another login.
+
+The managed child waits for the caller’s update decision before installation.
+The normal startup deadline pauses while the user answers and allows time for
+an approved update. Declining never bypasses protocol checks. Startup errors are
+reported once by the caller; the full child log remains available. A subsequent
+OpenSSH `connection refused` message is a separate result of no bridge listener
+being available after startup fails.
