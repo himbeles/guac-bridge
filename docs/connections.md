@@ -178,3 +178,17 @@ guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME --window 16 
 
 The fast defaults remain recommended unless measurements suggest otherwise.
 Stop and restart an existing managed bridge to apply different settings.
+
+## Optional server update
+
+Use either client with `--update-server` on a foreground connection to check the
+helper version before starting it. If needed, this attempts
+`uv tool install --force guac-bridge==CLIENT_VERSION` on the server, using its
+configured package index, proxy and certificate settings. It does not change
+index configuration. If uv or index access is unavailable, update manually.
+
+The version is verified after installation; failures stop the connection and
+print a manual update command. Custom helper paths require manual installation.
+Stop an existing managed SSH bridge before using this option. An installation
+attempt is limited to 180 seconds. The bootstrap uses the terminal directly,
+without relying on the installed helper's protocol.

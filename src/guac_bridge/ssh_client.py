@@ -16,6 +16,7 @@ import aiohttp
 
 from . import __version__
 from .flow import add_flow_arguments
+from .update import add_update_argument, validate_update
 from .client import Bridge, BridgeError, parse_url
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
@@ -248,6 +249,7 @@ def cli(argv=None):
     parser.add_argument('--username', help='Guacamole username; otherwise prompted')
     add_credential_arguments(parser)
     add_flow_arguments(parser, ssh=True)
+    add_update_argument(parser)
     versions = parser.add_mutually_exclusive_group()
     versions.add_argument('--require-server-version', action='store_true',
                           help='Require matching client/server package versions instead of warning')
@@ -291,6 +293,7 @@ def cli(argv=None):
         parser.error('Use credential management options in an interactive foreground invocation')
     setup_console('SSH')
     try:
+        validate_update(args, 'guac-ssh-server')
         if args.stop:
             stop_managed(args.port, args.ready_timeout)
         elif args.ensure_running:

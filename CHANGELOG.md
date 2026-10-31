@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.0
+
+- Add opt-in server updates before connecting, using uv tool and the server’s configured package index.
+- Verify the helper version after installation and provide manual update instructions on failure.
+
 ## 0.7.0
 
 - Add optional window and SSH frame-size tuning, retaining the fast 32-credit/16 KiB defaults.

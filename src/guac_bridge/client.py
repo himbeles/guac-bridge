@@ -24,6 +24,7 @@ from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
 from .errors import BridgeError
 from .flow import WINDOW, CHUNK, PROTOCOL_VERSION, add_flow_arguments, settings
+from .update import ServerUpdate, add_update_argument, validate_update
 
 LOG = logging.getLogger('guac-llm')
 PATHS = {'/v1/models': 'GET', '/v1/chat/completions': 'POST', '/v1/completions': 'POST'}
@@ -191,6 +192,7 @@ class Bridge:
         self.base, self.conn, self.kind, self.data_source = base, conn, kind, data_source
         self.token = token
         self.tunnel = None
+        self.updater = None
         self.reader = None
         self.maintainer = None
         self.synced = asyncio.Event()
@@ -215,6 +217,7 @@ class Bridge:
         self.tcp_chunk = self.flow.get('frame_size', CHUNK)
 
     async def start(self):
+        validate_update(self.args, self.helper_name)
         params = [('token', self.token), ('GUAC_DATA_SOURCE', self.data_source),
                   ('GUAC_ID', self.conn), ('GUAC_TYPE', self.kind),
                   ('GUAC_WIDTH', '1024'), ('GUAC_HEIGHT', '768'), ('GUAC_DPI', '96'),
@@ -228,13 +231,20 @@ class Bridge:
         ack = self.new_ack()
         await self.tunnel.send('pipe', self.input_stream, 'text/plain', 'STDIN')
         await self.wait_for(ack, self.args.connect_timeout)
+        if getattr(self.args, 'update_server', False):
+            self.updater = ServerUpdate(self)
+            try:
+                await self.updater.run()
+            finally:
+                self.updater = None
         await self.send_input(self.helper_command())
         try:
             await self.wait_for(self.ready.wait(), self.args.connect_timeout)
         except asyncio.TimeoutError as exc:
             raise BridgeError('Remote helper did not become ready. Check ' + self.helper_name +
                               ' installation/PATH, shell readiness, and Guacamole STDIN/output pipes; '
-                              'try --startup-delay 5.') from exc
+                              'try --startup-delay 5. If the helper needs updating, use --update-server to attempt '
+                              'uv tool installation using the server package index, or update manually.') from exc
         self.maintainer = asyncio.create_task(self.maintain())
         LOG.info('Server helper ready')
 
@@ -366,6 +376,11 @@ class Bridge:
                                 self.dispatch(event)
                         await self.tunnel.send('ack', values[0], 'OK', 0)
                     elif opcode == 'end' and int(values[0]) == self.output_stream:
+                        if self.updater and self.updater.active:
+                            self.output_stream = None
+                            self.output_buffer = b''
+                            self.updater.ended()
+                            continue
                         if not self.closing:
                             raise BridgeError('Remote helper output pipe closed')
                         # The helper may close its output before the gateway's
@@ -387,11 +402,14 @@ class Bridge:
             self.finish_input_acks('Guacamole tunnel closed before acknowledging terminal input')
 
     def dispatch(self, event):
+        if self.updater and self.updater.dispatch(event):
+            return
         self.last_seen = time.monotonic()
         if event['type'] == 'ready':
             if event.get('version') != PROTOCOL_VERSION:
                 raise BridgeError('Unsupported remote helper protocol. Update the server with: '
-                                  f'uv tool install --force guac-bridge=={__version__}. Then reconnect.')
+                                  f'uv tool install --force guac-bridge=={__version__}. Then reconnect. '
+                                  'Or use --update-server to attempt uv tool installation using the server package index.')
             if event.get('flow') != self.flow:
                 raise BridgeError('Server helper did not confirm the requested transport sizes. '
                                   f'Update it with: uv tool install --force guac-bridge=={__version__}.')
@@ -412,7 +430,8 @@ class Bridge:
                 self.version_warning = (
                     f'Server version mismatch: {self.helper_name} reports {label}; client is {__version__}. '
                     'Continuing with the supported protocol. To align versions on the server: '
-                    f'uv tool install --force guac-bridge=={__version__}.')
+                    f'uv tool install --force guac-bridge=={__version__}. '
+                    'Alternatively use --update-server to attempt installation using the server package index.')
                 LOG.warning('%s', self.version_warning)
             LOG.info('Flow control: %s data credits, %s input ACKs', self.data_window, self.input_window)
             if self.helper_name == 'guac-ssh-server':
@@ -562,6 +581,7 @@ class Bridge:
 
 
 async def serve(args):
+    validate_update(args, 'guac-llm-server')
     username = resolve_username(args)
     if getattr(args, 'forget_password', False):
         forget_credentials(args.url, username)
@@ -616,6 +636,7 @@ def cli():
     parser.add_argument('--username', help='Guacamole login username; otherwise prompted')
     add_credential_arguments(parser)
     add_flow_arguments(parser)
+    add_update_argument(parser)
     versions = parser.add_mutually_exclusive_group()
     versions.add_argument('--require-server-version', action='store_true',
                           help='Require matching client/server package versions instead of warning')

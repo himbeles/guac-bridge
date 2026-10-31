@@ -70,7 +70,7 @@ Keep the bridge running while using the application. Stop it with **Ctrl+C**.
 
 ## Other options
 
-Run either client with `--help` for credential storage, certificates, custom ports and transport tuning.
+Run either client with `--help` for credential storage, certificates, custom ports, transport tuning and opt-in server updates.
 
 ## Contribution
 

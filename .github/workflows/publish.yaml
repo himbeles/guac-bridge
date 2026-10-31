@@ -78,6 +78,9 @@ jobs:
       - name: Test Windows flow limits
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_flow.py -v
+      - name: Test Windows update command validation
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_server_update.py -v
       - name: Test Windows listener errors
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_listeners.py -v
