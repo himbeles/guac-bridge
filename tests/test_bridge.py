@@ -50,7 +50,10 @@ class Terminal:
     def read(self):
         try:
             data = os.read(self.fd, 65536)
-        except (OSError, BlockingIOError):
+        except BlockingIOError:
+            return
+        except OSError:
+            self.loop.remove_reader(self.fd)
             return
         self.raw += data
         if not self.open:
@@ -268,6 +271,24 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(marker.exists())
         self.assertFalse(self.bridges[-1].ready.is_set())
 
+    async def test_malformed_json_ends_helper_cleanly(self):
+        bridge, _, _ = await self.connect()
+        await bridge.send_input(b'{"type":"request","id":"bad","path":"\x1b"}\n')
+        await asyncio.wait_for(bridge.failed.wait(), 3)
+        self.assertFalse(bridge.requests)
+
+    async def test_helper_exit_ends_terminal_instead_of_resuming_a_shell(self):
+        import signal
+        pid_file = Path(self.temp.name) / 'helper.pid'
+        command = ('import os;from pathlib import Path;Path(' + repr(str(pid_file)) + ').write_text(str(os.getpid()));'
+                   'from guac_bridge.server import cli;raise SystemExit(cli())')
+        self.helper.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' -c ' + shlex.quote(command) + ' "$@"\n')
+        _, _, gateway = await self.connect()
+        helper_pid = int(pid_file.read_text())
+        os.kill(helper_pid, signal.SIGTERM)
+        # A surviving interactive shell here could interpret late JSON input.
+        await asyncio.wait_for(gateway.terminals[0].proc.wait(), 3)
+
     async def test_websocket_models_and_unicode_large_request(self):
         bridge, local, _ = await self.connect()
         self.assertEqual((bridge.input_window, bridge.data_window), (32, 32))
@@ -354,7 +375,7 @@ class ProtocolTests(unittest.TestCase):
                          'https://example.org/guacamole/')
         args = SimpleNamespace(server_command='~/.local/bin/guac-llm-server',
                                upstream='http://127.0.0.1:8000', request_timeout=30, max_requests=4)
-        self.assertTrue(bootstrap(args).startswith(b'"$HOME"/'))
+        self.assertTrue(bootstrap(args).startswith(b'exec "$HOME"/'))
         with self.assertRaises(BridgeError):
             parse_url('https://example.org/')
 

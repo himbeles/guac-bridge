@@ -3,13 +3,13 @@ import argparse
 import asyncio
 import base64
 import contextlib
-import json
 import os
 import signal
 import sys
 import threading
 
 from . import __version__
+from .framing import encode_event, decode_event
 from .flow import PROTOCOL_VERSION, add_flow_arguments, settings
 
 
@@ -20,8 +20,7 @@ async def relay(args):
     stopping = threading.Event()
 
     def emit(event):
-        data = base64.b64encode(json.dumps(event, separators=(',', ':')).encode())
-        sys.stdout.buffer.write(data + b'\n')
+        sys.stdout.buffer.write(encode_event(event))
         sys.stdout.buffer.flush()
 
     def stdin_reader():
@@ -33,7 +32,7 @@ async def relay(args):
                 else:
                     if not line.endswith(b'\n'):
                         raise ValueError('Frame too large')
-                    event = json.loads(base64.b64decode(line.strip(), validate=True))
+                    event = decode_event(line[:-1])
                 future = asyncio.run_coroutine_threadsafe(events.put(event), loop)
                 future.result()
                 if event.get('type') == 'shutdown':

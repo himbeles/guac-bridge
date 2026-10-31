@@ -1,7 +1,6 @@
 """Server-side stdin/stdout relay, launched inside a Guacamole SSH terminal."""
 import base64
 import http.client
-import json
 import os
 import socket
 import sys
@@ -9,6 +8,7 @@ import threading
 import urllib.parse
 
 from . import __version__
+from .framing import encode_event, decode_event
 from .flow import WINDOW, PROTOCOL_VERSION, add_flow_arguments
 
 def run(config):
@@ -34,7 +34,7 @@ def run(config):
     def emit(event):
         with lock:
             if not stop.is_set():
-                sys.stdout.buffer.write(base64.b64encode(json.dumps(event, separators=(',', ':')).encode()) + b'\n')
+                sys.stdout.buffer.write(encode_event(event))
                 sys.stdout.buffer.flush()
 
     def worker(req, state):
@@ -113,7 +113,9 @@ def run(config):
             line = sys.stdin.buffer.readline(48 * 1024 * 1024)
             if not line:
                 break
-            req = json.loads(base64.b64decode(line.strip(), validate=True))
+            if not line.endswith(b'\n'):
+                raise ValueError('Incomplete or oversized request frame')
+            req = decode_event(line[:-1])
             kind = req.get('type')
             if kind == 'shutdown':
                 break
@@ -168,7 +170,7 @@ def cli():
     try:
         run({'upstream': args.upstream, 'timeout': args.request_timeout,
              'max_requests': args.max_requests, 'window': args.window})
-    except (KeyboardInterrupt, BrokenPipeError, OSError):
+    except (KeyboardInterrupt, BrokenPipeError, OSError, ValueError, TypeError):
         return 1
     return 0
 

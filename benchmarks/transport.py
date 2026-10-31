@@ -27,6 +27,7 @@ import urllib.parse
 import aiohttp
 from aiohttp import web
 
+from guac_bridge.framing import encode_event, decode_event
 from guac_bridge.client import Bridge, Parser, instruction, login
 from guac_bridge.ssh_client import SSHBridge
 from .latency import LatencyProxy
@@ -358,16 +359,15 @@ def codec_controls(payload):
     raw, ident = payload[:4096], 'a' * 32
     event = dict(type='data', id=ident, body=base64.b64encode(raw).decode())
     encoded = json.dumps(event, separators=(',', ':')).encode()
-    terminal = base64.b64encode(encoded) + b'\n'
+    terminal = encode_event(event)
     guac = ''.join(instruction('blob', '0', base64.b64encode(terminal[i:i + 3072]).decode())
                    for i in range(0, len(terminal), 3072))
     def roundtrip():
-        inner = base64.b64encode(json.dumps(dict(type='data', id=ident,
-                    body=base64.b64encode(raw).decode()), separators=(',', ':')).encode()) + b'\n'
+        inner = encode_event(dict(type='data', id=ident, body=base64.b64encode(raw).decode()))
         wire = ''.join(instruction('blob', '0', base64.b64encode(inner[i:i + 3072]).decode())
                        for i in range(0, len(inner), 3072))
         received = b''.join(base64.b64decode(args[2], validate=True) for args in Parser().feed(wire))
-        decoded = json.loads(base64.b64decode(received.strip(), validate=True))
+        decoded = decode_event(received[:-1])
         assert base64.b64decode(decoded['body'], validate=True) == raw
     operations = dict(base64=lambda: base64.b64decode(base64.b64encode(raw), validate=True),
                       json=lambda: json.loads(json.dumps(event, separators=(',', ':'))),

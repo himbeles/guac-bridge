@@ -1,7 +1,7 @@
 """Shared defaults and bounded transport tuning."""
 import argparse
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 WINDOW = 32
 CHUNK = 16384
 

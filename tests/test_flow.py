@@ -25,7 +25,7 @@ class FlowTests(unittest.TestCase):
 
     def test_old_protocol_or_unconfirmed_settings_are_rejected(self):
         for cls in (Bridge, SSHBridge):
-            for version, flow in [(None, {}), (1, {}), (2, {}), (99, {}),
+            for version, flow in [(None, {}), (1, {}), (2, {}), (3, {}), (99, {}),
                                   (PROTOCOL_VERSION, {}), (PROTOCOL_VERSION, {'window': 8})]:
                 bridge = cls(SimpleNamespace(), None, '', '1', 'c', 'mysql', 'token')
                 with self.assertRaisesRegex(BridgeError, 'uv tool install --force guac-bridge=='):

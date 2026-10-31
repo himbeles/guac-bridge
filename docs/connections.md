@@ -16,11 +16,14 @@ server where the helper and destination service are available.
    through Guacamole and the helper.
 
 The Guacamole transport normally uses WebSocket, with an HTTP tunnel fallback.
-Messages sent through the terminal are framed and Base64-encoded so they can
-carry arbitrary data. Base64 is a transport encoding; encryption comes from the
+Protocol v4 sends compact ASCII JSON objects, one per terminal line. Binary
+payload fields remain Base64-encoded, as do Guacamole blobs; the redundant
+whole-message Base64 layer is removed. JSON escapes Unicode and control
+characters so terminal input/output cannot contain raw escape sequences from
+message strings. Base64 is a transport encoding; encryption comes from the
 underlying HTTPS/WSS and SSH connections when those transports are used.
 
-Both clients pipeline at most eight input blobs across events, preserving frame
+Both clients use bounded input-ACK and data-credit windows, preserving frame
 boundaries and backpressure. Missing or rejected input acknowledgements fail the
 connection instead of allowing unbounded buffering. See
 [Benchmarking](benchmarking.md) for measurement instructions.
@@ -227,3 +230,16 @@ an approved update. Declining never bypasses protocol checks. Startup errors are
 reported once by the caller; the full child log remains available. A subsequent
 OpenSSH `connection refused` message is a separate result of no bridge listener
 being available after startup fails.
+
+## Protocol v4 framing
+
+Client and helpers use the same strict ASCII JSON-line codec. Non-ASCII bytes,
+raw control characters, malformed JSON and non-object records are rejected.
+Helpers reject incomplete/oversized input lines. Binary bodies are still Base64.
+
+The helper replaces the login shell with `exec`, so an unexpected helper exit
+ends that terminal rather than returning late JSON input to an interactive shell.
+Version checks and opt-in updates run first, through a separate Base64 bootstrap
+format that does not depend on the installed helper's data protocol. Both ends
+need protocol v4 for data forwarding; older framing is rejected with update
+instructions. No fallback to the old data format is provided.

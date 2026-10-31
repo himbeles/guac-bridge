@@ -2,7 +2,7 @@ name: Bootstrap preflight checks
 
 on:
   push:
-    branches: [fix/bootstrap-preflight, feature/hook-save-password, fix/hook-update-approval]
+    branches: [fix/bootstrap-preflight, feature/hook-save-password, fix/hook-update-approval, feature/ascii-json-framing]
   workflow_dispatch:
 
 permissions:
@@ -84,6 +84,9 @@ jobs:
       - name: Test Windows startup update approval
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_startup_prompt.py -v
+      - name: Test Windows ASCII JSON framing
+        run: |
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_framing.py -v
       - name: Test Windows hook console output
         run: |
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_console.py -v

@@ -124,3 +124,14 @@ The [v0.6.0 results](../benchmarks/results/release-0.6.0-flow.json) are historic
 comparisons against smaller limits. The current benchmark has no compatibility
 profile. See [the original investigation](https://github.com/himbeles/guac-bridge/blob/investigate/transport-windows/docs/performance-next.md)
 for the screening measurements and tradeoffs.
+
+## Protocol encoding comparison
+
+See [the protocol v4 comparison](protocol-v4-results.md) for paired results.
+The v4 codec removes whole-event Base64. Payload Base64 and Guacamole blob
+Base64 remain. Compare the same transfer sizes, windows and frame sizes; wire
+counters exclude TLS/TCP/SSH overhead. Startup bootstrap traffic is outside the
+measurement. Historical checked-in results retain their original wire formats.
+
+See [the orjson efficiency measurement plan](orjson-efficiency-plan.md) for a
+separate CPU/energy experiment. No alternative JSON library is used by v0.9.0.

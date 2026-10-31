@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0
+
+- Reduce bridge traffic and encoding work by sending ASCII JSON lines directly through terminal pipes.
+- Use protocol v4 with strict framing checks; retain independent bootstrap updates for older helpers.
+
 ## 0.8.3
 
 - Relay server update approval from SSH hooks to the calling console.

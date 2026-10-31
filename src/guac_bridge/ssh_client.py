@@ -64,7 +64,7 @@ class SSHBridge(Bridge):
         values = ('--stdio', '--target-host', self.args.target_host, '--target-port', self.args.target_port,
                   '--max-connections', self.args.max_connections, '--connect-timeout', self.args.connect_timeout,
                   '--window', self.data_window, '--frame-size', self.tcp_chunk)
-        command = executable + ' ' + ' '.join(shlex.quote(str(v)) for v in values) + '\n'
+        command = 'exec ' + executable + ' ' + ' '.join(shlex.quote(str(v)) for v in values) + '\n'
         if len(command.encode()) > 3900:
             raise BridgeError('Helper command exceeds terminal line limit')
         return command.encode()

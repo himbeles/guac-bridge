@@ -19,6 +19,7 @@ import aiohttp
 from aiohttp import web
 
 from . import __version__
+from .framing import encode_event, decode_event
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
@@ -95,7 +96,7 @@ def parse_url(url, connection=None, data_source=None):
 def bootstrap(args):
     executable = ('"$HOME"/' + shlex.quote(args.server_command[2:])
                   if args.server_command.startswith('~/') else shlex.quote(args.server_command))
-    command = executable + ' ' + ' '.join(shlex.quote(str(value)) for value in (
+    command = 'exec ' + executable + ' ' + ' '.join(shlex.quote(str(value)) for value in (
         '--upstream', args.upstream,
         '--request-timeout', args.request_timeout, '--max-requests', args.max_requests,
         '--window', getattr(args, 'window', WINDOW))) + '\n'
@@ -334,7 +335,7 @@ class Bridge:
                     await self.wait_for(future, self.args.connect_timeout)
 
     async def send_event(self, event):
-        await self.send_input(base64.b64encode(json.dumps(event, separators=(',', ':')).encode()) + b'\n')
+        await self.send_input(encode_event(event))
         if event.get('type') == 'shutdown':
             await self.drain_input()
 
@@ -381,7 +382,17 @@ class Bridge:
                         while b'\n' in self.output_buffer:
                             line, self.output_buffer = self.output_buffer.split(b'\n', 1)
                             if line.strip():
-                                event = json.loads(base64.b64decode(line.strip(), validate=True))
+                                if self.updater:
+                                    # Bootstrap control messages remain independent of the helper protocol.
+                                    event = json.loads(base64.b64decode(line.strip(), validate=True))
+                                else:
+                                    if not self.ready.is_set() and not line.startswith(b'{'):
+                                        raise BridgeError('Unsupported server helper framing. Reconnect with '
+                                                          '--update-server or update the helper manually.')
+                                    try:
+                                        event = decode_event(line)
+                                    except ValueError:
+                                        raise BridgeError('Invalid remote ASCII JSON frame') from None
                                 self.dispatch(event)
                         await self.tunnel.send('ack', values[0], 'OK', 0)
                     elif opcode == 'end' and int(values[0]) == self.output_stream:

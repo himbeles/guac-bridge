@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
+from guac_bridge.framing import decode_event
 from guac_bridge.client import Bridge
 from guac_bridge.client import instruction
 from guac_bridge.errors import BridgeError
@@ -59,7 +60,7 @@ class ReaderTunnel(AckTunnel):
             return
         self.inflight += 1
         payload = base64.b64decode(args[2])
-        event = json.loads(base64.b64decode(payload.strip()))
+        event = decode_event(payload[:-1])
         if event['type'] == 'shutdown':
             self.incoming.put_nowait(instruction('end', '1'))
         self.handles.append(asyncio.get_running_loop().call_later(
@@ -87,7 +88,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         events = [{'type': 'data', 'id': str(i), 'body': 'x' * 9000} for i in range(16)]
         await asyncio.gather(*(self.bridge.send_event(event) for event in events))
         lines = self.tunnel.data.splitlines()
-        received = [json.loads(base64.b64decode(line, validate=True)) for line in lines]
+        received = [decode_event(line) for line in lines]
         self.assertEqual(received, events)
         self.assertEqual(self.tunnel.peak, 32)
 
@@ -95,7 +96,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.bridge.input_window = 32
         events = [{'type': 'data', 'id': str(i), 'body': 'x' * 35000} for i in range(16)]
         await asyncio.gather(*(self.bridge.send_event(event) for event in events))
-        received = [json.loads(base64.b64decode(line, validate=True))
+        received = [decode_event(line)
                     for line in self.tunnel.data.splitlines()]
         self.assertEqual(received, events)
         self.assertEqual(self.tunnel.peak, 32)
