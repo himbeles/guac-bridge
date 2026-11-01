@@ -17,7 +17,7 @@ fn build_agent(manifest: &Path, out: &Path) -> PathBuf {
     let status = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
         .args([
             "build",
-            "--offline",
+            "--locked",
             "--release",
             "--no-default-features",
             "--bin",
