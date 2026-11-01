@@ -205,6 +205,8 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    #[cfg(windows)]
+    clear_parent_stdio_inheritance()?;
     let mut child = command.spawn().context("Cannot start managed bridge")?;
     writeln!(
         child.stdin.take().context("No child input pipe")?,
@@ -332,6 +334,37 @@ pub(crate) fn visible_console() -> Result<()> {
     unsafe {
         SetStdHandle(STD_OUTPUT_HANDLE, output.into_raw_handle());
         SetStdHandle(STD_ERROR_HANDLE, error.into_raw_handle());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn clear_parent_stdio_inheritance() -> Result<()> {
+    use windows_sys::Win32::{
+        Foundation::{
+            GetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,
+        },
+        System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
+    };
+    // Stable Rust Command inherits every inheritable process handle, including
+    // the SSH hook's original output pipes, even when its child's stdio is redirected.
+    // Clear only these inherited originals; Command creates the new child's own
+    // stdin pipe and log handles separately. No process-wide handle enumeration.
+    for id in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
+        unsafe {
+            let handle = GetStdHandle(id);
+            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+                continue;
+            }
+            let mut flags = 0;
+            if GetHandleInformation(handle, &mut flags) != 0 && flags & HANDLE_FLAG_INHERIT != 0 {
+                ensure!(
+                    SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) != 0,
+                    "Cannot isolate background process output handles: {}",
+                    std::io::Error::last_os_error()
+                );
+            }
+        }
     }
     Ok(())
 }

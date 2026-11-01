@@ -118,7 +118,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
             root = Path(os.environ['LOCALAPPDATA'])/'guac-bridge'
             if root.exists():
                 for log in root.rglob('*.log'):
-                    details.append(str(log)+':\n'+log.read_text(errors='replace'))
+                    details.append(str(log)+':\n'+log.read_text(encoding='utf-8',errors='replace'))
             self.fail('Windows startup timed out: '+'\n'.join(details))
         self.assertEqual(process.returncode,0,error.decode())
         return error.decode()
