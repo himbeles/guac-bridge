@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "guac-bridge"
-version = "1.0.0"
+version = "1.0.1"
 description = "SSH and OpenAI-compatible endpoints through Guacamole, powered by Rust"
 readme = "README.md"
 requires-python = ">=3.10"

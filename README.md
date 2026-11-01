@@ -15,7 +15,7 @@ uv tool install guac-bridge
 uv tool update-shell
 ```
 
-No installation is needed on the server. The client uploads its bundled Linux x86-64 helper through the Guacamole terminal and reuses it on later connections. The server needs a normal shell and core utilities, with an executable user cache directory; no Python, uv, root access or internet connection is required there.
+No installation is needed on the server. The client uploads its bundled Linux x86-64 helper through the Guacamole terminal and reuses it on later connections. The server needs a normal shell and core utilities, with an executable user cache directory; no runtime installation, root access or internet connection is required there.
 
 Open the desired Guacamole terminal in your browser and copy its full URL. Use it as `CONNECTION_URL` below.
 
@@ -49,7 +49,7 @@ Match originalhost guac-server exec "guac-bridge ssh --ensure-running --save-pas
 Match all
 ```
 
-Connect with `ssh guac-server`. The hook starts or reuses the background bridge. On first login it prompts in the calling console and saves your password to the system credential store after successful authentication.
+Connect with `ssh guac-server`. The hook starts or reuses the background bridge and shows startup progress in your calling console. On first login it prompts in the calling console and saves your password to the system credential store after successful authentication.
 
 The bridge stays running after SSH exits. Check or stop it with:
 
@@ -74,7 +74,7 @@ The commands `guac-ssh-client` and `guac-llm-client` also work. Run any client w
 
 ## Contribution
 
-The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). Python packaging uses maturin to install the same executables.
+The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). The uv package installs the same native executables.
 
 See [Building](docs/building.md), [Testing](docs/testing.md) and [Benchmarking](docs/benchmarking.md). Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
 

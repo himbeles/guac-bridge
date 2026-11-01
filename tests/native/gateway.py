@@ -38,6 +38,7 @@ class Terminal:
         self.home = home
         self.output = asyncio.Queue()
         self.raw = b''
+        self.screen = bytearray()
         self.open = False
         self.stream = 0
         self.upload_bytes = 0
@@ -71,6 +72,7 @@ class Terminal:
         except OSError:
             self.loop.remove_reader(self.fd)
             return
+        self.screen.extend(data)
         self.raw += data
         while self.raw:
             if not self.open:

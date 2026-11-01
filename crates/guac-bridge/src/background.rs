@@ -79,6 +79,39 @@ fn request(state: &State, command: &str) -> Result<()> {
     Ok(())
 }
 use std::io::Read;
+/// Follow complete log lines while startup is in progress. Keep errors for the
+/// caller to print once, and let it print the final ready line with PID/log path.
+#[derive(Default)]
+struct StartupLog {
+    pending: Vec<u8>,
+    error: Option<String>,
+}
+impl StartupLog {
+    fn feed(&mut self, bytes: &[u8]) -> Vec<String> {
+        self.pending.extend_from_slice(bytes);
+        let mut lines = Vec::new();
+        while let Some(end) = self.pending.iter().position(|b| *b == b'\n') {
+            let line = String::from_utf8_lossy(&self.pending.drain(..=end).collect::<Vec<_>>())
+                .trim_end()
+                .to_owned();
+            if let Some((_, message)) = line.split_once("Error: ") {
+                self.error = Some(message.trim_end_matches("\x1b[0m").to_owned());
+            } else if !line.starts_with("Bridge ready on") && !line.is_empty() {
+                lines.push(line);
+            }
+        }
+        lines
+    }
+    fn poll(&mut self, file: &mut std::fs::File) -> Result<bool> {
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        let progressed = !bytes.is_empty();
+        for line in self.feed(&bytes) {
+            crate::console::line(&line);
+        }
+        Ok(progressed)
+    }
+}
 pub(crate) fn handle(mut args: Args) -> Result<()> {
     let dir = directory()?;
     let lock = OpenOptions::new()
@@ -93,15 +126,15 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
     {
         if args.stop {
             request(&s, "stop")?;
-            eprintln!("Bridge stopping on port {}", args.port());
+            crate::console::line(&format!("Bridge stopping on port {}", args.port()));
             return Ok(());
         }
         if args.status {
-            eprintln!(
+            crate::console::line(&format!(
                 "Bridge running on 127.0.0.1:{} (PID {})",
                 args.port(),
                 s.pid
-            );
+            ));
             return Ok(());
         }
         ensure!(
@@ -113,16 +146,23 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
             "A bridge with different settings already owns this port. Stop it first with --stop --port {}",
             args.port()
         );
-        eprintln!("Bridge already running on 127.0.0.1:{}", args.port());
+        crate::console::line(&format!(
+            "Bridge already running on 127.0.0.1:{}",
+            args.port()
+        ));
         return Ok(());
     }
     if args.stop {
-        eprintln!("No managed bridge running on port {}", args.port());
+        crate::console::line(&format!(
+            "No managed bridge running on port {}",
+            args.port()
+        ));
         return Ok(());
     }
     if args.status {
         bail!("No managed bridge running on port {}", args.port());
     }
+    crate::console::line("Starting bridge…");
     // Prompt in the calling console. The password travels only over the child's stdin pipe.
     let user = crate::credentials::username(&args)?;
     args.username = Some(user.clone());
@@ -213,22 +253,31 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         "{}",
         serde_json::to_string(&password)?
     )?;
-    let deadline = Instant::now() + Duration::from_secs(args.connect_timeout + 135);
+    let mut startup_file = std::fs::File::open(&log_path)?;
+    let mut startup_log = StartupLog::default();
+    let mut deadline = Instant::now() + Duration::from_secs(args.connect_timeout + 135);
     loop {
+        if startup_log.poll(&mut startup_file)? {
+            deadline = Instant::now() + Duration::from_secs(args.connect_timeout + 135);
+        }
         if let Some(exit) = child.try_wait()? {
-            let log = fs::read_to_string(&log_path).unwrap_or_default();
-            bail!("Bridge startup failed ({exit}):\n{log}");
+            startup_log.poll(&mut startup_file)?;
+            if let Some(message) = startup_log.error {
+                bail!("{message}");
+            }
+            bail!("Bridge startup failed ({exit}); see {}", log_path.display());
         }
         if let Ok(s) = state(&args)
             && s.pid == child.id()
             && request(&s, "status").is_ok()
         {
-            eprintln!(
+            startup_log.poll(&mut startup_file)?;
+            crate::console::line(&format!(
                 "Bridge ready on 127.0.0.1:{} (PID {}; output: {})",
                 args.port(),
                 s.pid,
                 log_path.display()
-            );
+            ));
             return Ok(());
         }
         if Instant::now() > deadline {
@@ -367,4 +416,25 @@ fn clear_parent_stdio_inheritance() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod log_tests {
+    use super::*;
+    #[test]
+    fn partial_utf8_and_errors_are_relayed_once() {
+        let mut log = StartupLog::default();
+        let message = "Checking server helper…\n".as_bytes();
+        assert!(log.feed(&message[..message.len() - 2]).is_empty());
+        assert_eq!(
+            log.feed(&message[message.len() - 2..]),
+            vec!["Checking server helper…"]
+        );
+        assert!(log.feed(b"Bridge ready on 127.0.0.1:2222\n").is_empty());
+        assert!(
+            log.feed(b"\x1b[31mError: Helper checksum mismatch\x1b[0m\n")
+                .is_empty()
+        );
+        assert_eq!(log.error.as_deref(), Some("Helper checksum mismatch"));
+    }
 }

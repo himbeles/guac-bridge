@@ -9,6 +9,12 @@ pub(crate) fn digest() -> String {
 pub(crate) fn encoded_agent() -> Vec<u8> {
     STANDARD.encode(AGENT).into_bytes()
 }
+/// Wait for raw/no-echo mode before sending a long command or upload.
+/// Replace the interactive shell so readline cannot re-enable echo for the script.
+pub(crate) fn prepare(nonce: &str) -> Vec<u8> {
+    format!(r"stty raw -echo || exit; printf '\033]482202;2;BOOT\007{nonce}:PREPARED\n\033]482203;\007'; exec /bin/sh -s
+").into_bytes()
+}
 pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     let options = format!(
         "--stdio --target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
@@ -32,7 +38,7 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         // One shell command. All incoming payload bytes are consumed by head before exec.
         // A failure exits the login shell, so later upload bytes cannot become shell commands.
         format!(
-            r#"umask 077; stty raw -echo || exit; printf '\033]482202;2;BOOT\007'; fail() {{ printf '{nonce}:ERROR:%s\n' "$1"; printf '\033]482203;\007'; exit 1; }}; [ "$(uname -s):$(uname -m)" = Linux:x86_64 ] || fail 'Requires Linux x86-64'; for cmd in head base64 sha256sum cut mktemp chmod mv mkdir rm; do command -v "$cmd" >/dev/null 2>&1 || fail "Missing $cmd"; done; cache="${{XDG_CACHE_HOME:-$HOME/.cache}}/guac-bridge/helpers"; mkdir -p "$cache" || fail 'Cannot create helper cache'; chmod 700 "$cache" || fail 'Cannot protect cache'; agent="$cache/{hash}"; if [ -f "$agent" ] && [ -x "$agent" ] && [ "$(sha256sum "$agent" | cut -d ' ' -f1)" = {hash} ]; then printf '{nonce}:CACHED\n'; else tmp=$(mktemp "$cache/.upload.XXXXXX") || fail 'Cannot create temporary helper'; trap 'rm -f "$tmp"' EXIT HUP INT TERM; printf '{nonce}:UPLOAD\n'; head -c {n} | base64 -d > "$tmp" || fail 'Upload failed'; [ "$(sha256sum "$tmp" | cut -d ' ' -f1)" = {hash} ] || fail 'Helper checksum mismatch'; chmod 700 "$tmp" && mv -f "$tmp" "$agent" || fail 'Cannot install helper'; trap - EXIT HUP INT TERM; fi; "$agent" --version >/dev/null 2>&1 || fail 'Helper cannot execute; check cache filesystem execution policy'; printf '\033]482203;\007'; exec "$agent" {options}; exit
+            r#"umask 077; stty raw -echo || exit; printf '\033]482202;2;BOOT\007'; fail() {{ printf '{nonce}:ERROR:%s\n' "$1"; printf '\033]482203;\007'; exit 1; }}; [ "$(uname -s):$(uname -m)" = Linux:x86_64 ] || fail 'Requires Linux x86-64'; for cmd in head base64 sha256sum cut mktemp chmod mv mkdir rm; do command -v "$cmd" >/dev/null 2>&1 || fail "Missing $cmd"; done; cache="${{XDG_CACHE_HOME:-$HOME/.cache}}/guac-bridge/helpers"; mkdir -p "$cache" || fail 'Cannot create helper cache'; chmod 700 "$cache" || fail 'Cannot protect cache'; agent="$cache/{hash}"; if [ -f "$agent" ] && [ -x "$agent" ] && [ "$(sha256sum "$agent" | cut -d ' ' -f1)" = {hash} ]; then printf '{nonce}:CACHED\n'; else tmp=$(mktemp "$cache/.upload.XXXXXX") || fail 'Cannot create temporary helper'; trap 'rm -f "$tmp"' EXIT HUP INT TERM; printf '{nonce}:UPLOAD\n'; head -c {n} | base64 -d > "$tmp" || fail 'Upload failed'; printf '{nonce}:VERIFY\n'; [ "$(sha256sum "$tmp" | cut -d ' ' -f1)" = {hash} ] || fail 'Helper checksum mismatch'; chmod 700 "$tmp" && mv -f "$tmp" "$agent" || fail 'Cannot install helper'; trap - EXIT HUP INT TERM; fi; printf '{nonce}:STARTING\n'; reason=$("$agent" --version 2>&1) || fail "Helper cannot execute $agent (exit $?): $reason"; printf '\033]482203;\007'; exec "$agent" {options}; exit
 "#
         )
     };

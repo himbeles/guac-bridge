@@ -327,3 +327,6 @@ mod deploy;
 
 #[cfg(feature = "client")]
 mod proxy;
+
+#[cfg(feature = "client")]
+mod console;

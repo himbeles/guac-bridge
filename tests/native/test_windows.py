@@ -41,6 +41,8 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         self.sockets = []
         self.children = []
         self.commands = 0
+        self.hold_ready = False
+        self.ready_allowed = asyncio.Event()
         app = web.Application()
         async def login(request):
             self.assertEqual((await request.post())['password'],'synthetic-password')
@@ -58,6 +60,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         await listener.wait_closed()
 
     async def asyncTearDown(self):
+        self.ready_allowed.set()
         with contextlib.suppress(Exception):
             await self.command('--stop')
         for ws in self.sockets:
@@ -90,11 +93,20 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
                     if not command.endswith(b'\n'):
                         continue
                     text = command.decode()
+                    if ':PREPARED' in text:
+                        nonce = re.search(r'([0-9a-f]{32}):PREPARED',text)[1]
+                        await ws.send_str(instruction('pipe','1','text/plain','BOOT'))
+                        await ws.send_str(instruction('blob','1',base64.b64encode(f'{nonce}:PREPARED\n'.encode()).decode()))
+                        await ws.send_str(instruction('end','1'))
+                        command.clear()
+                        continue
                     nonce = re.search(r'([0-9a-f]{32}):CACHED',text)[1]
                     self.commands += 1
                     await ws.send_str(instruction('pipe','1','text/plain','BOOT'))
                     await ws.send_str(instruction('blob','1',base64.b64encode(f'{nonce}:CACHED\n'.encode()).decode()))
                     await ws.send_str(instruction('end','1'))
+                    if self.hold_ready:
+                        await self.ready_allowed.wait()
                     await ws.send_str(instruction('pipe','2','text/plain','LLM'))
                     body = json.dumps({'package_version':tomllib.loads((ROOT/'pyproject.toml').read_text())['project']['version'],'version':5,'protocol':'tcp','window':32,'frame_size':65536}).encode()
                     frame = struct.pack('!2sBBII',b'GB',5,1,0,len(body))+body
@@ -139,3 +151,22 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(.1)
         else:
             self.fail('Background process did not stop')
+
+    async def test_progress_is_visible_before_helper_becomes_ready(self):
+        self.hold_ready = True
+        args = [str(ROOT/'target/release/guac-ssh-client.exe'),'--url',self.url,'--username','synthetic-user','--no-keyring','--startup-delay','0','--port',str(self.port),'--ensure-running']
+        env = dict(os.environ,GUAC_BRIDGE_PASSWORD='synthetic-password',NO_PROXY='127.0.0.1')
+        process = await asyncio.create_subprocess_exec(*args,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
+        self.children.append(process)
+        async def progress():
+            while line := await process.stderr.readline():
+                if b'Checking server helper' in line:
+                    return
+            self.fail('No progress before helper readiness')
+        try:
+            await asyncio.wait_for(progress(),10)
+            self.assertIsNone(process.returncode)
+        finally:
+            self.ready_allowed.set()
+        await asyncio.wait_for(process.communicate(),10)
+        self.assertEqual(process.returncode,0)
