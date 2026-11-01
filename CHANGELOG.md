@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+- Use binary framing with raw bodies for both LLM and SSH bridges, reducing encoding work and traffic.
+- Increase SSH frames and input windows for faster transfers while preserving token streaming and existing startup/update flows.
+- Require protocol v5 helpers; the existing update prompt handles older installations.
+
 ## 0.9.0
 
 - Reduce bridge traffic and encoding work by sending ASCII JSON lines directly through terminal pipes.

@@ -10,7 +10,7 @@ from guac_bridge.flow import PROTOCOL_VERSION, add_flow_arguments
 
 class FlowTests(unittest.TestCase):
     def test_three_representative_profiles(self):
-        for argv, window, frame in [([], 32, 16384),
+        for argv, window, frame in [([], 32, 65536),
                 (['--window', '8', '--frame-size', '4096'], 8, 4096),
                 (['--window', '64', '--frame-size', '32768'], 64, 32768)]:
             parser = argparse.ArgumentParser()
@@ -20,12 +20,12 @@ class FlowTests(unittest.TestCase):
             bridge.dispatch(dict(type='ready', version=PROTOCOL_VERSION, protocol='ssh-tcp',
                                  package_version=__version__, flow=bridge.flow))
             self.assertTrue(bridge.ready.is_set())
-            self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (window, window, frame))
+            self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (2*window, window, frame))
             self.assertEqual(bridge.response_queue_size, window + 8)
 
     def test_old_protocol_or_unconfirmed_settings_are_rejected(self):
         for cls in (Bridge, SSHBridge):
-            for version, flow in [(None, {}), (1, {}), (2, {}), (3, {}), (99, {}),
+            for version, flow in [(None, {}), (1, {}), (2, {}), (3, {}), (4, {}), (99, {}),
                                   (PROTOCOL_VERSION, {}), (PROTOCOL_VERSION, {'window': 8})]:
                 bridge = cls(SimpleNamespace(), None, '', '1', 'c', 'mysql', 'token')
                 with self.assertRaisesRegex(BridgeError, 'uv tool install --force guac-bridge=='):
@@ -38,6 +38,6 @@ class FlowTests(unittest.TestCase):
         import io
         parser = argparse.ArgumentParser()
         add_flow_arguments(parser, ssh=True)
-        for argv in (['--window', '0'], ['--window', '65'], ['--window', 'x'], ['--frame-size', '65536']):
+        for argv in (['--window', '0'], ['--window', '65'], ['--window', 'x'], ['--frame-size', '131072']):
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
                 parser.parse_args(argv)

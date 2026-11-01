@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from guac_bridge.framing import decode_event
+from guac_bridge.framing import Decoder, decode_event
 from guac_bridge.client import Bridge
 from guac_bridge.client import instruction
 from guac_bridge.errors import BridgeError
@@ -60,7 +60,7 @@ class ReaderTunnel(AckTunnel):
             return
         self.inflight += 1
         payload = base64.b64decode(args[2])
-        event = decode_event(payload[:-1])
+        event = decode_event(payload)
         if event['type'] == 'shutdown':
             self.incoming.put_nowait(instruction('end', '1'))
         self.handles.append(asyncio.get_running_loop().call_later(
@@ -80,36 +80,35 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_small_events_share_window_without_per_event_wait(self):
         self.tunnel.delay = .2
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
-        await self.bridge.send_event({'type': 'credit', 'id': 'b'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
+        await self.bridge.send_event({'type': 'credit', 'id': '2'})
         self.assertEqual(self.tunnel.inflight, 2)
 
     async def test_32_blob_bound_and_concurrent_frames_remain_intact(self):
-        events = [{'type': 'data', 'id': str(i), 'body': 'x' * 9000} for i in range(16)]
+        self.bridge.input_window = 32
+        events = [{'type': 'data', 'id': str(i+1), 'body': b'x' * 9000} for i in range(16)]
         await asyncio.gather(*(self.bridge.send_event(event) for event in events))
-        lines = self.tunnel.data.splitlines()
-        received = [decode_event(line) for line in lines]
+        received = Decoder().feed(self.tunnel.data)
         self.assertEqual(received, events)
         self.assertEqual(self.tunnel.peak, 32)
 
     async def test_large_concurrent_frames_preserve_32_blob_bound(self):
         self.bridge.input_window = 32
-        events = [{'type': 'data', 'id': str(i), 'body': 'x' * 35000} for i in range(16)]
+        events = [{'type': 'data', 'id': str(i+1), 'body': b'x' * 35000} for i in range(16)]
         await asyncio.gather(*(self.bridge.send_event(event) for event in events))
-        received = [decode_event(line)
-                    for line in self.tunnel.data.splitlines()]
+        received = Decoder().feed(self.tunnel.data)
         self.assertEqual(received, events)
         self.assertEqual(self.tunnel.peak, 32)
 
     async def test_rejected_last_ack_fails_transport_without_another_send(self):
         self.tunnel.reject = True
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
         await asyncio.wait_for(self.bridge.failed.wait(), 1)
         self.assertEqual('Rejected', self.bridge.failure)
 
     async def test_cancelled_partial_frame_marks_transport_failed(self):
         self.tunnel.delay = 10
-        task = asyncio.create_task(self.bridge.send_input(b'x' * (3072 * 40)))
+        task = asyncio.create_task(self.bridge.send_input(b'x' * (6048 * 80)))
         await asyncio.sleep(0)
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
@@ -118,20 +117,20 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_shutdown_drains_before_tunnel_close(self):
         self.bridge.ready.set()
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
         await self.bridge.close()
         self.assertEqual(self.tunnel.inflight_at_close, 0)
 
     async def test_missing_last_ack_fails_without_another_send(self):
         self.bridge.args.connect_timeout = .03
         self.tunnel.delay = 10
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
         await asyncio.wait_for(self.bridge.failed.wait(), .5)
         self.assertIn('acknowledgement timed out', self.bridge.failure)
 
     async def test_close_cancels_ack_deadlines_and_releases_futures(self):
         self.tunnel.delay = 10
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
         pending = list(self.bridge.pending_input)
         await self.bridge.close()
         self.assertFalse(self.bridge.ack_deadlines)
@@ -144,7 +143,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.bridge.output_stream = 1
         self.bridge.ready.set()
         self.bridge.reader = asyncio.create_task(self.bridge.read_loop())
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
         await asyncio.wait_for(self.bridge.close(), .5)
         self.assertFalse(self.bridge.failed.is_set())
         self.assertFalse(self.bridge.pending_input)
@@ -153,7 +152,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
     async def test_disconnect_resolves_all_pending_input_futures(self):
         self.tunnel = self.bridge.tunnel = ReaderTunnel(self.bridge, delay=10)
         self.bridge.reader = asyncio.create_task(self.bridge.read_loop())
-        await self.bridge.send_event({'type': 'credit', 'id': 'a'})
+        await self.bridge.send_event({'type': 'credit', 'id': '1'})
         pending = list(self.bridge.pending_input)
         self.tunnel.incoming.put_nowait(None)
         await asyncio.wait_for(self.bridge.reader, .5)

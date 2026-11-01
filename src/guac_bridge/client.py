@@ -19,7 +19,7 @@ import aiohttp
 from aiohttp import web
 
 from . import __version__
-from .framing import encode_event, decode_event
+from .framing import Decoder, encode_event
 from .console import setup_console, stop_hint
 from .auth import (add_credential_arguments, authenticate, forget_credentials,
                    login, resolve_username)
@@ -207,13 +207,16 @@ class Bridge:
         self.input_stream = 0
         self.output_stream = None
         self.output_buffer = b''
+        self.decoder = Decoder()
         self.requests = {}
         self.last_seen = time.monotonic()
         self.closing = False
         self.server_version_matched = False
         self.version_warning = None
         self.flow = settings(args, ssh=self.helper_name == 'guac-ssh-server')
-        self.input_window = self.data_window = self.flow['window']
+        self.data_window = self.flow['window']
+        self.input_window = 2 * self.data_window
+        self.next_id = 1
         self.response_queue_size = self.data_window + 8
         self.tcp_chunk = self.flow.get('frame_size', CHUNK)
 
@@ -311,7 +314,7 @@ class Bridge:
         async with self.input_lock:
             pending = self.pending_input
             try:
-                for offset in range(0, len(data), 3072):
+                for offset in range(0, len(data), 6048):
                     if self.failed.is_set() or not self.tunnel or self.tunnel.closed:
                         raise BridgeError(self.failure or 'Guacamole tunnel is closed')
                     while pending and pending[0].done():
@@ -320,7 +323,7 @@ class Bridge:
                         await self.wait_for(pending.popleft(), self.args.connect_timeout)
                     pending.append(self.new_ack())
                     await self.tunnel.send('blob', self.input_stream,
-                                           base64.b64encode(data[offset:offset + 3072]).decode())
+                                           base64.b64encode(data[offset:offset + 6048]).decode())
             except BaseException:
                 self.fail('Terminal input failed; restart the bridge')
                 raise
@@ -376,29 +379,29 @@ class Bridge:
                         else:
                             await self.tunnel.send('ack', values[0], 'Unsupported stream', 256)
                     elif opcode == 'blob' and int(values[0]) == self.output_stream:
-                        self.output_buffer += base64.b64decode(values[1], validate=True)
-                        if len(self.output_buffer) > 128 * 1024:
-                            raise BridgeError('Remote frame exceeds limit')
-                        while b'\n' in self.output_buffer:
-                            line, self.output_buffer = self.output_buffer.split(b'\n', 1)
-                            if line.strip():
-                                if self.updater:
-                                    # Bootstrap control messages remain independent of the helper protocol.
-                                    event = json.loads(base64.b64decode(line.strip(), validate=True))
-                                else:
-                                    if not self.ready.is_set() and not line.startswith(b'{'):
-                                        raise BridgeError('Unsupported server helper framing. Reconnect with '
-                                                          '--update-server or update the helper manually.')
-                                    try:
-                                        event = decode_event(line)
-                                    except ValueError:
-                                        raise BridgeError('Invalid remote ASCII JSON frame') from None
-                                self.dispatch(event)
+                        data = base64.b64decode(values[1], validate=True)
+                        if self.updater:
+                            # Bootstrap remains independent of the installed data protocol.
+                            self.output_buffer += data
+                            if len(self.output_buffer) > 128 * 1024:
+                                raise BridgeError('Bootstrap frame exceeds limit')
+                            while b'\n' in self.output_buffer:
+                                line, self.output_buffer = self.output_buffer.split(b'\n', 1)
+                                if line.strip():
+                                    self.dispatch(json.loads(base64.b64decode(line.strip(), validate=True)))
+                        else:
+                            try:
+                                for event in self.decoder.feed(data):
+                                    self.dispatch(event)
+                            except (ValueError, UnicodeError):
+                                raise BridgeError('Unsupported or invalid binary helper protocol. Reconnect with '
+                                                  '--update-server or update the server helper manually.') from None
                         await self.tunnel.send('ack', values[0], 'OK', 0)
                     elif opcode == 'end' and int(values[0]) == self.output_stream:
                         if self.updater and self.updater.active:
                             self.output_stream = None
                             self.output_buffer = b''
+                            self.decoder = Decoder()
                             self.updater.ended()
                             continue
                         if not self.closing:
@@ -489,6 +492,13 @@ class Bridge:
         except Exception:
             self.fail('Guacamole session refresh failed; restart the bridge')
 
+    def new_ident(self):
+        if self.next_id > 0xffffffff:
+            raise BridgeError('Channel ID space exhausted; restart the bridge')
+        ident = str(self.next_id)
+        self.next_id += 1
+        return ident
+
     async def proxy(self, request):
         if self.args.local_api_key and request.headers.get('Authorization') != 'Bearer ' + self.args.local_api_key:
             return web.json_response({'error': {'message': 'Invalid local API key'}}, status=401)
@@ -499,7 +509,7 @@ class Bridge:
         body = await request.read()
         if len(self.requests) >= self.args.max_requests:
             return web.json_response({'error': {'message': 'Bridge concurrency limit reached'}}, status=429)
-        ident = uuid.uuid4().hex
+        ident = self.new_ident()
         queue = asyncio.Queue(maxsize=self.response_queue_size)
         self.requests[ident] = queue
         headers = {k: v for k, v in request.headers.items()
@@ -512,7 +522,7 @@ class Bridge:
         try:
             async with asyncio.timeout(self.args.request_timeout):
                 await self.send_event({'type': 'request', 'id': ident, 'method': request.method,
-                                       'path': request.path, 'body': base64.b64encode(body).decode(),
+                                       'path': request.path, 'body': body,
                                        'headers': headers})
                 while True:
                     event = await self.next_event(queue, request)
@@ -525,7 +535,7 @@ class Bridge:
                     elif kind == 'data':
                         if response is None:
                             raise BridgeError('Missing upstream headers')
-                        await response.write(base64.b64decode(event['body'], validate=True))
+                        await response.write(event['body'])
                         await self.send_event({'type': 'credit', 'id': ident})
                     elif kind == 'end':
                         if response is None:

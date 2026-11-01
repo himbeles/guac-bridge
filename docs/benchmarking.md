@@ -1,7 +1,7 @@
 # Benchmarking Guac Bridge
 
-Both bridges use up to 32 Guacamole input blobs and 32 data credits in flight,
-with 16 KiB SSH frames. LLM response chunks remain 4 KiB for streaming.
+Both bridges use up to 64 Guacamole input blobs and 32 data credits in flight,
+with 64 KiB SSH frames. LLM responses use available bytes up to 64 KiB without waiting to fill a frame.
 This improves bulk transport utilization; it does not accelerate model inference.
 Use matching client and helper versions for meaningful benchmark comparisons;
 version mismatches warn by default unless strict checking is requested.
@@ -127,11 +127,9 @@ for the screening measurements and tradeoffs.
 
 ## Protocol encoding comparison
 
-See [the protocol v4 comparison](protocol-v4-results.md) for paired results.
-The v4 codec removes whole-event Base64. Payload Base64 and Guacamole blob
-Base64 remain. Compare the same transfer sizes, windows and frame sizes; wire
-counters exclude TLS/TCP/SSH overhead. Startup bootstrap traffic is outside the
-measurement. Historical checked-in results retain their original wire formats.
-
-See [the orjson efficiency measurement plan](orjson-efficiency-plan.md) for a
-separate CPU/energy experiment. No alternative JSON library is used by v0.9.0.
+Protocol v5 removes payload Base64 and JSON data frames for both bridges.
+Guacamole blob Base64 remains. Compare the same transfer sizes, windows and
+frame sizes; wire counters exclude TLS/TCP/SSH overhead. Startup bootstrap
+traffic is outside the measurement. Historical results keep their original
+formats. See [the protocol notes](protocol-v5.md) and the
+[Python/Rust investigation](https://github.com/himbeles/guac-bridge/blob/investigate/python-binary-ssh/docs/python-binary-results.md).

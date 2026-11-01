@@ -1,7 +1,6 @@
 """Expose the remote server's SSH service on local loopback through Guacamole."""
 import argparse
 import asyncio
-import base64
 import contextlib
 import errno
 import logging
@@ -10,7 +9,6 @@ import shlex
 import ssl
 import time
 import urllib.parse
-import uuid
 
 import aiohttp
 
@@ -71,7 +69,7 @@ class SSHBridge(Bridge):
 
     async def send_event(self, event):
         # A connection cancellation must not interrupt a frame shared with other
-        # TCP connections, leaving an incomplete Base64 line in the remote PTY.
+        # TCP connections, leaving an incomplete binary frame in the remote PTY.
         task = asyncio.create_task(super().send_event(event))
         try:
             await asyncio.shield(task)
@@ -99,7 +97,7 @@ class SSHBridge(Bridge):
                 await writer.wait_closed()
             return
         self.connections.add(task)
-        ident = uuid.uuid4().hex
+        ident = self.new_ident()
         queue = asyncio.Queue(maxsize=self.data_window + 4)
         self.requests[ident] = queue
         self.credits[ident] = asyncio.BoundedSemaphore(self.data_window)
@@ -121,7 +119,7 @@ class SSHBridge(Bridge):
                         await self.send_event({'type': 'eof', 'id': ident})
                         return
                     await self.send_event({'type': 'data', 'id': ident,
-                                           'body': base64.b64encode(data).decode()})
+                                           'body': data})
 
             async def download():
                 nonlocal remote_closed
@@ -129,7 +127,7 @@ class SSHBridge(Bridge):
                     event = await queue.get()
                     kind = event['type']
                     if kind == 'data':
-                        data = base64.b64decode(event['body'], validate=True)
+                        data = event['body']
                         if len(data) > self.tcp_chunk:
                             raise BridgeError('TCP frame exceeds limit')
                         writer.write(data)

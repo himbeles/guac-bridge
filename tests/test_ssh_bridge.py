@@ -116,7 +116,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
                 await self.transfer(local, os.urandom(256 * 1024))
                 self.assertFalse(bridge.failed.is_set())
 
-    async def test_malformed_json_ends_helper_cleanly(self):
+    async def test_malformed_binary_ends_helper_cleanly(self):
         target = await self.target(self.echo)
         bridge, _, _ = await self.connect(target)
         await bridge.send_input(b'{"type":"open","id":"\x1b"}\n')
@@ -126,7 +126,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
     async def test_binary_roundtrip_and_client_half_close(self):
         target = await self.target(self.echo)
         bridge, local, _ = await self.connect(target)
-        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (32, 32, 16384))
+        self.assertEqual((bridge.input_window, bridge.data_window, bridge.tcp_chunk), (64, 32, 65536))
         await self.transfer(local, bytes(range(256)) * 2048)
         self.assertFalse(bridge.failed.is_set())
 

@@ -16,7 +16,7 @@ flowchart TD
 The branches represent separate test cases. Tests cover:
 
 - WebSocket and HTTP tunnels, fragmented messages and binary/Unicode integrity.
-- Strict ASCII JSON framing, escaped controls and helper exit without a surviving shell.
+- Bounded binary framing, all-byte payloads, escaped terminal controls and helper exit without a surviving shell.
 - Streamed responses, simultaneous requests/channels and bounded flow control.
 - Disconnects, cancellation, half-closes, background startup/stop and port errors.
 

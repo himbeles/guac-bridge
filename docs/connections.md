@@ -16,12 +16,11 @@ server where the helper and destination service are available.
    through Guacamole and the helper.
 
 The Guacamole transport normally uses WebSocket, with an HTTP tunnel fallback.
-Protocol v4 sends compact ASCII JSON objects, one per terminal line. Binary
-payload fields remain Base64-encoded, as do Guacamole blobs; the redundant
-whole-message Base64 layer is removed. JSON escapes Unicode and control
-characters so terminal input/output cannot contain raw escape sequences from
-message strings. Base64 is a transport encoding; encryption comes from the
-underlying HTTPS/WSS and SSH connections when those transports are used.
+Protocol v5 sends length-prefixed binary frames. HTTP and TCP bodies are raw
+bytes; JSON is used only for request/header/ready metadata. ESC and the escape
+byte are stuffed so payloads cannot become terminal commands. Guacamole's own
+Base64 blobs remain. Encoding does not provide encryption; HTTPS/WSS and SSH
+provide it when those transports are used.
 
 Both clients use bounded input-ACK and data-credit windows, preserving frame
 boundaries and backpressure. Missing or rejected input acknowledgements fail the
@@ -161,12 +160,13 @@ foreground client must remain running while its bridge is in use.
 
 ## Flow control
 
-Defaults are 32 data credits and up to 32 outstanding Guacamole input blobs.
-SSH frames are 16 KiB; LLM response chunks remain 4 KiB for token streaming.
+Defaults are 32 data credits and up to 64 outstanding Guacamole input blobs.
+SSH frames are 64 KiB. LLM reads return available bytes immediately, up to 64 KiB;
+small streamed tokens do not wait to fill a frame.
 
-Both clients accept `--window N` (1–64), which sets the data-credit and input-ACK
-budgets together. The SSH client also accepts `--frame-size BYTES` (4096, 8192,
-16384 or 32768). The client passes these settings to the helper at startup and
+Both clients accept `--window N` (1–64), which sets the data-credit budget; the input-ACK
+budget is twice this value. The SSH client also accepts `--frame-size BYTES` (4096, 8192,
+16384, 32768 or 65536). The client passes these settings to the helper at startup and
 checks its confirmation before forwarding. Outdated protocols are rejected.
 
 Larger windows keep delayed links busy; larger SSH frames reduce framing and
@@ -231,15 +231,15 @@ reported once by the caller; the full child log remains available. A subsequent
 OpenSSH `connection refused` message is a separate result of no bridge listener
 being available after startup fails.
 
-## Protocol v4 framing
+## Protocol v5 framing
 
-Client and helpers use the same strict ASCII JSON-line codec. Non-ASCII bytes,
-raw control characters, malformed JSON and non-object records are rejected.
-Helpers reject incomplete/oversized input lines. Binary bodies are still Base64.
+Client and helpers share a bounded binary decoder. Data and credit frames have
+compact numeric IDs; HTTP requests and responses carry raw bodies. Only metadata
+uses JSON. Invalid headers, escapes, lengths and truncated records fail the
+connection. See [the wire format](protocol-v5.md).
 
 The helper replaces the login shell with `exec`, so an unexpected helper exit
-ends that terminal rather than returning late JSON input to an interactive shell.
-Version checks and opt-in updates run first, through a separate Base64 bootstrap
-format that does not depend on the installed helper's data protocol. Both ends
-need protocol v4 for data forwarding; older framing is rejected with update
-instructions. No fallback to the old data format is provided.
+ends that terminal instead of returning late data to an interactive shell.
+Version checks and opt-in updates still run first through their independent
+Base64 bootstrap format. Both ends need protocol v5; older data formats are
+rejected with update instructions.

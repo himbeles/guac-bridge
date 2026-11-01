@@ -47,6 +47,11 @@ class Terminal:
         self.loop.add_reader(self.fd, self.read)
         await self.output.put(instruction('sync', '123'))
 
+    def emit_blob(self, data):
+        # libguac limits blobs to 6048 raw bytes (8192-byte instructions).
+        for offset in range(0, len(data), 6048):
+            self.output.put_nowait(instruction('blob', '1', base64.b64encode(data[offset:offset+6048]).decode()))
+
     def read(self):
         try:
             data = os.read(self.fd, 65536)
@@ -67,7 +72,7 @@ class Terminal:
         if close in self.raw:
             before, self.raw = self.raw.split(close, 1)
             if before:
-                self.output.put_nowait(instruction('blob', '1', base64.b64encode(before).decode()))
+                self.emit_blob(before)
             self.output.put_nowait(instruction('end', '1'))
             self.open = False
         else:
@@ -76,7 +81,7 @@ class Terminal:
             if cut < 0:
                 cut = len(self.raw)
             if cut:
-                self.output.put_nowait(instruction('blob', '1', base64.b64encode(self.raw[:cut]).decode()))
+                self.emit_blob(self.raw[:cut])
                 self.raw = self.raw[cut:]
 
     async def feed(self, data):
@@ -86,6 +91,7 @@ class Terminal:
                 await self.output.put(instruction('ack', '0', 'Ready', '0'))
             elif opcode == 'blob':
                 payload = base64.b64decode(values[1])
+                assert len(payload) <= 6048, 'Guacamole input blob exceeds protocol limit'
                 while payload:
                     try:
                         written = os.write(self.fd, payload)
@@ -271,7 +277,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(marker.exists())
         self.assertFalse(self.bridges[-1].ready.is_set())
 
-    async def test_malformed_json_ends_helper_cleanly(self):
+    async def test_malformed_binary_ends_helper_cleanly(self):
         bridge, _, _ = await self.connect()
         await bridge.send_input(b'{"type":"request","id":"bad","path":"\x1b"}\n')
         await asyncio.wait_for(bridge.failed.wait(), 3)
@@ -291,7 +297,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_websocket_models_and_unicode_large_request(self):
         bridge, local, _ = await self.connect()
-        self.assertEqual((bridge.input_window, bridge.data_window), (32, 32))
+        self.assertEqual((bridge.input_window, bridge.data_window), (64, 32))
         async with self.session.get(local + 'v1/models') as r:
             self.assertEqual((await r.json())['data'][0]['id'], 'test-model')
         payload = {'model': 'test', 'messages': [{'role': 'user', 'content': 'Grüße 😀\n' * 20000}]}
@@ -326,6 +332,26 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         async with self.session.post(local + 'v1/chat/completions', json={'error': True}) as r:
             self.assertEqual(r.status, 400)
             self.assertEqual(await r.json(), {'error': 'bad model'})
+
+    async def test_opaque_request_and_compressed_response_preserve_every_byte(self):
+        import gzip
+        payload = bytes(range(256))*256 + b'\x1b]482203;\x07'
+        compressed = gzip.compress(payload, compresslevel=0, mtime=0)
+        async def opaque(request):
+            self.assertEqual(await request.read(), payload)
+            return web.Response(body=compressed, headers={
+                'Content-Type':'application/octet-stream', 'Content-Encoding':'gzip'})
+        app = web.Application()
+        app.router.add_post('/v1/chat/completions', opaque)
+        runner, upstream = await start_app(app)
+        self.runners.append(runner)
+        for websocket in (True, False):
+            _, local, _ = await self.connect(websocket=websocket, upstream=upstream.rstrip('/'))
+            async with self.session.post(local+'v1/chat/completions', data=payload,
+                    headers={'Content-Type':'application/octet-stream'}, auto_decompress=False) as response:
+                self.assertEqual(response.status, 200)
+                self.assertEqual(response.headers['Content-Encoding'], 'gzip')
+                self.assertEqual(await response.read(), compressed)
 
     async def test_concurrent_requests_and_keys(self):
         _, local, _ = await self.connect(local_api_key='local', upstream_api_key='upstream')

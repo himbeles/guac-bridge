@@ -1,5 +1,4 @@
 """Server-side stdin/stdout relay, launched inside a Guacamole SSH terminal."""
-import base64
 import http.client
 import os
 import socket
@@ -8,8 +7,8 @@ import threading
 import urllib.parse
 
 from . import __version__
-from .framing import encode_event, decode_event
-from .flow import WINDOW, PROTOCOL_VERSION, add_flow_arguments
+from .framing import encode_event, read_events
+from .flow import WINDOW, CHUNK, PROTOCOL_VERSION, add_flow_arguments
 
 def run(config):
     upstream = urllib.parse.urlsplit(config['upstream'])
@@ -53,14 +52,15 @@ def run(config):
             if state['cancel'].is_set():
                 return
             conn.request(req['method'], upstream.path.rstrip('/') + path,
-                         body=base64.b64decode(req['body'], validate=True), headers=req['headers'])
+                         body=req['body'], headers=req['headers'])
             response = conn.getresponse()
             headers = {k: v for k, v in response.getheaders()
                        if k.lower() in ('content-type', 'content-encoding', 'retry-after', 'x-request-id')}
             emit({'type': 'headers', 'id': ident, 'status': response.status, 'headers': headers})
             while not state['cancel'].is_set():
-                # read1 returns available bytes; read(4096) would delay SSE tokens.
-                data = response.read1(4096)
+                # read1 returns available bytes immediately; the ceiling does not
+                # wait for a full frame and also permits efficient bulk responses.
+                data = response.read1(CHUNK)
                 if not data:
                     break
                 while not state['cancel'].is_set():
@@ -68,7 +68,7 @@ def run(config):
                         break
                 if state['cancel'].is_set():
                     break
-                emit({'type': 'data', 'id': ident, 'body': base64.b64encode(data).decode()})
+                emit({'type': 'data', 'id': ident, 'body': data})
             if not state['cancel'].is_set():
                 terminal_event = {'type': 'end', 'id': ident}
         except Exception as exc:
@@ -109,13 +109,7 @@ def run(config):
     try:
         emit({'type': 'ready', 'version': PROTOCOL_VERSION, 'package_version': __version__, 'flow': {'window': config.get('window', WINDOW)}})
         threading.Thread(target=heartbeat, daemon=True).start()
-        while True:
-            line = sys.stdin.buffer.readline(48 * 1024 * 1024)
-            if not line:
-                break
-            if not line.endswith(b'\n'):
-                raise ValueError('Incomplete or oversized request frame')
-            req = decode_event(line[:-1])
+        for req in read_events(sys.stdin.buffer):
             kind = req.get('type')
             if kind == 'shutdown':
                 break

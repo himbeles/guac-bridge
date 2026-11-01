@@ -1,9 +1,9 @@
 """Shared defaults and bounded transport tuning."""
 import argparse
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 WINDOW = 32
-CHUNK = 16384
+CHUNK = 65536
 
 
 def window_size(value):
@@ -22,13 +22,13 @@ def add_flow_arguments(parser, *, ssh=False):
         'they do not speed up model inference or reduce network round-trip time.' +
         (' Stop and restart an existing managed bridge to apply changes.' if ssh else ''))
     group.add_argument('--window', type=window_size, default=WINDOW, metavar='N',
-        help='Chunks per request/channel and terminal input blobs allowed in flight before waiting '
-             'for acknowledgements (1-64; default: 32). Larger windows keep delayed links busy; '
+        help='Data chunks per request/channel allowed in flight before waiting '
+             'for acknowledgements (1-64; default: 32). The input ACK window is twice this value. Larger windows keep delayed links busy; '
              'smaller windows reduce memory use and queued bursts.')
     if ssh:
-        group.add_argument('--frame-size', type=int, choices=(4096, 8192, 16384, 32768), default=CHUNK,
-            metavar='BYTES', help='Maximum SSH data bytes per bridge message (4096, 8192, 16384, 32768; '
-            'default: 16384). Larger frames reduce framing/encoding work during bulk transfers; '
+        group.add_argument('--frame-size', type=int, choices=(4096, 8192, 16384, 32768, 65536), default=CHUNK,
+            metavar='BYTES', help='Maximum SSH data bytes per bridge message (4096, 8192, 16384, 32768, 65536; '
+            'default: 65536). Larger frames reduce framing/encoding work during bulk transfers; '
             'smaller frames reduce burst size. This is not the network packet size. '
             'Raw data allowance per channel/direction is approximately window x frame-size.')
 

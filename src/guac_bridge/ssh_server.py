@@ -1,7 +1,6 @@
-"""Binary TCP relay to a loopback SSH service, over a Guacamole terminal."""
+"""Binary TCP relay to a loopback SSH service through a Guacamole terminal."""
 import argparse
 import asyncio
-import base64
 import contextlib
 import os
 import signal
@@ -9,7 +8,7 @@ import sys
 import threading
 
 from . import __version__
-from .framing import encode_event, decode_event
+from .framing import encode_event, Decoder
 from .flow import PROTOCOL_VERSION, add_flow_arguments, settings
 
 
@@ -23,23 +22,28 @@ async def relay(args):
         sys.stdout.buffer.write(encode_event(event))
         sys.stdout.buffer.flush()
 
+    async def enqueue(batch):
+        for event in batch:
+            await events.put(event)
+
     def stdin_reader():
+        decoder = Decoder()
         try:
             while not stopping.is_set():
-                line = sys.stdin.buffer.readline(65536)
-                if not line:
-                    event = {'type': 'shutdown'}
+                data = sys.stdin.buffer.read1(16384)
+                if not data:
+                    if not decoder.complete:
+                        raise ValueError('Truncated binary record')
+                    batch = [dict(type='shutdown')]
                 else:
-                    if not line.endswith(b'\n'):
-                        raise ValueError('Frame too large')
-                    event = decode_event(line[:-1])
-                future = asyncio.run_coroutine_threadsafe(events.put(event), loop)
-                future.result()
-                if event.get('type') == 'shutdown':
-                    return
+                    batch = decoder.feed(data)
+                if batch:
+                    asyncio.run_coroutine_threadsafe(enqueue(batch), loop).result()
+                    if any(event['type'] == 'shutdown' for event in batch):
+                        return
         except Exception:
             if not stopping.is_set() and not loop.is_closed():
-                asyncio.run_coroutine_threadsafe(events.put({'type': 'shutdown'}), loop)
+                asyncio.run_coroutine_threadsafe(events.put({'type': '_protocol_error'}), loop)
 
     async def connection(ident, state):
         writer = None
@@ -58,7 +62,7 @@ async def relay(args):
                         state['credits'].release()
                         emit({'type': 'eof', 'id': ident})
                         return
-                    emit({'type': 'data', 'id': ident, 'body': base64.b64encode(data).decode()})
+                    emit({'type': 'data', 'id': ident, 'body': data})
 
             async def send_tcp():
                 while True:
@@ -109,10 +113,12 @@ async def relay(args):
         while True:
             event = await events.get()
             kind, ident = event.get('type'), event.get('id')
+            if kind == '_protocol_error':
+                raise ValueError('Invalid binary input')
             if kind == 'shutdown':
                 break
             if kind == 'open':
-                if not isinstance(ident, str) or not ident or len(ident) > 64:
+                if not isinstance(ident, str) or not ident.isdecimal() or not 1 <= int(ident) <= 0xffffffff:
                     raise ValueError('Invalid connection ID')
                 if ident in channels:
                     raise ValueError('Duplicate connection ID')
@@ -130,7 +136,7 @@ async def relay(args):
                     emit({'type': 'closed', 'id': ident})
                 continue
             if kind == 'data':
-                data = base64.b64decode(event['body'], validate=True)
+                data = event['body']
                 if len(data) > state['chunk'] or state['eof']:
                     raise ValueError('Invalid TCP data frame')
                 state['input'].put_nowait(data)
