@@ -7,7 +7,7 @@ One workspace contains the standalone `guac-bridge` Cargo package and the option
 Install directly from the repository on Windows or Linux x86-64:
 
 ```shell
-cargo install --git https://github.com/himbeles/guac-bridge --tag v1.0.0 --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
+cargo install --git https://github.com/himbeles/guac-bridge --tag v1.0.1 --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
 ```
 
 The source build prepares the helper automatically. The commands below also support development and packaging.

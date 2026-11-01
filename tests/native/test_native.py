@@ -3,6 +3,8 @@ import contextlib
 import hashlib
 import json
 import os
+import signal
+import shutil
 from pathlib import Path
 import tempfile
 import unittest
@@ -194,11 +196,122 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Requires Linux x86-64',error)
         self.assertNotIn('did not start',error)
 
+    async def test_checksum_error_after_upload_is_immediate(self):
+        tools = self.home/'tools'
+        tools.mkdir()
+        decoder = tools/'base64'
+        decoder.write_text('#!/bin/sh\n/bin/cat >/dev/null\n')
+        decoder.chmod(0o755)
+        child = await self.child('--port','0','--target-port',22,'--benchmark-control')
+        await asyncio.wait_for(child.wait(),8)
+        self.assertNotEqual(child.returncode,0)
+        error = (await child.stderr.read()).decode()
+        self.assertIn('Helper checksum mismatch',error)
+        self.assertNotIn('did not start',error)
+
+    async def test_full_bootstrap_command_is_not_echoed(self):
+        child, port = await self.bridge(await self.target(self.echo))
+        await self.roundtrip(port,b'quiet bootstrap')
+        await self.finish(child)
+        terminal = self.gateway.terminals[0]
+        self.assertIn(b'umask 077',terminal.all_input)
+        self.assertNotIn(b'umask 077',terminal.screen)
+
+    async def test_execution_failure_after_upload_is_immediate(self):
+        tools = self.home/'tools'
+        tools.mkdir()
+        chmod = tools/'chmod'
+        chmod.write_text('#!/bin/sh\ncase "$2" in */.upload.*) /bin/chmod 600 "$2";; *) /bin/chmod "$@";; esac\n')
+        chmod.chmod(0o755)
+        child = await self.child('--port','0','--target-port',22,'--benchmark-control')
+        await asyncio.wait_for(child.wait(),8)
+        self.assertNotEqual(child.returncode,0)
+        error = (await child.stderr.read()).decode()
+        self.assertIn('Helper cannot execute',error)
+        self.assertIn('Permission denied',error)
+
+    async def test_upload_progress_and_clean_cli_wording(self):
+        child = await self.child('--port','0','--target-port',await self.target(self.echo))
+        lines = []
+        async def ready():
+            while True:
+                line = (await child.stderr.readline()).decode()
+                self.assertTrue(line,'Client exited before ready')
+                lines.append(line)
+                if 'Bridge ready on' in line:
+                    return
+        await asyncio.wait_for(ready(),10)
+        output = ''.join(lines)
+        self.assertIn('Helper upload: 100%',output)
+        self.assertIn('Verifying helper checksum',output)
+        self.assertIn('Starting server helper',output)
+        self.assertNotIn('Python',output)
+        self.assertNotIn('uv needed',output)
+        child.send_signal(signal.SIGINT)
+        await asyncio.wait_for(child.wait(),5)
+        self.assertEqual(child.returncode,0)
+
+    async def test_stalled_upload_completion_reports_its_stage(self):
+        tools = self.home/'tools'
+        tools.mkdir()
+        head = tools/'head'
+        head.write_text('#!/bin/sh\nexec /bin/cat >/dev/null\n')
+        head.chmod(0o755)
+        child = await self.child('--port','0','--target-port',22,'--connect-timeout','2','--benchmark-control')
+        await asyncio.wait_for(child.wait(),8)
+        self.assertNotEqual(child.returncode,0)
+        self.assertIn('waiting for server to finish helper upload',(await child.stderr.read()).decode())
+
     async def test_disconnect_ends_client_and_helper(self):
         child, _ = await self.bridge(await self.target(self.echo))
         await self.gateway.ws.close()
         await asyncio.wait_for(child.wait(),5)
         self.assertNotEqual(child.returncode,0)
+
+    @unittest.skipUnless(shutil.which('ssh'),'OpenSSH client required')
+    async def test_real_ssh_match_shows_progress_with_redirected_stdio(self):
+        import fcntl
+        import pty
+        import termios
+        target = await self.target(self.echo)
+        dummy = await asyncio.start_server(lambda r,w:w.close(),'127.0.0.1',0)
+        port = dummy.sockets[0].getsockname()[1]
+        dummy.close()
+        await dummy.wait_closed()
+        config = self.home/'ssh-config'
+        hook = f'{BINARY} ssh --ensure-running --url {self.url} --username test --no-keyring --startup-delay 0 --port {port} --target-port {target}'
+        config.write_text(f'Host hook-test\n    HostName 127.0.0.1\n    Port {port}\nMatch originalhost hook-test exec "{hook}"\nMatch all\n')
+        master, slave = pty.openpty()
+        def session():
+            os.setsid()
+            fcntl.ioctl(slave,termios.TIOCSCTTY,0)
+        output = bytearray()
+        process = None
+        try:
+            process = await asyncio.create_subprocess_exec('ssh','-F',str(config),'-G','hook-test',stdin=asyncio.subprocess.DEVNULL,stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL,env=self.env(),pass_fds=(slave,),preexec_fn=session)
+            self.children.append(process)
+            os.close(slave)
+            slave = None
+            os.set_blocking(master,False)
+            async def drain():
+                while process.returncode is None:
+                    with contextlib.suppress(BlockingIOError,OSError):
+                        output.extend(os.read(master,65536))
+                    await asyncio.sleep(.02)
+                with contextlib.suppress(BlockingIOError,OSError):
+                    output.extend(os.read(master,65536))
+            await asyncio.wait_for(drain(),20)
+            await process.wait()
+            self.assertEqual(process.returncode,0,output.decode(errors='replace'))
+            self.assertIn(b'Checking server helper',output)
+            self.assertIn(b'Helper upload: 100%',output)
+            self.assertIn(b'Bridge ready on',output)
+        finally:
+            stop = await self.child('--stop','--port',port)
+            await asyncio.wait_for(stop.wait(),5)
+            os.close(master)
+            if slave is not None:
+                os.close(slave)
 
     async def test_managed_alias_start_reuse_status_and_stop(self):
         target = await self.target(self.echo)

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1
+
+- Report helper upload progress and surface remote bootstrap errors immediately.
+- Prepare the terminal before sending the bootstrap script to prevent the long command being echoed.
+- Show live startup progress and errors in the calling console for SSH Match hooks.
+- Remove runtime-installation wording from CLI messages.
+- Preserve final SSH data when both sides half-close a connection.
+
 ## 1.0.0
 
 - Standalone Rust clients and a shared SSH/HTTP forwarding engine.

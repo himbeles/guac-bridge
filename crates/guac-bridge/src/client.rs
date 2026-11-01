@@ -41,6 +41,7 @@ struct Acks {
 }
 enum Input {
     Raw(Vec<u8>),
+    Upload(Vec<u8>, oneshot::Sender<()>),
     Event(Frame),
     Shutdown(oneshot::Sender<()>),
 }
@@ -55,7 +56,7 @@ where
 {
     tokio::spawn(async move {
         if let Err(error) = future.await {
-            fail(&failure, &closing, &error.to_string());
+            fail(&failure, &closing, &format!("{error:#}"));
         }
     })
 }
@@ -97,20 +98,28 @@ async fn input_sender(
 ) -> Result<()> {
     let timeout = Duration::from_secs(args.connect_timeout);
     while let Some(message) = input.recv().await {
-        let (bytes, done, chunk) = match message {
-            Input::Raw(data) => (data, None, 3072),
-            Input::Event(frame) => (encode(&frame)?, None, args.input_chunk),
+        let (bytes, done, chunk, shutdown) = match message {
+            Input::Raw(data) => (data, None, 3072, false),
+            Input::Upload(data, done) => (data, Some(done), args.input_chunk, false),
+            Input::Event(frame) => (encode(&frame)?, None, args.input_chunk, false),
             Input::Shutdown(done) => (
                 encode(&Frame::control(Kind::Shutdown, 0))?,
                 Some(done),
                 args.input_chunk,
+                true,
             ),
         };
-        raw_input(&bytes, chunk, &acks, &out, timeout).await?;
+        raw_input(&bytes, chunk, &acks, &out, timeout)
+            .await
+            .context("Guacamole terminal input stopped progressing")?;
         if let Some(done) = done {
-            drain(&acks, timeout).await?;
+            drain(&acks, timeout)
+                .await
+                .context("Guacamole did not acknowledge terminal input")?;
             let _ = done.send(());
-            return Ok(());
+            if shutdown {
+                return Ok(());
+            }
         }
     }
     Ok(())
@@ -191,9 +200,13 @@ async fn channel(
     }
     if !remote_closed.load(Ordering::Relaxed) {
         let cleanup = async {
-            input
-                .send(Input::Event(Frame::control(Kind::Close, id)))
-                .await?;
+            // On a clean half-close, wait for the helper to flush queued data
+            // and confirm Closed. A premature Close would abort its writer.
+            if result.is_err() {
+                input
+                    .send(Input::Event(Frame::control(Kind::Close, id)))
+                    .await?;
+            }
             while let Some(frame) = queue.recv().await {
                 if matches!(frame.kind, Kind::Closed | Kind::Error) {
                     return Ok::<(), anyhow::Error>(());
@@ -294,6 +307,10 @@ async fn benchmark_control(port: u16) -> Result<()> {
 
 pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
     let (base, connection, kind, source) = parse_url(&args)?;
+    #[cfg(unix)]
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    #[cfg(windows)]
+    let mut interrupt = tokio::signal::windows::ctrl_c()?;
     let listener=TcpListener::bind(("127.0.0.1",args.port())).await.with_context(|| format!("Cannot listen on 127.0.0.1:{}: the port is already in use or reserved. Choose another --port, or stop the process using it",args.port()))?;
 
     let username = crate::credentials::username(&args)?;
@@ -410,6 +427,9 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
     let read_started = helper_started.clone();
     let (boot_tx, mut boot_rx) = mpsc::channel::<String>(8);
     let nonce = uuid::Uuid::new_v4().simple().to_string();
+    let read_nonce = nonce.clone();
+    let phase = Arc::new(Mutex::new("preparing terminal"));
+    let read_phase = phase.clone();
     let mut tasks = Vec::new();
     tasks.push(spawn_guard(
         async move {
@@ -440,7 +460,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                 _=tick.tick()=>{
                     ensure!(!read_started.load(Ordering::Relaxed)||heartbeat.elapsed()<Duration::from_secs(45),"Remote helper heartbeat lost");
                     let timed_out=read_acks.pending.lock().unwrap().front().is_some_and(|time|time.elapsed()>Duration::from_secs(read_args.connect_timeout));
-                    ensure!(!timed_out,"Guacamole input acknowledgement timed out");
+                    ensure!(!timed_out,"Guacamole input acknowledgement timed out while {}",if read_started.load(Ordering::Relaxed){"forwarding data"}else{*read_phase.lock().unwrap()});
                 },
                 message=stream.next()=>{
                     let Some(message)=message else {bail!("Guacamole tunnel closed");};
@@ -469,7 +489,19 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                                     ensure!(boot_buffer.len()<4096,"Bootstrap output exceeds limit");
                                     while let Some(n)=boot_buffer.iter().position(|b|*b==b'\n') {
                                         let line=String::from_utf8(boot_buffer.drain(..=n).collect())?;
-                                        boot_tx.try_send(line.trim().to_owned())?;
+                                        let line=line.trim();
+                                        if let Some(message)=line.strip_prefix(&format!("{read_nonce}:ERROR:")) {
+                                            bail!("Server helper bootstrap failed: {message}");
+                                        }
+                                        if line==format!("{read_nonce}:VERIFY") {
+                                            *read_phase.lock().unwrap()="verifying helper checksum";
+                                            if !read_args.benchmark_control {eprintln!("Verifying helper checksum…");}
+                                        }else if line==format!("{read_nonce}:STARTING") {
+                                            *read_phase.lock().unwrap()="starting server helper";
+                                            if !read_args.benchmark_control {eprintln!("Starting server helper…");}
+                                        }else {
+                                            boot_tx.try_send(line.to_owned())?;
+                                        }
                                     }
                                     ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
                                 },
@@ -521,33 +553,57 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
     ));
     let result:Result<()>=async {
         let startup=async {
-            synced.notified().await;
+            tokio::time::timeout(Duration::from_secs(args.connect_timeout),synced.notified()).await?;
             tokio::time::sleep(Duration::from_secs_f64(args.startup_delay)).await;
             acks.slots.clone().acquire_owned().await?.forget();
             acks.pending.lock().unwrap().push_back(Instant::now());
             ws_send(&out,&["pipe","0","text/plain","STDIN"]).await?;
             drain(&acks,Duration::from_secs(args.connect_timeout)).await?;
+            input.send(Input::Raw(crate::deploy::prepare(&nonce))).await?;
+            let prepared=tokio::time::timeout(Duration::from_secs(args.connect_timeout),boot_rx.recv()).await?.context("Terminal preparation closed")?;
+            ensure!(prepared==format!("{nonce}:PREPARED"),"Unexpected terminal preparation response");
+            *phase.lock().unwrap()="checking server helper cache";
+            if !args.benchmark_control {eprintln!("Checking server helper…");}
             input.send(Input::Raw(crate::deploy::command(&args,&nonce)?)).await?;
             if args.server_command.is_none() {
-                let response=boot_rx.recv().await.context("Helper bootstrap closed")?;
+                let response=tokio::time::timeout(Duration::from_secs(args.connect_timeout),boot_rx.recv()).await?.context("Helper bootstrap closed")?;
                 if response==format!("{nonce}:UPLOAD") {
-                    if !args.benchmark_control {eprintln!("Installing bundled Linux helper (no server Python or uv needed)…");}
-                    input.send(Input::Raw(crate::deploy::encoded_agent())).await?;
-                }else {ensure!(response==format!("{nonce}:CACHED"),"Server bootstrap failed: {}",response.strip_prefix(&format!("{nonce}:ERROR:")).unwrap_or("unexpected response"));}
+                    *phase.lock().unwrap()="uploading bundled helper";
+                    let encoded=crate::deploy::encoded_agent();
+                    let block=args.input_chunk*args.input_window;
+                    if !args.benchmark_control {eprintln!("Uploading bundled helper ({} KiB)…",crate::deploy::AGENT.len().div_ceil(1024));}
+                    for (index,part) in encoded.chunks(block).enumerate() {
+                        let (sent,receipt)=oneshot::channel();
+                        input.send(Input::Upload(part.to_vec(),sent)).await?;
+                        receipt.await.context("Helper upload sender stopped")?;
+                        let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
+                        if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                    }
+                    let mut stage=phase.lock().unwrap();
+                    if *stage=="uploading bundled helper" {*stage="waiting for server to finish helper upload";}
+                }else {
+                    ensure!(response==format!("{nonce}:CACHED"),"Unexpected helper cache response");
+                    if !args.benchmark_control {eprintln!("Using cached helper");}
+                }
             }
-            ready.notified().await;
+            tokio::time::timeout(Duration::from_secs(args.connect_timeout),ready.notified()).await?;
             Ok::<(),anyhow::Error>(())
         };
         tokio::select!{
-            result=tokio::time::timeout(Duration::from_secs(args.connect_timeout+120),startup)=>result.context("Bundled helper did not start; check the remote cache is executable and the terminal is ready")??,
+            biased;
+            _=interrupt.recv()=>return Ok(()),
             _=failed.changed()=>bail!("{}",failed.borrow().as_deref().unwrap_or("Bridge failed")),
+            result=startup=>{
+                if let Some(message)=failed.borrow().as_ref(){bail!("{message}");}
+                result.with_context(||format!("Helper startup failed while {}; check the remote terminal and cache permissions",*phase.lock().unwrap()))?;
+            },
         }
 
         let port=listener.local_addr()?.port();
         let (stop_tx,mut stop_rx)=mpsc::channel(1);
         let _managed=crate::background::control(&args,stop_tx).await?;
         if !args.benchmark_control{eprintln!("Bridge ready on 127.0.0.1:{port}; Ctrl+C to stop");}
-        let control=async {if args.benchmark_control{benchmark_control(port).await}else{tokio::signal::ctrl_c().await?;Ok(())}};
+        let control=async {if args.benchmark_control{benchmark_control(port).await}else{interrupt.recv().await;Ok(())}};
         tokio::pin!(control);
         let next_id=AtomicU32::new(1);
         let mut connections=tokio::task::JoinSet::new();

@@ -139,11 +139,20 @@ pub fn alias_entry(mode: &str) -> i32 {
     main_entry(arguments)
 }
 pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
+    let arguments: Vec<_> = arguments.into_iter().collect();
+    let requested_hook = arguments.iter().any(|arg| {
+        arg.to_str()
+            .is_some_and(|value| matches!(value, "--ensure-running" | "--stop" | "--status"))
+    });
     let cli = match Cli::try_parse_from(arguments) {
         Ok(cli) => cli,
         Err(e) => {
             let code = e.exit_code();
-            let _ = e.print();
+            if requested_hook {
+                crate::console::line(e.to_string().trim_end());
+            } else {
+                let _ = e.print();
+            }
             return code;
         }
     };
@@ -152,6 +161,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         Command::Llm(a) => ("llm", a),
     };
     args.mode = mode.into();
+    let hook_output = args.ensure_running || args.stop || args.status;
     let result = (|| -> Result<()> {
         args.validate()?;
         if args.managed_child {
@@ -184,7 +194,12 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("\x1b[31mError: {e:#}\x1b[0m");
+            let message = format!("\x1b[31mError: {e:#}\x1b[0m");
+            if hook_output {
+                crate::console::line(&message);
+            } else {
+                eprintln!("{message}");
+            }
             1
         }
     }
