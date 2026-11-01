@@ -27,18 +27,33 @@ async def python_worker(config):
     import aiohttp
     from guac_bridge.client import login
     from guac_bridge.ssh_client import SSHBridge
-    args = SimpleNamespace(server_command=config['helper'], connect_timeout=30,
+    if config.get('binary'):
+        from guac_bridge.binary_ssh_client import BinarySSHBridge
+        SSHBridge = BinarySSHBridge
+    args = SimpleNamespace(server_command=config['helper'], connect_timeout=config.get('timeout',30),
         startup_delay=.03, transport='websocket', max_connections=8,
         target_host='127.0.0.1', target_port=config['target_port'])
+    if config.get('binary'):
+        matched = config.get('matched', False)
+        args.window = 32
+        args.frame_size = 16384 if matched else 65536
+        args.input_window = 32 if matched else 64
+        args.input_chunk = 3072 if matched else 6048
+        args.transport = config.get('transport', 'websocket')
     async with aiohttp.ClientSession() as session:
         token = await login(session, config['base'], 'test', 'test', 10)
         bridge = SSHBridge(args, session, config['base'], '1', 'c', 'mysql', token)
         await bridge.start()
         listener = await asyncio.start_server(bridge.accept, '127.0.0.1', 0)
         print(json.dumps({'endpoint': listener.sockets[0].getsockname()[1]}), flush=True)
-        try:
+        control_reader = asyncio.StreamReader()
+        protocol = asyncio.StreamReaderProtocol(control_reader)
+        control_transport, _ = await asyncio.get_running_loop().connect_read_pipe(
+            lambda: protocol, sys.stdin.buffer)
+
+        async def control():
             while True:
-                command = (await asyncio.to_thread(sys.stdin.readline)).strip()
+                command = (await control_reader.readline()).decode().strip()
                 if command == 'start':
                     cpu, wall = time.process_time(), time.perf_counter()
                     print('{}', flush=True)
@@ -47,8 +62,20 @@ async def python_worker(config):
                         wall_s=time.perf_counter()-wall,
                         client_peak_rss_kib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)), flush=True)
                 else:
-                    break
+                    return
+
+        controller = asyncio.create_task(control())
+        failed = asyncio.create_task(bridge.failed.wait())
+        try:
+            done, _ = await asyncio.wait((controller, failed), return_when=asyncio.FIRST_COMPLETED)
+            if failed in done:
+                raise RuntimeError(bridge.failure)
+            await controller
         finally:
+            for task in (controller, failed):
+                task.cancel()
+            await asyncio.gather(controller, failed, return_exceptions=True)
+            control_transport.close()
             listener.close()
             await listener.wait_closed()
             await bridge.close()
@@ -105,8 +132,9 @@ def fixture_types():
 
 
 class BridgeWorker:
-    def __init__(self, variant, rtt_ms=0, timeout=30):
+    def __init__(self, variant, rtt_ms=0, timeout=30, helper_language=None, transport='websocket'):
         self.variant, self.rtt_ms, self.timeout = variant, rtt_ms, timeout
+        self.helper_language, self.transport = helper_language, transport
         self.gateway = fixture_types()()
         self.directory = tempfile.TemporaryDirectory()
         self.report_path = Path(self.directory.name)/'helper-usage.json'
@@ -118,9 +146,12 @@ class BridgeWorker:
     async def start(self, target_port):
         from .transport import start_app
         from .latency import LatencyProxy
-        native = self.variant != 'python'
-        command = ([os.environ.get('GUAC_RUST_HELPER', str(ROOT/'rust-ssh/target/release/guac-ssh-server-rs'))] if native else
-                   [sys.executable, '-m', 'guac_bridge.ssh_server'])
+        native = self.variant.startswith('rust')
+        binary = self.variant.startswith('python-binary')
+        helper_native = native if self.helper_language is None else self.helper_language == 'rust'
+        helper_binary = binary or native
+        command = ([os.environ.get('GUAC_RUST_HELPER', str(ROOT/'rust-ssh/target/release/guac-ssh-server-rs'))] if helper_native else
+                   [sys.executable, '-m', 'guac_bridge.binary_ssh_server' if helper_binary else 'guac_bridge.ssh_server'])
         helper = Path(self.directory.name)/'helper'
         wrapper = [sys.executable, '-m', 'benchmarks.rust_ssh_helper', str(self.report_path), 'helper', '--', *command]
         helper.write_text('#!/bin/sh\nexec '+' '.join(map(shlex.quote, wrapper))+' "$@"\n')
@@ -132,7 +163,9 @@ class BridgeWorker:
             self.proxy = await LatencyProxy(parts.hostname, parts.port, self.rtt_ms).start()
             base = f'http://127.0.0.1:{self.proxy.port}/'
         base += 'guacamole/'
-        config = dict(helper=str(helper), base=base, target_port=target_port)
+        config = dict(helper=str(helper), base=base, target_port=target_port,
+                      binary=binary, matched=self.variant.endswith('-matched'),
+                      timeout=self.timeout, transport=self.transport)
         environment = dict(os.environ, PYTHONPATH=str(ROOT/'src'), GUAC_BRIDGE_PASSWORD='test')
         if native:
             url = base+'#/client/'+base64.b64encode(b'1\0c\0mysql').decode()
@@ -349,6 +382,8 @@ async def run(args):
                               for name in ('guac-ssh-client-rs', 'guac-ssh-server-rs')},
         profiles={'python': dict(frame=16384, window=32, input_chunk=3072, input_window=32, protocol='ASCII JSON'),
                   'rust-matched': dict(frame=16384, window=32, input_chunk=3072, input_window=32, protocol='ESC-safe binary'),
+                  'python-binary-matched': dict(frame=16384, window=32, input_chunk=3072, input_window=32, protocol='ESC-safe binary'),
+                  'python-binary': dict(frame=65536, window=32, input_chunk=6048, input_window=64, protocol='ESC-safe binary'),
                   'rust': dict(frame=65536, window=32, input_chunk=6048, input_window=64, protocol='ESC-safe binary')},
         method='Separate client process CPU; helper wait4 CPU includes startup, warmup, transfer and shutdown',
         rows=[])
@@ -394,7 +429,7 @@ def main():
     else:
         if args.mib<1 or args.seconds<0 or args.repeats<1:
             parser.error('Invalid workload sizes')
-        if set(args.variants.split(','))-{'python','rust-matched','rust'}:
+        if set(args.variants.split(','))-{'python','python-binary-matched','python-binary','rust-matched','rust'}:
             parser.error('Unknown variant')
         if set(args.directions.split(','))-{'upload','download','idle','latency'}:
             parser.error('Unknown direction')

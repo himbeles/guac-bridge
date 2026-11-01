@@ -21,6 +21,8 @@ guac-llm-client = "guac_bridge.client:cli"
 guac-llm-server = "guac_bridge.server:cli"
 guac-ssh-client = "guac_bridge.ssh_client:cli"
 guac-ssh-server = "guac_bridge.ssh_server:cli"
+guac-ssh-client-binary = "guac_bridge.binary_ssh_client:cli"
+guac-ssh-server-binary = "guac_bridge.binary_ssh_server:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]
