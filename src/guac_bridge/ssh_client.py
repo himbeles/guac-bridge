@@ -269,7 +269,6 @@ def cli(argv=None):
     parser.add_argument('--server-command', default='~/.local/bin/guac-ssh-server', help='Remote helper executable path')
     parser.add_argument('--connection-id')
     parser.add_argument('--data-source')
-    parser.add_argument('--transport', choices=('auto', 'websocket', 'http'), default='auto')
     parser.add_argument('--startup-delay', type=float, default=2)
     parser.add_argument('--connect-timeout', type=float, default=30)
     parser.add_argument('--ca-file', help='Corporate CA PEM bundle')

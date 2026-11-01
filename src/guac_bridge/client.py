@@ -13,7 +13,6 @@ import ssl
 import sys
 import time
 import urllib.parse
-import uuid
 
 import aiohttp
 from aiohttp import web
@@ -106,73 +105,36 @@ def bootstrap(args):
 
 
 class Tunnel:
-    def __init__(self, session, base, params, mode):
-        self.session, self.base, self.params, self.mode = session, base, params, mode
+    def __init__(self, session, base, params):
+        self.session, self.base, self.params = session, base, params
+        self.mode = 'websocket'
         self.ws = None
-        self.ident = None
         self.lock = asyncio.Lock()
         self.closed = False
 
     async def connect(self):
-        if self.mode != 'http':
-            url = self.base.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1)
-            try:
-                self.ws = await self.session.ws_connect(
-                    url + 'websocket-tunnel', params=self.params, protocols=('guacamole',),
-                    heartbeat=20, max_msg_size=16 * 1024 * 1024,
-                    origin=urllib.parse.urlunsplit((*urllib.parse.urlsplit(self.base)[:2], '', '', '')))
-                self.mode = 'websocket'
-                return
-            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-                if self.mode == 'websocket':
-                    raise BridgeError('WebSocket tunnel failed; try --transport http') from exc
-                LOG.info('WebSocket unavailable; trying Guacamole HTTP tunnel')
-        self.mode = 'http'
-        async with self.session.post(self.base + 'tunnel?connect', data=self.params,
-                                     allow_redirects=False) as response:
-            if response.status != 200:
-                raise BridgeError('HTTP tunnel connect returned status ' + str(response.status))
-            self.ident = (await response.text()).strip()
+        url = self.base.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1)
         try:
-            uuid.UUID(self.ident)
-        except ValueError as exc:
-            raise BridgeError('HTTP tunnel did not return a tunnel UUID') from exc
+            self.ws = await self.session.ws_connect(
+                url + 'websocket-tunnel', params=self.params, protocols=('guacamole',),
+                heartbeat=20, max_msg_size=16 * 1024 * 1024,
+                origin=urllib.parse.urlunsplit((*urllib.parse.urlsplit(self.base)[:2], '', '', '')))
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            raise BridgeError('Guacamole WebSocket tunnel failed. Check the URL, network/proxy and WebSocket support.') from exc
 
     async def send(self, *args):
         payload = instruction(*args)
         async with self.lock:
-            if self.closed:
+            if self.closed or self.ws is None:
                 raise BridgeError('Guacamole tunnel is closed')
-            if self.ws:
-                await self.ws.send_str(payload)
-            else:
-                async with self.session.post(self.base + 'tunnel?write:' + self.ident,
-                                             data=payload.encode(),
-                                             headers={'Content-Type': 'application/octet-stream'},
-                                             allow_redirects=False) as response:
-                    if response.status != 200:
-                        raise BridgeError('HTTP tunnel write failed: ' + str(response.status))
-                    await response.read()
+            await self.ws.send_str(payload)
 
     async def messages(self):
-        if self.ws:
-            async for message in self.ws:
-                if message.type == aiohttp.WSMsgType.TEXT:
-                    yield message.data
-                elif message.type == aiohttp.WSMsgType.ERROR:
-                    raise BridgeError('WebSocket tunnel failed')
-            return
-        counter = 0
-        import codecs
-        decoder = codecs.getincrementaldecoder('utf-8')()
-        while not self.closed:
-            async with self.session.get(self.base + 'tunnel?read:' + self.ident + ':' + str(counter),
-                                        allow_redirects=False) as response:
-                if response.status != 200:
-                    raise BridgeError('HTTP tunnel read failed: ' + str(response.status))
-                async for chunk in response.content.iter_any():
-                    yield decoder.decode(chunk)
-            counter += 1
+        async for message in self.ws:
+            if message.type == aiohttp.WSMsgType.TEXT:
+                yield message.data
+            elif message.type == aiohttp.WSMsgType.ERROR:
+                raise BridgeError('Guacamole WebSocket tunnel failed')
 
     async def close(self):
         self.closed = True
@@ -226,7 +188,7 @@ class Bridge:
                   ('GUAC_ID', self.conn), ('GUAC_TYPE', self.kind),
                   ('GUAC_WIDTH', '1024'), ('GUAC_HEIGHT', '768'), ('GUAC_DPI', '96'),
                   ('GUAC_TIMEZONE', 'Europe/Berlin'), ('GUAC_IMAGE', 'image/png')]
-        self.tunnel = Tunnel(self.session, self.base, params, self.args.transport)
+        self.tunnel = Tunnel(self.session, self.base, params)
         await self.tunnel.connect()
         LOG.info('Connected to Guacamole (%s)', self.tunnel.mode)
         self.reader = asyncio.create_task(self.read_loop())
@@ -675,7 +637,6 @@ def cli():
     parser.add_argument('--upstream', default='http://127.0.0.1:8000', help='Server-side loopback vLLM URL')
     parser.add_argument('--connection-id', help='Override URL connection identifier')
     parser.add_argument('--data-source', help='Override URL data source, e.g. mysql')
-    parser.add_argument('--transport', choices=('auto', 'websocket', 'http'), default='auto')
     parser.add_argument('--server-command', default='~/.local/bin/guac-llm-server',
                         help='Installed helper executable on server; absolute path recommended')
     parser.add_argument('--startup-delay', type=float, default=2, help='Seconds for remote shell startup')

@@ -58,7 +58,7 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
         base += 'guacamole/'
         token = await login(self.session, base, 'test', 'test', 5)
         values = dict(target_host='127.0.0.1', target_port=target_port, max_connections=8,
-                      server_command=str(self.helper), startup_delay=.1, connect_timeout=5, transport='auto')
+                      server_command=str(self.helper), startup_delay=.1, connect_timeout=5)
         values.update(overrides)
         bridge = SSHBridge(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
         self.bridges.append(bridge)
@@ -231,11 +231,11 @@ class SSHTests(unittest.IsolatedAsyncioTestCase):
                 with contextlib.suppress(ProcessLookupError):
                     os.kill(pid, signal.SIGTERM)
 
-    async def test_http_fallback_binary_roundtrip(self):
+    async def test_unavailable_websocket_fails_without_http_tunnel(self):
         target = await self.target(self.echo)
-        bridge, local, _ = await self.connect(target, websocket=False)
-        self.assertEqual(bridge.tunnel.mode, 'http')
-        await self.transfer(local, os.urandom(100000))
+        with self.assertRaisesRegex(BridgeError, 'WebSocket tunnel failed'):
+            await self.connect(target, websocket=False)
+        self.assertNotIn('/guacamole/tunnel', self.gateways[-1].request_paths)
 
     async def test_concurrent_connections_and_close_isolation(self):
         target = await self.target(self.echo)

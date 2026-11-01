@@ -29,7 +29,7 @@ more buffering for bulk throughput; they do not speed up model inference.
 The independent bootstrap still checks versions, offers updates and reuses the
 helper's Python interpreter and configured package index. Both installed ends
 must support protocol v5. Keychain login, managed SSH startup, cancellation,
-HTTP fallback and the ordinary CLI entry points are retained.
+WebSocket transport and the ordinary CLI entry points are retained.
 
 Tests cover all 256 bytes, adjacent escapes, fragmented/coalesced messages,
 metadata integrity, size limits, large Unicode requests, SSE, concurrent

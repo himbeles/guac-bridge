@@ -91,7 +91,7 @@ def child_command(args):
     command = [sys.executable, '-m', 'guac_bridge.ssh_client']
     for name in ('url', 'username', 'port', 'target_host', 'target_port',
                  'max_connections', 'server_command', 'connection_id',
-                 'data_source', 'transport', 'startup_delay', 'connect_timeout',
+                 'data_source', 'startup_delay', 'connect_timeout',
                  'ca_file', 'window', 'frame_size'):
         value = getattr(args, name, None)
         if value is not None:

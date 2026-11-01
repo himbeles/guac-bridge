@@ -143,7 +143,7 @@ if os.name == 'posix':
         async def test_update_then_forward_api_request(self):
             home, record, env = fake_installation(self.temp.name, self.helper)
             with patch.dict(os.environ, env):
-                bridge, local, _ = await self.connect(mode='http', update_server=True, server_command='~/.local/bin/guac-llm-server')
+                bridge, local, _ = await self.connect(update_server=True, server_command='~/.local/bin/guac-llm-server')
                 async with self.session.get(local + 'v1/models') as response:
                     self.assertEqual(response.status, 200)
                     self.assertEqual((await response.json())['data'][0]['id'], 'test-model')

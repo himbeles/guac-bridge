@@ -1,5 +1,8 @@
 # Transport performance investigation
 
+Historical results below include an HTTP tunnel removed in v0.10.1. Current
+clients use WebSocket exclusively.
+
 Historical baseline: `0d547f8131aedf5b938871376fba749f08c32e53`.
 Original investigation: `investigate/transport-performance`, commit
 `43c7978b6229243e86fa6b07d45a38b4c927b9a8`.

@@ -64,7 +64,7 @@ uv run python -m benchmarks.summarize benchmarks/results/local.json
 ```
 
 This runs three repeats of SSH uploads/downloads, LLM prompt/response transfers,
-and a fixed-rate SSE stream, using WebSocket and HTTP tunnels. It checks payload
+and a fixed-rate SSE stream, using WebSocket tunnels. It checks payload
 integrity and measures wall time, CPU, acknowledgement waits, and stream delivery
 lag. Default bulk source size is 256 KiB.
 
@@ -80,13 +80,13 @@ lag. Default bulk source size is 256 KiB.
 A shorter check:
 
 ```shell
-uv run python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20 --transports websocket --workloads ssh-upload,ssh-download,llm-paced --output benchmarks/results/smoke.json
+uv run python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20 --workloads ssh-upload,ssh-download,llm-paced --output benchmarks/results/smoke.json
 ```
 
 To collect a local CPU profile (profiling affects timings):
 
 ```shell
-uv run python -m benchmarks.transport --kib 4096 --repeats 1 --delays 0 --transports websocket --workloads ssh-upload,ssh-download,llm-upload,llm-download --profile /tmp/guac-performance.pstats --output benchmarks/results/profile.json
+uv run python -m benchmarks.transport --kib 4096 --repeats 1 --delays 0 --workloads ssh-upload,ssh-download,llm-upload,llm-download --profile /tmp/guac-performance.pstats --output benchmarks/results/profile.json
 uv run python -m pstats /tmp/guac-performance.pstats
 ```
 
@@ -96,7 +96,6 @@ uv run python -m pstats /tmp/guac-performance.pstats
 | --- | --- |
 | Low CPU and strong sensitivity to ACK delay | Network/Guacamole turnaround and flow control |
 | High CPU in the client or helper | Profile that process for framing, serialization, scheduling, and copies |
-| WebSocket outperforms HTTP fallback | Per-instruction HTTP request overhead |
 | Server-local LLM generation is equally slow | Model/GPU workload rather than bridge transport |
 | A high bulk rate but delayed token delivery | Buffering and stream delivery latency |
 
@@ -117,8 +116,7 @@ uv run python -m benchmarks.flow --kib 2048 --repeats 3 --rtts 20,50 --output be
 This measures the production defaults. The proxy delays application bytes
 in both directions by half the selected RTT. Ping and bulk-echo controls validate
 the model; it does not model TCP congestion, loss, TLS or real guacd scheduling.
-Use `--transport http` to check HTTP fallback, or `--workloads llm-paced` for
-stream delivery lag.
+Use `--workloads llm-paced` to measure stream delivery lag.
 
 The [v0.6.0 results](../benchmarks/results/release-0.6.0-flow.json) are historical
 comparisons against smaller limits. The current benchmark has no compatibility

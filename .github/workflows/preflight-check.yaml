@@ -2,7 +2,7 @@ name: Bootstrap preflight checks
 
 on:
   push:
-    branches: [fix/bootstrap-preflight, feature/hook-save-password, fix/hook-update-approval, feature/ascii-json-framing, feature/python-binary-protocol]
+    branches: [fix/bootstrap-preflight, feature/hook-save-password, fix/hook-update-approval, feature/ascii-json-framing, feature/python-binary-protocol, feature/websocket-only]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - name: Benchmark integrity and delayed-ACK smoke test
         run: >-
           python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20
-          --transports websocket --workloads ssh-upload,ssh-download,llm-paced
+          --workloads ssh-upload,ssh-download,llm-paced
           --output benchmarks/results/release-smoke.json
 
       - name: Flow integrity and RTT smoke test

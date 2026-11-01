@@ -114,12 +114,16 @@ class Gateway:
         self.terminals = []
         self.tokens = []
         self.ws = None
+        self.request_paths = []
 
     def app(self):
-        app = web.Application()
+        @web.middleware
+        async def record_path(request, handler):
+            self.request_paths.append(request.path)
+            return await handler(request)
+        app = web.Application(middlewares=[record_path])
         app.router.add_post('/guacamole/api/tokens', self.login)
         app.router.add_get('/guacamole/websocket-tunnel', self.ws_handler)
-        app.router.add_route('*', '/guacamole/tunnel', self.http_handler)
         return app
 
     async def login(self, request):
@@ -152,33 +156,6 @@ class Gateway:
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
         return ws
-
-    async def http_handler(self, request):
-        query = request.query_string
-        if query == 'connect':
-            data = await request.post()
-            assert data['GUAC_ID'] == '1'
-            term = Terminal()
-            self.terminals.append(term)
-            await term.start()
-            return web.Response(text=str(uuid.uuid4()))
-        term = self.terminals[-1]
-        if query.startswith('write:'):
-            await term.feed(await request.text())
-            return web.Response()
-        if query.startswith('read:'):
-            text = await term.output.get()
-            while not term.output.empty():
-                text += term.output.get_nowait()
-            # Deliberately fragment instructions across HTTP response chunks.
-            response = web.StreamResponse()
-            await response.prepare(request)
-            raw = (text + '0.;').encode()
-            await response.write(raw[:7])
-            await response.write(raw[7:])
-            await response.write_eof()
-            return response
-        return web.Response(status=400)
 
     async def close(self):
         if self.ws:
@@ -226,7 +203,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         self.upstream_done.set()
         return response
 
-    async def connect(self, websocket=True, mode='auto', **overrides):
+    async def connect(self, websocket=True, **overrides):
         gateway = Gateway(websocket)
         self.gateways.append(gateway)
         runner, base = await start_app(gateway.app())
@@ -234,7 +211,7 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         base += 'guacamole/'
         token = await login(self.session, base, 'test', 'test', 5)
         values = dict(upstream=self.upstream.rstrip('/'), request_timeout=10, max_requests=4,
-                      transport=mode, startup_delay=.1, connect_timeout=5,
+                      startup_delay=.1, connect_timeout=5,
                       server_command=str(self.helper), local_api_key=None, upstream_api_key=None)
         values.update(overrides)
         bridge = Bridge(SimpleNamespace(**values), self.session, base, '1', 'c', 'mysql', token)
@@ -324,9 +301,14 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(b'[DONE]', remaining)
             self.assertEqual(remaining.count(b'"token"'), 32)
 
-    async def test_http_fallback_and_upstream_error(self):
-        bridge, local, _ = await self.connect(websocket=False)
-        self.assertEqual(bridge.tunnel.mode, 'http')
+    async def test_unavailable_websocket_fails_without_http_tunnel(self):
+        with self.assertRaisesRegex(BridgeError, 'WebSocket tunnel failed'):
+            await self.connect(websocket=False)
+        self.assertNotIn('/guacamole/tunnel', self.gateways[-1].request_paths)
+
+    async def test_upstream_error(self):
+        bridge, local, _ = await self.connect()
+        self.assertEqual(bridge.tunnel.mode, 'websocket')
         async with self.session.get(local + 'v1/models') as r:
             self.assertEqual(r.status, 200)
         async with self.session.post(local + 'v1/chat/completions', json={'error': True}) as r:
@@ -345,13 +327,12 @@ class BridgeTests(unittest.IsolatedAsyncioTestCase):
         app.router.add_post('/v1/chat/completions', opaque)
         runner, upstream = await start_app(app)
         self.runners.append(runner)
-        for websocket in (True, False):
-            _, local, _ = await self.connect(websocket=websocket, upstream=upstream.rstrip('/'))
-            async with self.session.post(local+'v1/chat/completions', data=payload,
-                    headers={'Content-Type':'application/octet-stream'}, auto_decompress=False) as response:
-                self.assertEqual(response.status, 200)
-                self.assertEqual(response.headers['Content-Encoding'], 'gzip')
-                self.assertEqual(await response.read(), compressed)
+        _, local, _ = await self.connect(upstream=upstream.rstrip('/'))
+        async with self.session.post(local+'v1/chat/completions', data=payload,
+                headers={'Content-Type':'application/octet-stream'}, auto_decompress=False) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers['Content-Encoding'], 'gzip')
+            self.assertEqual(await response.read(), compressed)
 
     async def test_concurrent_requests_and_keys(self):
         _, local, _ = await self.connect(local_api_key='local', upstream_api_key='upstream')

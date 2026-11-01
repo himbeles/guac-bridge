@@ -15,7 +15,7 @@ server where the helper and destination service are available.
 5. Local applications connect to that listener. Requests and responses travel
    through Guacamole and the helper.
 
-The Guacamole transport normally uses WebSocket, with an HTTP tunnel fallback.
+The Guacamole transport uses WebSocket (WSS for HTTPS Guacamole URLs).
 Protocol v5 sends length-prefixed binary frames. HTTP and TCP bodies are raw
 bytes; JSON is used only for request/header/ready metadata. ESC and the escape
 byte are stuffed so payloads cannot become terminal commands. Guacamole's own

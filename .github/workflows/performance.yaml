@@ -29,7 +29,7 @@ jobs:
       - name: Integrity-checked benchmark smoke test
         run: >-
           python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20
-          --transports websocket --workloads ssh-upload,ssh-download,llm-paced
+          --workloads ssh-upload,ssh-download,llm-paced
           --output benchmarks/results/ci.json
       - uses: actions/upload-artifact@v7
         with:

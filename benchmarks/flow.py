@@ -23,7 +23,7 @@ async def main(args):
     for repeat in range(args.repeats):
         for rtt in map(float, args.rtts.split(',')):
             for workload in args.workloads.split(','):
-                row = await asyncio.wait_for(trial(payload, 'pipeline', args.transport, 0,
+                row = await asyncio.wait_for(trial(payload, 'pipeline', 'websocket', 0,
                     workload, rtt_ms=rtt), 180)
                 row['repeat'] = repeat
                 result['rows'].append(row)
@@ -43,7 +43,6 @@ if __name__ == '__main__':
     parser.add_argument('--kib', type=int, default=512)
     parser.add_argument('--repeats', type=int, default=3)
     parser.add_argument('--rtts', default='0,20,50')
-    parser.add_argument('--transport', choices=('websocket', 'http'), default='websocket')
     parser.add_argument('--workloads', default='ssh-upload,ssh-download,llm-download')
     parser.add_argument('--output', default='benchmarks/results/flow.json')
     args = parser.parse_args()

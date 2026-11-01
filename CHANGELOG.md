@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1
+
+- Use WebSocket exclusively for Guacamole connections; remove HTTP tunnel fallback and transport selection.
+
 ## 0.10.0
 
 - Use binary framing with raw bodies for both LLM and SSH bridges, reducing encoding work and traffic.

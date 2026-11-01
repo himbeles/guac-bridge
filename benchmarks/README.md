@@ -13,7 +13,7 @@ uv run python -m benchmarks.transport --output benchmarks/results/local.json
 uv run python -m benchmarks.summarize benchmarks/results/local.json
 ```
 
-The default matrix uses 256 KiB payloads, three repeats, both WebSocket and HTTP
+The default matrix uses 256 KiB payloads, three repeats, WebSocket
 tunnels, five workloads, and 0/20/50 ms of synthetic STDIN acknowledgement delay.
 It normally takes several minutes. The delay is **not** a full network RTT
 simulation. No real Guacamole host, model, password, or key is used.
@@ -21,13 +21,13 @@ simulation. No real Guacamole host, model, password, or key is used.
 A short integrity and latency check:
 
 ```shell
-uv run python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20 --transports websocket --workloads ssh-upload,ssh-download,llm-paced --output benchmarks/results/smoke.json
+uv run python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20 --workloads ssh-upload,ssh-download,llm-paced --output benchmarks/results/smoke.json
 ```
 
 For cProfile (timings will be affected):
 
 ```shell
-uv run python -m benchmarks.transport --kib 4096 --repeats 1 --delays 0 --transports websocket --workloads ssh-upload,ssh-download,llm-upload,llm-download --profile /tmp/guac-performance.pstats --output benchmarks/results/profile.json
+uv run python -m benchmarks.transport --kib 4096 --repeats 1 --delays 0 --workloads ssh-upload,ssh-download,llm-upload,llm-download --profile /tmp/guac-performance.pstats --output benchmarks/results/profile.json
 uv run python -m pstats /tmp/guac-performance.pstats
 ```
 
@@ -41,8 +41,7 @@ The fixed-rate stream checks delivery latency separately from model inference.
 Parent CPU includes the client **and** simulated gateway in one process. Helper
 CPU is collected from Linux `/proc` only when available; `null` means unavailable.
 Wire counters cover Guacamole instruction payloads, excluding WebSocket framing,
-HTTP headers, TCP/IP, TLS, and the underlying SSH transport. The HTTP fixture's
-response fragmentation is intentional, not a claim about a real gateway.
+HTTP headers, TCP/IP, TLS, and the underlying SSH transport. 
 
 The checked-in results are local observations, not performance guarantees. CI
 only checks integrity, completion, and pipeline safety; it has no speed thresholds.

@@ -100,17 +100,6 @@ class TimedGateway(Gateway):
             await asyncio.gather(task, return_exceptions=True)
         return ws
 
-    async def http_handler(self, request):
-        # Reuse the production test fixture's HTTP behavior with timed terminals.
-        # A connect is the only place it constructs its own Terminal.
-        if request.query_string == 'connect':
-            import uuid
-            term = TimedTerminal()
-            self.terminals.append(term)
-            await term.start()
-            return web.Response(text=str(uuid.uuid4()))
-        return await super().http_handler(request)
-
 
 def child_cpu(pid):
     """Linux process-tree CPU, including the helper's threads; clock-tick resolution."""
@@ -160,7 +149,9 @@ def start_meter(bridge, terminal):
 async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0):
     runners, handlers, servers = [], set(), []
     proxy = None
-    gateway, bridge, session, terminal = TimedGateway(transport == 'websocket'), None, None, None
+    if transport != 'websocket':
+        raise ValueError('Only WebSocket transport is supported')
+    gateway, bridge, session, terminal = TimedGateway(), None, None, None
     with tempfile.TemporaryDirectory() as directory:
         helper = Path(directory) / 'helper'
         is_ssh = workload.startswith('ssh-')
@@ -219,7 +210,7 @@ async def trial(payload, variant, transport, ack_ms, workload, *, rtt_ms=0):
             base += 'guacamole/'
             token = await login(session, base, 'test', 'test', 10)
             args = SimpleNamespace(server_command=str(helper), connect_timeout=30, startup_delay=.03,
-                                   transport=transport, max_connections=8, target_host='127.0.0.1',
+                                   max_connections=8, target_host='127.0.0.1',
                                    target_port=target_port if is_ssh else 22, max_requests=4,
                                    upstream='' if is_ssh else upstream_url.rstrip('/'),
                                    request_timeout=180, local_api_key=None, upstream_api_key=None)
@@ -395,16 +386,16 @@ async def main(args):
     result['websocket_controls'] = [await websocket_control(control_payload) for _ in range(3)]
     result['tcp_controls'] = [await tcp_control(control_payload) for _ in range(3)]
     for repeat in range(args.repeats):
-        for transport in args.transports.split(','):
-            for delay in map(float, args.delays.split(',')):
-                for workload in args.workloads.split(','):
-                    variants = args.variants.split(',')
-                    for variant in (variants if repeat % 2 == 0 else list(reversed(variants))):
-                        print(f'Running {repeat=} {transport=} {delay=} {workload=} {variant=}', file=sys.stderr, flush=True)
-                        row = await asyncio.wait_for(trial(payload, variant, transport, delay, workload), 180)
-                        row['repeat'] = repeat
-                        result['rows'].append(row)
-                        print(json.dumps(row), flush=True)
+        transport = 'websocket'
+        for delay in map(float, args.delays.split(',')):
+            for workload in args.workloads.split(','):
+                variants = args.variants.split(',')
+                for variant in (variants if repeat % 2 == 0 else list(reversed(variants))):
+                    print(f'Running {repeat=} {transport=} {delay=} {workload=} {variant=}', file=sys.stderr, flush=True)
+                    row = await asyncio.wait_for(trial(payload, variant, transport, delay, workload), 180)
+                    row['repeat'] = repeat
+                    result['rows'].append(row)
+                    print(json.dumps(row), flush=True)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(json.dumps(result, indent=2) + '\n')
 
@@ -414,7 +405,6 @@ if __name__ == '__main__':
     parser.add_argument('--kib', type=int, default=256)
     parser.add_argument('--repeats', type=int, default=3)
     parser.add_argument('--delays', default='0,20,50', help='STDIN ACK delay in ms, not full network RTT')
-    parser.add_argument('--transports', default='websocket,http')
     parser.add_argument('--variants', default='baseline,pipeline')
     parser.add_argument('--workloads', default='ssh-upload,ssh-download,llm-upload,llm-download,llm-paced')
     parser.add_argument('--output', default='benchmarks/results/local.json')
