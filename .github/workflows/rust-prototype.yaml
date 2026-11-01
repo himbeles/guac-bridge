@@ -1,0 +1,64 @@
+name: Native SSH prototype
+
+on:
+  push:
+    branches: [investigate/rust-ssh]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --manifest-path rust-ssh/Cargo.toml -- --check
+      - run: cargo clippy --release --locked --manifest-path rust-ssh/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --release --locked --manifest-path rust-ssh/Cargo.toml
+      - run: cargo build --release --locked --manifest-path rust-ssh/Cargo.toml
+      - uses: actions/setup-python@v7
+        if: runner.os == 'Linux'
+        with:
+          python-version: '3.12'
+      - name: Test real PTY and Guacamole simulation
+        if: runner.os == 'Linux'
+        run: |
+          python -m pip install -e .
+          python -m unittest discover -s tests -p test_rust_ssh.py -v
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-ssh-${{ runner.os }}
+          path: |
+            rust-ssh/target/release/guac-ssh-client-rs*
+            rust-ssh/target/release/guac-ssh-server-rs*
+            !rust-ssh/target/release/*.d
+
+  portable-helper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --manifest-path rust-ssh/Cargo.toml
+      - run: cargo build --release --locked --manifest-path rust-ssh/Cargo.toml --target x86_64-unknown-linux-musl --bin guac-ssh-server-rs
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Test portable helper through the native client
+        run: |
+          python -m pip install -e .
+          GUAC_RUST_HELPER="$PWD/rust-ssh/target/x86_64-unknown-linux-musl/release/guac-ssh-server-rs" python -m unittest discover -s tests -p test_rust_ssh.py -v
+      - uses: actions/upload-artifact@v7
+        with:
+          name: native-ssh-linux-x86_64-musl-helper
+          path: rust-ssh/target/x86_64-unknown-linux-musl/release/guac-ssh-server-rs
