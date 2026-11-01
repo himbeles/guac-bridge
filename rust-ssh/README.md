@@ -9,18 +9,24 @@ channels, half-closes, bounded buffering, timeouts and Ctrl+C shutdown.
 It uses its own binary protocol: install the native helper alongside the
 Python helper and point the native client at it.
 
-## Build and connect
+## Install and connect
 
-From the repository checkout, build optimized executables:
+Download the artifacts from the
+[successful native build](https://github.com/himbeles/guac-bridge/actions/runs/41310978731):
+
+- `native-ssh-Windows`: use `guac-ssh-client-rs.exe` on the client.
+- `native-ssh-linux-x86_64-musl-helper`: use `guac-ssh-server-rs` on the server.
+
+Put the helper in `~/.local/bin/` on the server and make it executable:
 
 ```shell
-cargo build --release --locked --manifest-path rust-ssh/Cargo.toml
+chmod +x ~/.local/bin/guac-ssh-server-rs
 ```
 
-Put `guac-ssh-server-rs` in `~/.local/bin/` on the server. On the client run:
+On the Windows client run:
 
-```shell
-guac-ssh-client-rs --url https://guacamole.example/guacamole/#/client/CONNECTION
+```powershell
+.\guac-ssh-client-rs.exe --url https://guacamole.example/guacamole/#/client/CONNECTION
 ```
 
 Enter the Guacamole username and password when prompted. In another terminal:
@@ -63,9 +69,12 @@ storage, managed background/SSH Match startup, server package updates, SSO or MF
 Use it where direct WebSocket access is available. The binaries do not require
 Guacamole changes. Keep using your normal SSH client for SSH authentication.
 
-## Verify and benchmark
+## Build, verify and benchmark
+
+To build from the repository checkout:
 
 ```shell
+cargo build --release --locked --manifest-path rust-ssh/Cargo.toml
 cargo test --release --locked --manifest-path rust-ssh/Cargo.toml
 uv run python -m unittest discover -s tests -p test_rust_ssh.py -v
 uv run python -m benchmarks.rust_ssh --output benchmarks/results/rust-ssh-paced.json

@@ -70,3 +70,10 @@ Measure production flow control with delay in both directions:
 ```shell
 uv run python -m benchmarks.flow --output benchmarks/results/flow.json
 ```
+
+## Independent native SSH prototype
+
+The [Rust client and helper](../rust-ssh/README.md) use a separate binary protocol
+without JSON or inner Base64. See [the comparison](../docs/rust-ssh-results.md)
+for isolated client CPU, client/helper lifetime CPU, RSS, throughput and latency
+measurements, raw results and reproduction commands.

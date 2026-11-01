@@ -1,0 +1,81 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "build": "cargo build --release --locked; current-thread Tokio; TCP_NODELAY enabled",
+  "native_binary_sha256": {
+    "guac-ssh-client-rs": "755322a72df79e0b6df2a37954d6263c0885f721008591d032a1a2b2bb9426cc",
+    "guac-ssh-server-rs": "06e18afce9e0ae70241c309fa02ceefa98afd8df08ebeccae7fd7fac0abed4a2"
+  },
+  "profiles": {
+    "python": {
+      "frame": 16384,
+      "window": 32,
+      "input_chunk": 3072,
+      "input_window": 32,
+      "protocol": "ASCII JSON"
+    },
+    "rust-matched": {
+      "frame": 16384,
+      "window": 32,
+      "input_chunk": 3072,
+      "input_window": 32,
+      "protocol": "ESC-safe binary"
+    },
+    "rust": {
+      "frame": 65536,
+      "window": 32,
+      "input_chunk": 6048,
+      "input_window": 64,
+      "protocol": "ESC-safe binary"
+    }
+  },
+  "method": "Separate client process CPU; helper wait4 CPU includes startup, warmup, transfer and shutdown",
+  "rows": [
+    {
+      "client_cpu_s": 0.0008547630000000084,
+      "wall_s": 10.001169634000235,
+      "client_peak_rss_kib": 30080,
+      "client_wire_bytes": 19,
+      "client_instructions": 1,
+      "server_wire_bytes": 43,
+      "server_instructions": 1,
+      "variant": "python",
+      "direction": "idle",
+      "bytes": 0,
+      "rtt_ms": 0.0,
+      "paced_seconds": 10.0,
+      "integrity": true,
+      "client_lifetime_cpu_s": 0.236756,
+      "client_exit": 0,
+      "helper_lifetime_cpu_s": 0.060386,
+      "helper_peak_rss_kib": 14840,
+      "helper_exit": 0,
+      "bridge_lifetime_cpu_s": 0.297142,
+      "client_mib_s": 0.0,
+      "repeat": 0
+    },
+    {
+      "client_cpu_s": 0.0022700000000000003,
+      "client_peak_rss_kib": 9216,
+      "wall_s": 10.000936392,
+      "client_wire_bytes": 19,
+      "client_instructions": 1,
+      "server_wire_bytes": 31,
+      "server_instructions": 1,
+      "variant": "rust",
+      "direction": "idle",
+      "bytes": 0,
+      "rtt_ms": 0.0,
+      "paced_seconds": 10.0,
+      "integrity": true,
+      "client_lifetime_cpu_s": 0.005973999999999999,
+      "client_exit": 0,
+      "helper_lifetime_cpu_s": 0.002646,
+      "helper_peak_rss_kib": 9216,
+      "helper_exit": 0,
+      "bridge_lifetime_cpu_s": 0.00862,
+      "client_mib_s": 0.0,
+      "repeat": 0
+    }
+  ]
+}

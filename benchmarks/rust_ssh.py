@@ -212,7 +212,65 @@ async def write_paced(writer, payload, seconds):
         await writer.drain()
 
 
+async def latency_trial(variant, rtt_ms, events=50):
+    handlers = set()
+    async def echo(reader, writer):
+        handlers.add(asyncio.current_task())
+        try:
+            while data := await reader.read(65536):
+                writer.write(data)
+                await writer.drain()
+            writer.write_eof()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            handlers.discard(asyncio.current_task())
+    server = await asyncio.start_server(echo, '127.0.0.1', 0)
+    bridge = BridgeWorker(variant, rtt_ms)
+    try:
+        await bridge.start(server.sockets[0].getsockname()[1])
+        reader, writer = await asyncio.open_connection('127.0.0.1', bridge.port)
+        async def ping(index):
+            data = bytes([index%256])
+            started = time.perf_counter()
+            writer.write(data)
+            await writer.drain()
+            assert await reader.readexactly(1) == data
+            return (time.perf_counter()-started)*1000
+        for index in range(20):
+            await ping(index)
+        before = bridge.wire()
+        await bridge.command('start')
+        lags = [await ping(index) for index in range(events)]
+        result = await bridge.command('stop')
+        result.update({k: v-before[k] for k, v in bridge.wire().items()})
+        result.update(variant=variant, direction='latency', bytes=events, events=events,
+                      rtt_ms=rtt_ms, integrity=True,
+                      ping_p50_ms=statistics.median(lags),
+                      ping_p95_ms=sorted(lags)[int(.95*(len(lags)-1))])
+        writer.write_eof()
+        assert await reader.read() == b''
+        writer.close()
+        await writer.wait_closed()
+    finally:
+        await bridge.close()
+        server.close()
+        await server.wait_closed()
+        for task in list(handlers):
+            task.cancel()
+        await asyncio.gather(*list(handlers), return_exceptions=True)
+    assert bridge.child.returncode == 0 and bridge.helper_usage['helper_exit'] == 0
+    result.update(bridge.client_usage)
+    result.update(bridge.helper_usage)
+    result.pop('stdio')
+    result['bridge_lifetime_cpu_s'] = result['client_lifetime_cpu_s']+result['helper_lifetime_cpu_s']
+    result['client_mib_s'] = events/2**20/result['wall_s']
+    return result
+
+
 async def trial(variant, direction, *, mib=16, seconds=4, rtt_ms=0):
+    if direction == 'latency':
+        return await latency_trial(variant, rtt_ms)
     payload = hashlib.shake_256(b'guac-rust-efficiency').digest(mib*2**20)
     handlers = set()
     duration = seconds
@@ -338,7 +396,7 @@ def main():
             parser.error('Invalid workload sizes')
         if set(args.variants.split(','))-{'python','rust-matched','rust'}:
             parser.error('Unknown variant')
-        if set(args.directions.split(','))-{'upload','download','idle'}:
+        if set(args.directions.split(','))-{'upload','download','idle','latency'}:
             parser.error('Unknown direction')
         asyncio.run(run(args))
 

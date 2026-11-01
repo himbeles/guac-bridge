@@ -7,6 +7,77 @@ buffering, timeouts and clean shutdown.
 
 Build and usage are described in [the native prototype README](../rust-ssh/README.md).
 
+## Results
+
+Linux x86-64 (Xeon Platinum 8573C), Python 3.12.14 and optimized Rust 1.99.1.
+The Python baseline is Guac Bridge 0.9.0. Five alternating rounds transfer
+16 MiB at roughly 4 MiB/s in each direction after a full warmup transfer.
+Efficiency ratios are medians of paired runs; absolute CPU columns are
+separate medians. Higher efficiency means less CPU for identical work.
+
+| Direction | Python client CPU | Native client CPU | Native CPU efficiency | Paired range |
+|---|---:|---:|---:|---:|
+| Upload | 702 ms | 187 ms | 3.52× | 3.20–4.75× |
+| Download | 747 ms | 211 ms | 3.78× | 3.08–4.00× |
+
+**The native implementation clears the 1.5× target:** about 72–74% less
+client CPU in the paced tests. Combined client/helper lifetime CPU efficiency
+is 3.29× for upload and 4.03× for download, including startup, warmup and exit.
+Guacamole instruction bytes fall by 25.1% and 24.7%, respectively.
+These gains combine Rust, binary framing and transport tuning; they do not
+isolate language choice alone.
+
+The conservative native profile still gives 3.22× upload and 3.88× download
+client CPU efficiency with the Python frame/window/blob sizes.
+
+Observed client peak RSS is roughly 9 MiB versus 30 MiB for Python; helper
+RSS is roughly 9 MiB versus 15 MiB. These are lifetime high-water counters
+under a fork/exec launcher, which can overestimate small native processes.
+
+### Bulk throughput
+
+Median MiB/s from three alternating rounds, 8 MiB transfers at saturation:
+
+| Direction | Simulated RTT | Python | Native conservative sizes | Native defaults |
+|---|---:|---:|---:|---:|
+| Upload | 0 ms | 8.02 | 21.47 | 14.49 |
+| Upload | 20 ms | 2.76 | 3.67 | 13.22 |
+| Download | 0 ms | 31.81 | 40.76 | 43.86 |
+| Download | 20 ms | 19.80 | 20.53 | 40.11 |
+
+At 20 ms simulated RTT, native defaults deliver roughly **4.8× upload** and
+**2.0× download throughput**. At zero delay, conservative input sizes win
+upload in this fixture. Larger blobs/windows are not universally faster;
+PTY scheduling and the simulator affect these results.
+
+### Interactive latency and idle
+
+Three rounds of 50 sequential one-byte echoes, after 20 warmup echoes.
+Median per-run p95 latency:
+
+| Simulated RTT | Python | Native defaults |
+|---|---:|---:|
+| 0 ms | 0.86 ms | 0.40 ms |
+| 20 ms | 22.94 ms | 21.73 ms |
+
+These checks run without competing bulk transfers; they do not establish
+latency under saturation. Larger queued frames can delay another channel.
+All transfer hashes, byte comparisons, echo contents and shutdown checks pass.
+
+The single 10-second idle control used 0.9 ms CPU with Python and 2.3 ms
+with native code. Idle CPU did not improve; the native deadline timer wakes
+once per second. Absolute CPU cost is tiny. No watts or joules were measured.
+
+Windows compilation/unit tests and Linux integration tests pass in
+[CI](https://github.com/himbeles/guac-bridge/actions/runs/41310978731), including
+the static musl helper. Performance measurements above are local Linux
+simulation, not measurements of a deployed corporate gateway or Windows power.
+
+Raw results: [paced CPU](../benchmarks/results/rust-ssh-paced.json),
+[saturation](../benchmarks/results/rust-ssh-saturation.json),
+[latency](../benchmarks/results/rust-ssh-latency.json),
+[idle](../benchmarks/results/rust-ssh-idle.json).
+
 ## Reproduce
 
 From a Linux checkout with Bash and PTY support, build optimized binaries and
@@ -18,6 +89,8 @@ cargo test --release --locked --manifest-path rust-ssh/Cargo.toml
 uv run python -m unittest discover -s tests -p test_rust_ssh.py -v
 uv run python -m benchmarks.rust_ssh --mib 16 --seconds 4 --repeats 5 --output benchmarks/results/rust-ssh-paced.json
 uv run python -m benchmarks.rust_ssh --mib 8 --seconds 0 --repeats 3 --rtts 0,20 --output benchmarks/results/rust-ssh-saturation.json
+uv run python -m benchmarks.rust_ssh --directions latency --mib 1 --seconds 0 --repeats 3 --rtts 0,20 --output benchmarks/results/rust-ssh-latency.json
+uv run python -m benchmarks.rust_ssh --directions idle --variants python,rust --mib 1 --seconds 10 --repeats 1 --output benchmarks/results/rust-ssh-idle.json
 ```
 
 `python` is the production Python bridge. `rust-matched` uses the native binary
