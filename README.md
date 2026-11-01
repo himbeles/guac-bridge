@@ -1,19 +1,21 @@
 # 🐸 Guac Bridge
 
-OpenAI-compatible endpoints and SSH through Guacamole.
+SSH and OpenAI-compatible endpoints through Guacamole. A small Rust bridge, wherever you need it.
 
-Access a remote server’s SSH service or OpenAI-compatible API through its Guacamole web terminal. Guac Bridge exposes the service on a local port for your usual SSH tools or LLM applications.
+Expose a remote server’s SSH service or OpenAI-compatible API on your computer through its Guacamole web terminal. Use your usual SSH tools or LLM applications with the local port.
 
 ## First-time setup
 
-Install matching versions on **the server**, using its Guacamole terminal, and on **your client computer**:
+On **Windows x86-64**, run the installer from [Releases](https://github.com/himbeles/guac-bridge/releases). Select **Add Guac Bridge to my user PATH** if desired. On **Linux x86-64**, extract the native release archive.
+
+Alternatively, install on either client with uv:
 
 ```shell
 uv tool install guac-bridge
 uv tool update-shell
 ```
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). The client starts the server helper automatically.
+No installation is needed on the server. The client uploads its bundled Linux x86-64 helper through the Guacamole terminal and reuses it on later connections. The server needs a normal shell and core utilities, with an executable user cache directory; no Python, uv, root access or internet connection is required there.
 
 Open the desired Guacamole terminal in your browser and copy its full URL. Use it as `CONNECTION_URL` below.
 
@@ -21,13 +23,11 @@ Open the desired Guacamole terminal in your browser and copy its full URL. Use i
 
 ### Connect
 
-On your client:
-
 ```shell
-guac-ssh-client --url "CONNECTION_URL"
+guac-bridge ssh --url CONNECTION_URL
 ```
 
-Enter your Guacamole username and password when prompted. In another terminal:
+Enter your Guacamole username and password. In another terminal:
 
 ```shell
 ssh -p 2222 SERVER_USERNAME@127.0.0.1
@@ -37,7 +37,7 @@ Keep the bridge running while connected. Stop it with **Ctrl+C**.
 
 ### Use an SSH config
 
-Add the following to `~/.ssh/config`, replacing the URL and both usernames:
+Add to `~/.ssh/config`, replacing the URL and both usernames:
 
 ```sshconfig
 Host guac-server
@@ -45,59 +45,41 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-ssh-client --ensure-running --save-password --url CONNECTION_URL --username GUACAMOLE_USERNAME --port %p"
+Match originalhost guac-server exec "guac-bridge ssh --ensure-running --save-password --url CONNECTION_URL --username GUACAMOLE_USERNAME --port %p"
 Match all
 ```
 
-Connect with:
+Connect with `ssh guac-server`. The hook starts or reuses the background bridge. On first login it prompts in the calling console and saves your password to the system credential store after successful authentication.
+
+The bridge stays running after SSH exits. Check or stop it with:
 
 ```shell
-ssh guac-server
+guac-bridge ssh --status --port 2222
+guac-bridge ssh --stop --port 2222
 ```
 
-The hook starts or reuses the background bridge automatically. On first login,
-it prompts for your Guacamole password in the calling console and saves it after
-successful authentication. Later connections reuse the saved password.
-
-Use a dedicated local port for each destination. The bridge stays running after
-SSH exits. Stop it and its active connections with:
-
-```shell
-guac-ssh-client --stop --port 2222
-```
+Use a dedicated local port for each destination. Windows users can add `--show-console` to see the background bridge in a separate console.
 
 ## LLM bridge
 
-### Connect
-
-On your client:
-
 ```shell
-guac-llm-client --url "CONNECTION_URL"
+guac-bridge llm --url CONNECTION_URL
 ```
 
-Enter your Guacamole username and password when prompted. By default, the bridge forwards the server’s endpoint at `http://127.0.0.1:8000`.
+Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--target-port` for a different server port and `--port` for a different local port.
 
 Keep the bridge running while using the application. Stop it with **Ctrl+C**.
 
-## Other options
-
-Run either client with `--help` for credential storage, certificates, custom ports, transport tuning and opt-in server updates.
+The commands `guac-ssh-client` and `guac-llm-client` also work. Run any client with `--help` for credential storage, certificates, background operation and transport tuning.
 
 ## Contribution
 
-Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
+The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). Python packaging uses maturin to install the same executables.
 
-Run tests from a checkout with Bash and PTY support:
-
-```shell
-uv run python -m unittest discover -s tests -v
-```
-
-See [Testing connections](docs/testing.md) for the test architecture and coverage.
+See [Building](docs/building.md), [Testing](docs/testing.md) and [Benchmarking](docs/benchmarking.md). Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
 
 ## Architecture
 
-Each bridge opens a Guacamole connection and starts its matching helper inside the remote terminal. The SSH bridge forwards TCP connections; the LLM bridge forwards HTTP requests and streamed responses. Neither requires an additional externally accessible server port.
+Each bridge opens a Guacamole WebSocket connection, checks or uploads its bundled helper, and runs it inside the remote terminal. Both bridge types forward TCP streams with bounded flow control; HTTP headers, bodies and streaming responses pass through unchanged. The helper exits with the session; only its cached executable remains.
 
-See [Connection details](docs/connections.md) for diagrams, authentication and bridge lifetime, and [Benchmarking](docs/benchmarking.md) for performance measurements.
+See [Connection details](docs/connections.md) for diagrams, loopback interfaces and process lifetimes.

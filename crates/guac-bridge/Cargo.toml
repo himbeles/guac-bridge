@@ -1,0 +1,65 @@
+[package]
+name = "guac-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SSH and OpenAI-compatible endpoints through Guacamole, with automatic helper deployment"
+build = "build.rs"
+include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
+
+[features]
+default = ["client"]
+client = ["dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:fs2"]
+
+[lib]
+name = "guac_bridge"
+
+[[bin]]
+name = "guac-bridge"
+path = "src/main.rs"
+required-features = ["client"]
+
+[[bin]]
+name = "guac-ssh-client"
+path = "src/ssh_main.rs"
+required-features = ["client"]
+
+[[bin]]
+name = "guac-llm-client"
+path = "src/llm_main.rs"
+required-features = ["client"]
+
+[[bin]]
+name = "guac-bridge-agent"
+path = "src/agent.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+futures-util = "0.3"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+socket2 = "0.6"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"], optional = true }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"], optional = true }
+url = { version = "2", optional = true }
+percent-encoding = { version = "2", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+rustls-native-certs = { version = "0.8", optional = true }
+rustls-pemfile = { version = "2", optional = true }
+rpassword = { version = "7", optional = true }
+directories = { version = "6", optional = true }
+uuid = { version = "1", features = ["v4"], optional = true }
+fs2 = { version = "0.4", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }
+keyring = { version = "3", features = ["windows-native"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"], optional = true }

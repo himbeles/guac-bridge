@@ -1,157 +1,149 @@
-name: Publish to PyPI
+name: Native build and publish
 
 on:
   push:
-    branches: [main]
-    paths: [pyproject.toml]
+    branches: [main, feat/native-core]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: pypi-publish
-  cancel-in-progress: false
-
 jobs:
-  test:
-    name: Test on Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.14"]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Install package
-        run: python -m pip install .
-      - name: Run integration and protocol tests
-        run: python -m unittest discover -s tests -v
-      - name: Benchmark integrity and delayed-ACK smoke test
-        run: >-
-          python -m benchmarks.transport --kib 64 --repeats 1 --delays 0,20
-          --workloads ssh-upload,ssh-download,llm-paced
-          --output benchmarks/results/release-smoke.json
-
-      - name: Flow integrity and RTT smoke test
-        run: >-
-          python -m benchmarks.flow --kib 32 --repeats 1 --rtts 0,20
-          --workloads ssh-upload,ssh-download,llm-paced
-          --output benchmarks/results/flow-ci.json
-
-  credentials-windows:
-    name: Windows Python ${{ matrix.python }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.11", "3.14"]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Configure uv tool directories
-        run: |
-          Add-Content $env:GITHUB_ENV "UV_TOOL_DIR=$env:RUNNER_TEMP/guac-tools"
-          Add-Content $env:GITHUB_ENV "UV_TOOL_BIN_DIR=$env:RUNNER_TEMP/guac-bin"
-      - name: Install package with uv tool
-        run: |
-          python -m pip install uv
-          uv tool install . --python "$env:pythonLocation/python.exe"
-      - name: Test Windows background startup
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_background.py -v
-      - name: Test Windows input pipeline and version checks
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_input_pipeline.py -v
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_version_checks.py -v
-      - name: Test Windows flow limits
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_flow.py -v
-      - name: Test Windows update command validation
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_server_update.py -v
-      - name: Test Windows interactive update consent
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_update_prompt.py -v
-      - name: Test Windows hook credential setup
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_hook_auth.py -v
-      - name: Test Windows startup update approval
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_startup_prompt.py -v
-      - name: Test Windows binary framing
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_framing.py -v
-      - name: Test Windows hook console output
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_console.py -v
-      - name: Test Windows listener errors
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_listeners.py -v
-      - name: Test authentication and native Windows credential storage
-        env:
-          GUAC_TEST_NATIVE_KEYRING: "1"
-        run: |
-          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m unittest discover -s tests -p test_auth.py -v
-
-  build:
-    name: Build distributions
-    needs: [test, credentials-windows]
+  agent:
+    name: Static Linux x86-64 helper
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-      - name: Check release tag matches package version
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {targets: x86_64-unknown-linux-musl}
+      - name: Build static helper without client dependencies
+        run: >-
+          cargo build --locked --release -p guac-bridge --no-default-features
+          --bin guac-bridge-agent --target x86_64-unknown-linux-musl
+          --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+      - name: Check standalone executable
         run: |
-          python - <<'PY'
-          import os
-          import pathlib
-          import tomllib
-          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
-          expected = "v" + version
-          if os.environ["RELEASE_TAG"] != expected:
-              raise SystemExit(f"Release tag must be {expected}")
-          PY
-      - name: Install build tools
-        run: python -m pip install build twine
-      - name: Build wheel and source distribution
-        run: python -m build
-      - name: Validate distribution metadata
-        run: python -m twine check --strict dist/*
-      - name: Check installed wheel entry points
-        run: |
-          python -m pip install dist/*.whl
-          guac-llm-client --help
-          guac-llm-server --help
-          guac-ssh-client --help
-          guac-ssh-server --help
+          target/x86_64-unknown-linux-musl/release/guac-bridge-agent --version
+          file target/x86_64-unknown-linux-musl/release/guac-bridge-agent | grep -E 'static.*linked'
+          mkdir -p agent
+          cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent agent/guac-bridge-agent-linux-x86_64
+          sha256sum agent/* > agent/SHA256SUMS
       - uses: actions/upload-artifact@v7
+        with: {name: linux-agent, path: agent/, if-no-files-found: error}
+
+  test-linux:
+    name: Native Linux integration
+    needs: agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {components: rustfmt, clippy}
+      - uses: actions/download-artifact@v8
+        with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - run: python -m pip install aiohttp
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked -p guac-bridge --all-targets -- -D warnings
+      - run: cargo test --locked -p guac-bridge
+      - run: cargo build --locked --release -p guac-bridge --bins
+      - run: python -m unittest discover -s tests/native -p test_native.py -v
+      - run: python scripts/benchmark.py --mib 2 --repeats 1 --output benchmark-smoke.json
+      - name: Validate Cargo source package includes its helper
+        run: |
+          cargo package --locked -p guac-bridge --allow-dirty --no-verify
+          tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-linux-x86_64
+      - uses: actions/upload-artifact@v7
+        with: {name: benchmark-smoke, path: benchmark-smoke.json}
+
+  windows:
+    name: Windows x86-64 executable, installer and uv package
+    needs: agent
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {components: clippy}
+      - uses: actions/download-artifact@v8
+        with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - run: python -m pip install maturin uv aiohttp
+      - run: cargo clippy --locked -p guac-bridge --all-targets -- -D warnings
+      - name: Test native credential store
+        env: {GUAC_TEST_NATIVE_KEYRING: "1"}
+        run: cargo test --locked -p guac-bridge
+      - run: cargo build --locked --release -p guac-bridge --bins
+      - run: python -m unittest discover -s tests/native -p test_windows.py -v
+      - run: python -m maturin build --release --locked --out dist
+      - name: Install and test uv entry points
+        shell: pwsh
+        run: |
+          $env:UV_TOOL_DIR = "$env:RUNNER_TEMP/guac-tools"
+          $env:UV_TOOL_BIN_DIR = "$env:RUNNER_TEMP/guac-bin"
+          $wheel = (Get-ChildItem dist/*.whl).FullName
+          uv tool install --from $wheel guac-bridge
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
+          & "$env:UV_TOOL_BIN_DIR/guac-ssh-client.exe" --help
+          & "$env:UV_TOOL_BIN_DIR/guac-llm-client.exe" --help
+          & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/package-native.py $wheel
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          $releaseVersion = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
+          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" "/DVersion=$releaseVersion" installer/guac-bridge.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise installer PATH opt-in and uninstall
+        shell: pwsh
+        run: ./installer/test-install.ps1
+      - uses: actions/upload-artifact@v7
+        with: {name: windows-distributions, path: dist/, if-no-files-found: error}
+
+  linux-distribution:
+    name: Linux x86-64 portable and Python packages
+    needs: agent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v8
+        with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: PyO3/maturin-action@v1
         with:
-          name: python-distributions
-          path: dist/
-          if-no-files-found: error
+          target: x86_64
+          manylinux: "2_28"
+          args: --release --locked --out dist
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - run: python -m pip install maturin uv
+      - run: python -m maturin sdist --out dist
+      - name: Test uv package and optional Python module
+        run: |
+          export UV_TOOL_DIR="$RUNNER_TEMP/guac-tools"
+          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/guac-bin"
+          uv tool install --from dist/*.whl guac-bridge
+          "$UV_TOOL_BIN_DIR/guac-bridge" --version
+          "$UV_TOOL_BIN_DIR/guac-ssh-client" --help
+          "$UV_TOOL_BIN_DIR/guac-llm-client" --help
+          "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
+          python scripts/package-native.py dist/*.whl
+      - name: Check source distribution contains the helper
+        run: tar -tzf dist/*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
+      - uses: actions/upload-artifact@v7
+        with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 
   publish:
-    name: Publish with PyPI Trusted Publishing
-    needs: build
+    name: Publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test-linux, windows, linux-distribution]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -159,11 +151,49 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - name: Verify tag and manifest versions
+        env: {RELEASE_TAG: "${{ github.ref_name }}"}
+        run: |
+          python - <<'PY'
+          import os, tomllib
+          py = tomllib.load(open('pyproject.toml','rb'))['project']['version']
+          rs = tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version']
+          assert os.environ['RELEASE_TAG'] == 'v'+py == 'v'+rs
+          PY
       - uses: actions/download-artifact@v8
-        with:
-          name: python-distributions
-          path: dist/
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        with: {pattern: "*-distributions", path: artifacts, merge-multiple: true}
+      - name: Collect Python distributions
+        run: |
+          mkdir -p dist
+          cp artifacts/*.whl dist/
+          cp artifacts/guac_bridge-*.tar.gz dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
 
-
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: actions/download-artifact@v8
+        with: {pattern: "*-distributions", path: dist, merge-multiple: true}
+      - name: Build checksums and release notes
+        env: {RELEASE_TAG: "${{ github.ref_name }}"}
+        run: |
+          sha256sum dist/* > SHA256SUMS
+          mv SHA256SUMS dist/
+          python - <<'PY'
+          import os, pathlib
+          version=os.environ['RELEASE_TAG'][1:]
+          text=pathlib.Path('CHANGELOG.md').read_text()
+          section=text.split('## '+version+'\n',1)[1].split('\n## ',1)[0].strip()
+          pathlib.Path('release-notes.md').write_text(section+'\n')
+          PY
+      - name: Publish release artifacts
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --notes-file release-notes.md

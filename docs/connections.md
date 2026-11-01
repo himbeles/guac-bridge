@@ -1,245 +1,38 @@
-# How the bridge connections work
-
-Guac Bridge carries data through an existing Guacamole SSH terminal. The Python
-client talks directly to Guacamole; an open browser is not needed while the
-bridge runs. The selected Guacamole connection must open a terminal on the
-server where the helper and destination service are available.
-
-## Starting a bridge
-
-1. The client authenticates to Guacamole over HTTP(S).
-2. Guacamole opens its configured SSH terminal on the server.
-3. The client starts the matching server helper inside that terminal.
-4. The client checks the helper package version. A mismatch produces a
-   highlighted warning; after the helper is ready, a listener opens on your PC.
-5. Local applications connect to that listener. Requests and responses travel
-   through Guacamole and the helper.
-
-The Guacamole transport uses WebSocket (WSS for HTTPS Guacamole URLs).
-Protocol v5 sends length-prefixed binary frames. HTTP and TCP bodies are raw
-bytes; JSON is used only for request/header/ready metadata. ESC and the escape
-byte are stuffed so payloads cannot become terminal commands. Guacamole's own
-Base64 blobs remain. Encoding does not provide encryption; HTTPS/WSS and SSH
-provide it when those transports are used.
-
-Both clients use bounded input-ACK and data-credit windows, preserving frame
-boundaries and backpressure. Missing or rejected input acknowledgements fail the
-connection instead of allowing unbounded buffering. See
-[Benchmarking](benchmarking.md) for measurement instructions.
-
-## Client and server versions
-
-Package version matching is advisory by default. Different versions, or an older
-helper without a version report, produce a highlighted warning and a best-effort
-connection attempt. Protocol versions and helper types must still be compatible.
-Warnings appear in the foreground console and in the caller of managed SSH
-startup, including when reusing a managed bridge with mismatched versions.
-
-Use `--require-server-version` on either client to reject package mismatches
-before opening its local listener. It is forwarded by `--ensure-running`; strict
-reuse also requires the existing bridge to report verified matching versions.
-
-The warning or strict-mode error supplies the matching server installation
-command, for example:
-
-```shell
-uv tool install --force guac-bridge==0.5.2
-```
-
-Update a custom installation selected by `--server-command` at that path. Run
-commands with `--version` to check installed versions. Stop and restart managed
-bridges after updating the client or changing its version policy. Reusing a
-listener retains its original running process. Older helpers without cleanup
-acknowledgements use best-effort cleanup.
-
-## SSH bridge
+# Connections
 
 ```mermaid
-flowchart TB
-    subgraph PC["Client PC"]
-        A["SSH client, SCP, or SFTP"] <-->|"TCP to 127.0.0.1:2222"| B["guac-ssh-client"]
-    end
-    B <-->|"Guacamole web tunnel"| G["Guacamole gateway"]
-    G <-->|"Existing SSH terminal"| C
-    subgraph Server["Remote server"]
-        C["guac-ssh-server"] <-->|"TCP to 127.0.0.1:22"| D["SSH service"]
-    end
+flowchart TD
+    SSH["SSH client"] --> Local["Rust client: local loopback listener"]
+    HTTP["LLM application"] --> Local
+    Local --> Guac["Guacamole HTTPS / WebSocket"]
+    Guac --> Agent["Bundled Rust helper in terminal"]
+    Agent --> Service["Remote loopback service: SSH or HTTP"]
 ```
 
-There are two separate SSH connections:
+Each bridge process has its own Guacamole terminal. Within that connection, independent local TCP connections use numbered channels. The LLM mode forwards HTTP bytes without parsing, re-encoding, decompression or buffering a complete response. Authentication headers, binary bodies, keep-alive and server-sent events pass through unchanged.
 
-- **Outer connection:** Guacamole's SSH connection opens the terminal and runs
-  the helper. Its destination and login are configured in Guacamole.
-- **Inner connection:** your local SSH client establishes its own SSH session
-  with the server's SSH service. The bridge relays its bytes through the outer
-  terminal. Your SSH client handles authentication, host-key verification, and
-  encryption for this inner session.
+**Loopback** is a computer’s internal network interface. `127.0.0.1` and `::1` refer to the machine on which a process runs. The client listener accepts connections only from your computer. The helper connects to the service on the remote machine’s loopback interface. No additional externally accessible server port is needed. The client-to-Guacamole leg uses HTTPS/WSS when the supplied URL is HTTPS; a plain HTTP URL uses HTTP/WS.
 
-One bridge can carry several independent inner SSH connections. SCP, SFTP, and
-SSH port forwarding use the same relay. The bridge itself does not use an
-SSH `-L` forwarding channel: it carries data through the terminal's input and
-output pipes.
-
-## OpenAI-compatible endpoint bridge
+## Helper deployment
 
 ```mermaid
-flowchart TB
-    subgraph PC["Client PC"]
-        A["LLM application"] <-->|"HTTP to 127.0.0.1:8000"| B["guac-llm-client"]
-    end
-    B <-->|"Guacamole web tunnel"| G["Guacamole gateway"]
-    G <-->|"Existing SSH terminal"| C
-    subgraph Server["Remote server"]
-        C["guac-llm-server"] <-->|"HTTP to 127.0.0.1:8000"| D["OpenAI-compatible endpoint"]
-    end
+flowchart TD
+    Connect["Authenticated terminal"] --> Check["Check Linux x86-64 and helper checksum"]
+    Check -->|"Cached"| Launch["Execute cached helper"]
+    Check -->|"Missing or changed"| Upload["Upload bundled bytes; verify SHA-256"]
+    Upload --> Install["Set private permissions; atomic rename"]
+    Install --> Launch
+    Launch --> Forward["Forward TCP streams"]
 ```
 
-The local client accepts HTTP API requests, sends them through the terminal,
-and the helper makes corresponding HTTP requests to the server endpoint.
-Responses, including streamed output, return along the same route. This bridge
-forwards API requests rather than establishing an inner SSH session.
+The cache is `$XDG_CACHE_HOME/guac-bridge/helpers`, or `~/.cache/guac-bridge/helpers`. Executables are named by SHA-256, allowing client versions to coexist. The client selects the remote architecture independently of its own platform. Only Linux x86-64 servers are supported in this build. The cache must permit execution. Shell tools required are `uname`, `stty`, `head`, `base64`, `sha256sum`, `cut`, `mktemp`, `chmod`, `mv`, `mkdir` and `rm`.
 
-## Loopback addresses and ports
+Upload uses text-safe Base64 only during bootstrap. Active data frames carry raw bytes with ESC/GS escaping and Guacamole’s required outer blob encoding. The helper is executed in place of the terminal shell. Closing the Guacamole session ends it; no service, cron job, shell profile change, PATH edit or server package manager is involved.
 
-A loopback address connects a computer back to itself. Traffic to it stays on
-that computer. The usual addresses are `127.0.0.1` for IPv4 and `::1` for IPv6;
-`localhost` commonly resolves to these addresses.
+## Authentication and lifetime
 
-**Your PC's `127.0.0.1` and the server's `127.0.0.1` are different destinations.**
+Guacamole login and the forwarded SSH/API authentication are separate. Saved Guacamole passwords use Windows Credential Manager or Linux Secret Service. Passwords are never stored in bridge state files. Managed startup passes the password to the child through an anonymous pipe.
 
-| Connection | Address by default | Which computer? |
-| --- | --- | --- |
-| SSH application to bridge | `127.0.0.1:2222` | Client PC |
-| SSH helper to SSH service | `127.0.0.1:22` | Remote server |
-| LLM application to bridge | `http://127.0.0.1:8000/v1` | Client PC |
-| LLM helper to API endpoint | `http://127.0.0.1:8000` | Remote server |
+Foreground bridges stop with Ctrl+C. `--ensure-running` launches a managed background client and waits until its listener and helper are ready. It reuses a running bridge only when destination and transport settings match. Background clients remain running after SSH exits. `--stop` sends an authenticated command over a separate local loopback control socket and closes every active connection. It never kills a process merely because its PID appears in a stale state file. `--status` queries the same socket. Windows background startup creates no extra console unless `--show-console` is requested.
 
-The clients bind their application listeners to IPv4 loopback, so other
-computers cannot connect directly to those listeners. The helpers also connect
-to loopback services on their server. The bridge supplies the path between the
-two machines; no additional externally accessible server port is needed.
-
-The two LLM ports can both be `8000` because they are on different machines.
-Use `--port` to change the client listener, `--target-port` for the SSH service,
-or `--upstream` for the server-side API endpoint.
-
-## Authentication
-
-| Login | Used for | Managed by |
-| --- | --- | --- |
-| Guacamole username/password | Access to Guacamole | Bridge client; optional system credential store |
-| Guacamole connection's SSH login | Opening the outer terminal | Guacamole's connection configuration |
-| Your SSH username/password or key | The inner SSH session | Your local SSH client |
-| API key, if required | Requests to the OpenAI-compatible endpoint | LLM application; forwarded with its requests |
-
-Saving the Guacamole password does not save the inner SSH password or API key.
-
-## Lifetime and stopping
-
-`guac-ssh-client --ensure-running` starts a managed bridge if needed and returns
-when it is ready. The bridge continues running independently of the SSH command
-that triggered startup. Closing one SSH session leaves the bridge available for
-other sessions.
-
-Stop it and all SSH connections using its port with:
-
-```shell
-guac-ssh-client --stop --port 2222
-```
-
-The stop command uses a private, authenticated loopback control channel on the
-PC. It asks the managed bridge to shut down rather than killing a saved PID.
-
-On Windows, `--show-console` optionally opens a visible bridge console where
-**Ctrl+C** also stops it. Without that option, output goes to the background
-log. Stop an existing bridge before changing its console mode or connection
-settings.
-
-Losing the Guacamole tunnel closes the connections using that bridge. A
-foreground client must remain running while its bridge is in use.
-
-## Flow control
-
-Defaults are 32 data credits and up to 64 outstanding Guacamole input blobs.
-SSH frames are 64 KiB. LLM reads return available bytes immediately, up to 64 KiB;
-small streamed tokens do not wait to fill a frame.
-
-Both clients accept `--window N` (1–64), which sets the data-credit budget; the input-ACK
-budget is twice this value. The SSH client also accepts `--frame-size BYTES` (4096, 8192,
-16384, 32768 or 65536). The client passes these settings to the helper at startup and
-checks its confirmation before forwarding. Outdated protocols are rejected.
-
-Larger windows keep delayed links busy; larger SSH frames reduce framing and
-encoding work per transferred byte. Smaller values reduce queued bursts and
-memory use. They do not change network round-trip time or model inference speed.
-Raw SSH data credits per channel/direction are approximately `window × frame-size`
-(512 KiB by default), plus encoding/queue overhead. Input blobs remain 3 KiB.
-
-```shell
-guac-ssh-client --url "https://SERVER_URL" --username YOUR_USERNAME --window 16 --frame-size 8192
-```
-
-The fast defaults remain recommended unless measurements suggest otherwise.
-Stop and restart an existing managed bridge to apply different settings.
-
-## Optional server update
-
-Use either client with `--update-server` on a foreground connection to check the
-helper version before starting it. If needed, this attempts
-`uv tool install --force guac-bridge==CLIENT_VERSION` on the server, using its
-configured package index, proxy and certificate settings. It does not change
-index configuration. If uv or index access is unavailable, update manually.
-
-The version is verified after installation; failures stop the connection and
-print a manual update command. Custom helper paths require manual installation.
-Stop an existing managed SSH bridge before using this option. An installation
-attempt is limited to 180 seconds. The bootstrap uses the terminal directly,
-without relying on the installed helper's protocol.
-
-Server updates select Python explicitly: the default is the base interpreter
-identified from the installed helper's shebang. Override it with
-`--update-server --server-python 3.11` (use a version available on the server).
-If the interpreter cannot be identified, choose it explicitly or update manually.
-
-Every new bridge checks the helper's version before passing bridge arguments.
-An older helper lacking required options produces an immediate version/update
-message. Background startup relays progress and errors to the calling SSH
-command; details also remain in the printed log file. If an SSH hook produces
-no output at all, `ssh -vvv YOUR_ALIAS` shows whether the hook was evaluated.
-
-Interactive foreground connections offer `Update server now? [Y/n]` when the
-helper version differs. Enter accepts; `n` declines. The prompt explains that
-installation uses server-side uv, the configured package index and an explicit
-Python selection. Declining continues only if the helper supports the required
-protocol/options and strict version matching was not requested. SSH hooks relay this question to the calling console. Without an available
-console, no approval is inferred; the client reports update instructions.
-`--update-server` remains the explicit option for attempting the update directly.
-
-With `--ensure-running --save-password`, a new background startup first checks
-credentials in the calling process. Missing or rejected credentials prompt in
-the existing console (Windows) or controlling terminal (Unix), without echo.
-Only a successful login is saved. The setup login session is then closed and
-the child authenticates from the system credential store. Passwords are not
-passed in child arguments or written to the bridge log. If the store or an
-interactive terminal is unavailable, the command gives manual instructions.
-An already running listener is reused without another login.
-
-The managed child waits for the caller’s update decision before installation.
-The normal startup deadline pauses while the user answers and allows time for
-an approved update. Declining never bypasses protocol checks. Startup errors are
-reported once by the caller; the full child log remains available. A subsequent
-OpenSSH `connection refused` message is a separate result of no bridge listener
-being available after startup fails.
-
-## Protocol v5 framing
-
-Client and helpers share a bounded binary decoder. Data and credit frames have
-compact numeric IDs; HTTP requests and responses carry raw bodies. Only metadata
-uses JSON. Invalid headers, escapes, lengths and truncated records fail the
-connection. See [the wire format](protocol-v5.md).
-
-The helper replaces the login shell with `exec`, so an unexpected helper exit
-ends that terminal instead of returning late data to an interactive shell.
-Version checks and opt-in updates still run first through their independent
-Base64 bootstrap format. Both ends need protocol v5; older data formats are
-rejected with update instructions.
+A connection failure ends the client and its helper session. Cached executables remain for later connections. New client releases carry their own helper; the server does not need Python, uv, a package index, root privileges or internet access.

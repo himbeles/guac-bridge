@@ -1,14 +1,13 @@
 [build-system]
-requires = ["setuptools>=77"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
 
 [project]
 name = "guac-bridge"
-version = "0.10.1"
-description = "Bridge OpenAI-compatible endpoints and SSH through Apache Guacamole"
+version = "0.11.0"
+description = "SSH and OpenAI-compatible endpoints through Guacamole, powered by Rust"
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = ["aiohttp>=3.10,<4", "keyring>=25"]
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 
@@ -16,12 +15,11 @@ license-files = ["LICENSE"]
 Repository = "https://github.com/himbeles/guac-bridge"
 Issues = "https://github.com/himbeles/guac-bridge/issues"
 
-[project.scripts]
-guac-llm-client = "guac_bridge.client:cli"
-guac-llm-server = "guac_bridge.server:cli"
-guac-ssh-client = "guac_bridge.ssh_client:cli"
-guac-ssh-server = "guac_bridge.ssh_server:cli"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
+[tool.maturin]
+manifest-path = "crates/guac-bridge/Cargo.toml"
+bindings = "bin"
+python-source = "python"
+module-name = "guac_bridge"
+python-packages = ["guac_bridge"]
+targets = [{name="guac-bridge",kind="bin"}, {name="guac-ssh-client",kind="bin"}, {name="guac-llm-client",kind="bin"}]
+include = [{path="crates/guac-bridge/assets/*",format="sdist"}, {path=".cargo/config.toml",format="sdist"}]

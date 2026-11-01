@@ -1,36 +1,9 @@
-# Binary transport in 0.10.0
+# Native transport
 
-Both SSH and LLM bridges use compact binary frames with raw payload bodies.
-JSON remains only for ready/request/header metadata. Guacamole still encodes
-its blob payloads in Base64; the extra payload encoding is removed.
+The client and its bundled helper share a single Rust codec. A 12-byte big-endian header contains `GB`, protocol version 5, one-byte opcode, channel ID, and payload length. Channels carry open/opened, data, credit, EOF, close/closed, error and global ready/heartbeat/shutdown records. Ready metadata identifies the exact package version, window and frame size.
 
-Each record has a 12-byte network-order header: `GB`, protocol byte `5`, event
-opcode, a 32-bit channel ID and a 32-bit payload length. ESC (`1b`) becomes
-`1d 3b`; GS (`1d`) becomes `1d 3d`. No encoded record contains a raw ESC, so even
-a payload containing a Guacamole OSC close command stays data in the terminal
-pipe. Helpers enter raw TTY mode before emitting readiness.
+Each data frame contains up to 64 KiB of raw TCP bytes. Only ESC and GS are escaped so Guacamole’s terminal output pipe cannot interpret data as terminal commands. Guacamole blob instructions still apply their required outer Base64 encoding. No per-data-frame JSON or additional payload Base64 is used. HTTP runs over the same TCP channels as SSH; there are no HTTP request envelopes or response-body conversions.
 
-Data bodies are bytes. Credit/EOF/close/cancel/end events have no payload.
-Ready and HTTP-header events carry JSON metadata. An HTTP request carries a
-32-bit metadata length, JSON metadata, then the raw request body. Error text
-is UTF-8. Numeric IDs replace UUID strings on the wire.
+Default data credits are 32 per connection. Every successfully written data frame returns one credit. The input acknowledgement window is twice the configured data window, with a fixed maximum 6048 raw bytes per Guacamole input blob. Bounded queues and independent half-closes preserve interactive writes and concurrent TCP streams.
 
-Decoders reject invalid magic/version/opcodes, reserved IDs, bad escapes,
-oversized lengths, malformed/reserved metadata and truncated input. Limits are
-64 KiB per data frame, 64 KiB metadata and 16 MiB per HTTP request body. Bodies
-are never interpreted as terminal text or JSON by the bridge.
-
-Defaults are 64 KiB maximum SSH frames, 32 data credits and 64 input ACKs.
-Input blobs stay within Guacamole's 6048-byte limit. `--window N` sets data
-credits and an input ACK budget of `2 × N`. LLM responses use available bytes
-up to 64 KiB via `read1`, without waiting to fill a frame. Larger windows/SSH frames trade
-more buffering for bulk throughput; they do not speed up model inference.
-
-The independent bootstrap still checks versions, offers updates and reuses the
-helper's Python interpreter and configured package index. Both installed ends
-must support protocol v5. Keychain login, managed SSH startup, cancellation,
-WebSocket transport and the ordinary CLI entry points are retained.
-
-Tests cover all 256 bytes, adjacent escapes, fragmented/coalesced messages,
-metadata integrity, size limits, large Unicode requests, SSE, concurrent
-channels, half-closes, helper updates and shutdown. See [connection tests](testing.md).
+Bootstrap uses a separate named output pipe with a per-connection nonce and ASCII status. Missing helpers are uploaded as a known-length Base64 stream, decoded, verified by SHA-256 and atomically installed. The helper then replaces the shell and opens the active binary output pipe. Guacamole tunneling uses WebSocket only.

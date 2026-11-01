@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0
+
+- Standalone Rust clients and a shared SSH/HTTP forwarding engine.
+- Automatic deployment of a bundled static Linux helper; no server Python or uv setup.
+- Windows installer with optional user PATH setup, portable executables, and uv installation of the same native tools.
+- Native credential storage and managed background bridges with status and stop commands.
+
 ## 0.10.1
 
 - Use WebSocket exclusively for Guacamole connections; remove HTTP tunnel fallback and transport selection.

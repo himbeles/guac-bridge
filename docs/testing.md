@@ -1,45 +1,23 @@
-# Connection tests
-
-Tests run the real clients and server helpers through a simulated Guacamole
-gateway. Each helper runs in a separate process inside a real Bash terminal
-(PTY). Everything listens on local loopback; no remote accounts are needed.
+# Testing
 
 ```mermaid
 flowchart TD
-    L["Real LLM client"] --> G["Simulated Guacamole gateway"]
-    S["Real SSH bridge client"] --> G
-    G --> P["Real Bash terminal and matching helper"]
-    P --> A["Fake OpenAI-compatible API"]
-    P --> E["Local TCP test target"]
+    Tests["Python test supervisor"] --> Client["Real Rust client process"]
+    Client --> Gateway["Simulated Guacamole WebSocket gateway"]
+    Gateway --> PTY["Real Bash terminal"]
+    PTY --> Helper["Uploaded static Rust helper"]
+    Helper --> Target["Local TCP or HTTP test service"]
 ```
-
-The branches represent separate test cases. Tests cover:
-
-- WebSocket tunnels, fragmented messages and binary/Unicode integrity.
-- Bounded binary framing, all-byte payloads, escaped terminal controls and helper exit without a surviving shell.
-- Streamed responses, simultaneous requests/channels and bounded flow control.
-- Disconnects, cancellation, half-closes, background startup/stop and port errors.
-
-From a checkout on Linux with Bash and PTY support:
 
 ```shell
-uv run python -m unittest discover -s tests -v
+python scripts/build-native.py
+cargo test -p guac-bridge
+python -m pip install aiohttp
+python -m unittest discover -s tests/native -v
 ```
 
-Transport tuning uses three representative profiles: the defaults, 8 credits/4 KiB
-SSH frames, and 64 credits/32 KiB frames. LLM tests use the same window limits.
+Rust tests cover binary framing, arbitrary bytes and chunk boundaries, malformed inputs, Unicode Guacamole instructions, bundled executable identity and proxy exclusions. Windows CI also checks the native credential store with a disposable synthetic credential.
 
-Server-update tests use fake uv executables to check successful and failed
-installs, version checks and API/TCP forwarding. They install no packages.
+Integration tests launch actual compiled clients through a real PTY. The remote PATH contains only bootstrap shell utilities, with neither Python nor uv. They verify upload, private permissions, cache reuse and repair, binary transfer, concurrent connections, both TCP half-closes, HTTP headers and streamed responses, early listener errors, tunnel failure, and managed alias startup/reuse/status/stop. Linux CI runs these against the static bundled helper. Windows CI builds native executables, tests local management, installs via uv, and builds and silently exercises the installer’s PATH options.
 
-The fixtures live in [test_bridge.py](../tests/test_bridge.py); SSH scenarios
-are in [test_ssh_bridge.py](../tests/test_ssh_bridge.py). An opt-in test also
-uses real OpenSSH for commands, SCP and port forwarding. Windows CI checks the
-portable CLI, credentials, background-process and protocol behavior.
-
-Release CI runs tests on Python 3.11/3.14 on Linux and Windows, plus benchmark
-integrity checks, before building and publishing. Benchmarks check data delivery;
-CI does not enforce speed thresholds. See [Benchmarking](benchmarking.md).
-
-The simulator does not include real guacd, corporate authentication/proxies,
-TLS or WAN behavior. Those require testing through an actual Guacamole deployment.
+The gateway is simulated; these tests do not measure a deployed guacd, real SSH authentication or corporate login infrastructure. Use the benchmark against a real deployment to measure that path.
