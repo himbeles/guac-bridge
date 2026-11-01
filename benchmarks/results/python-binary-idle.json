@@ -1,0 +1,124 @@
+{
+  "python": "3.12.14",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "build": "cargo build --release --locked; current-thread Tokio; TCP_NODELAY enabled",
+  "native_binary_sha256": {
+    "guac-ssh-client-rs": "755322a72df79e0b6df2a37954d6263c0885f721008591d032a1a2b2bb9426cc",
+    "guac-ssh-server-rs": "06e18afce9e0ae70241c309fa02ceefa98afd8df08ebeccae7fd7fac0abed4a2"
+  },
+  "profiles": {
+    "python": {
+      "frame": 16384,
+      "window": 32,
+      "input_chunk": 3072,
+      "input_window": 32,
+      "protocol": "ASCII JSON"
+    },
+    "rust-matched": {
+      "frame": 16384,
+      "window": 32,
+      "input_chunk": 3072,
+      "input_window": 32,
+      "protocol": "ESC-safe binary"
+    },
+    "python-binary-matched": {
+      "frame": 16384,
+      "window": 32,
+      "input_chunk": 3072,
+      "input_window": 32,
+      "protocol": "ESC-safe binary"
+    },
+    "python-binary": {
+      "frame": 65536,
+      "window": 32,
+      "input_chunk": 6048,
+      "input_window": 64,
+      "protocol": "ESC-safe binary"
+    },
+    "rust": {
+      "frame": 65536,
+      "window": 32,
+      "input_chunk": 6048,
+      "input_window": 64,
+      "protocol": "ESC-safe binary"
+    }
+  },
+  "method": "Separate client process CPU; helper wait4 CPU includes startup, warmup, transfer and shutdown",
+  "rows": [
+    {
+      "client_cpu_s": 0.0005426050000000016,
+      "wall_s": 10.000883777000126,
+      "client_peak_rss_kib": 29952,
+      "client_wire_bytes": 19,
+      "client_instructions": 1,
+      "server_wire_bytes": 43,
+      "server_instructions": 1,
+      "variant": "python",
+      "direction": "idle",
+      "bytes": 0,
+      "rtt_ms": 0.0,
+      "paced_seconds": 10.0,
+      "integrity": true,
+      "client_lifetime_cpu_s": 0.178335,
+      "client_exit": 0,
+      "helper_lifetime_cpu_s": 0.070567,
+      "helper_peak_rss_kib": 14848,
+      "helper_exit": 0,
+      "bridge_lifetime_cpu_s": 0.248902,
+      "client_mib_s": 0.0,
+      "repeat": 0
+    },
+    {
+      "client_cpu_s": 0.000536814999999996,
+      "wall_s": 10.000896624999996,
+      "client_peak_rss_kib": 30080,
+      "client_wire_bytes": 19,
+      "client_instructions": 1,
+      "server_wire_bytes": 31,
+      "server_instructions": 1,
+      "variant": "python-binary",
+      "direction": "idle",
+      "bytes": 0,
+      "rtt_ms": 0.0,
+      "paced_seconds": 10.0,
+      "integrity": true,
+      "client_lifetime_cpu_s": 0.19325299999999998,
+      "client_exit": 0,
+      "helper_lifetime_cpu_s": 0.054426999999999996,
+      "helper_peak_rss_kib": 14720,
+      "helper_exit": 0,
+      "bridge_lifetime_cpu_s": 0.24767999999999998,
+      "client_mib_s": 0.0,
+      "repeat": 0
+    },
+    {
+      "client_cpu_s": 0.0017299999999999998,
+      "client_peak_rss_kib": 9344,
+      "wall_s": 10.000983399,
+      "client_wire_bytes": 19,
+      "client_instructions": 1,
+      "server_wire_bytes": 31,
+      "server_instructions": 1,
+      "variant": "rust",
+      "direction": "idle",
+      "bytes": 0,
+      "rtt_ms": 0.0,
+      "paced_seconds": 10.0,
+      "integrity": true,
+      "client_lifetime_cpu_s": 0.0052959999999999995,
+      "client_exit": 0,
+      "helper_lifetime_cpu_s": 0.001777,
+      "helper_peak_rss_kib": 9216,
+      "helper_exit": 0,
+      "bridge_lifetime_cpu_s": 0.007072999999999999,
+      "client_mib_s": 0.0,
+      "repeat": 0
+    }
+  ],
+  "python_binary_source_sha256": {
+    "binary_framing.py": "6459670d1391a786c4d9ec14eed7d6d2463a29fba2e3458ebfce74416e354ed3",
+    "binary_ssh_client.py": "94b95818964c5493672e7070b590eed71b22f6b16417737ba435e2d58b016660",
+    "binary_ssh_server.py": "fe2dc3788a49e22bcfc6f9ff8c142d14f881be0f1917c857354e304d1b31e8c2"
+  },
+  "source_commit": "29f728fb4b3bb4f9aef3fe84c466879332aaefb5"
+}
