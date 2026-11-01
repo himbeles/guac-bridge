@@ -1,5 +1,5 @@
 #ifndef Version
-  #define Version "0.11.0"
+  #define Version "1.0.0"
 #endif
 [Setup]
 AppId={{66D9F158-5DF1-4B18-86C8-D10FE58B312E}
@@ -24,6 +24,7 @@ LicenseFile=..\LICENSE
 Name: "addtopath"; Description: "Add Guac Bridge to my user PATH"; Flags: checkedonce
 
 [Files]
+Source: "..\\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\guac-bridge.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\guac-ssh-client.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\guac-llm-client.exe"; DestDir: "{app}"; Flags: ignoreversion

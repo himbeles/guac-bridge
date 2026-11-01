@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.11.0
+## 1.0.0
 
 - Standalone Rust clients and a shared SSH/HTTP forwarding engine.
 - Automatic deployment of a bundled static Linux helper; no server Python or uv setup.

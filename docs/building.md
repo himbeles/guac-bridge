@@ -7,7 +7,7 @@ One workspace contains the standalone `guac-bridge` Cargo package and the option
 Install directly from the repository on Windows or Linux x86-64:
 
 ```shell
-cargo install --git https://github.com/himbeles/guac-bridge --branch feat/native-core --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
+cargo install --git https://github.com/himbeles/guac-bridge --tag v1.0.0 --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
 ```
 
 The source build prepares the helper automatically. The commands below also support development and packaging.
@@ -59,4 +59,4 @@ python -m maturin sdist --out dist
 
 Maturin `bin` bindings package the native executables, with a small optional `guac_bridge.run(arguments)` subprocess launcher and `python -m guac_bridge`. There is no PyO3 extension, Python ABI dependency or Python data path. Binary distributions need no Rust compiler on the client. Building from source requires Rust and the bundled agent asset, which is included in source distributions and Cargo packages prepared by release CI.
 
-The workflow builds a static Linux helper, Windows executables and installer, Linux clients, and platform-specific Python distributions. A `v` tag whose version matches both manifests publishes through PyPI Trusted Publishing and creates a GitHub release after checks pass. Branch builds create reviewable artifacts without publishing.
+The workflow builds a static Linux helper, Windows executables and installer, Linux clients, and platform-specific Python distributions. A `v` tag, or a main-branch commit beginning with `Release v`, whose version matches both manifests publishes through PyPI Trusted Publishing and creates a GitHub release after checks pass. Branch builds create reviewable artifacts without publishing.

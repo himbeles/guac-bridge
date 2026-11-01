@@ -16,6 +16,9 @@ suffix = 'windows-x86_64' if windows else 'linux-x86_64'
 version = a.wheel.name.split('-')[1]
 with tempfile.TemporaryDirectory() as temp:
     folder = Path(temp)
+    root = Path(__file__).resolve().parents[1]
+    for document in ('LICENSE', 'README.md'):
+        (folder/document).write_bytes((root/document).read_bytes())
     with zipfile.ZipFile(a.wheel) as wheel:
         for name in ('guac-bridge','guac-ssh-client','guac-llm-client'):
             name += '.exe' if windows else ''
