@@ -1,6 +1,6 @@
 # 🐸 Guac Bridge
 
-SSH and OpenAI-compatible endpoints through Guacamole. A small Rust bridge, wherever you need it.
+SSH and OpenAI-compatible endpoints through Guacamole.
 
 Expose a remote server’s SSH service or OpenAI-compatible API on your computer through its Guacamole web terminal. Use your usual SSH tools or LLM applications with the local port.
 

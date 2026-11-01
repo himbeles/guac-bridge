@@ -70,6 +70,8 @@ jobs:
         with: {persist-credentials: false}
       - uses: dtolnay/rust-toolchain@stable
         with: {components: clippy}
+      - name: Verify Cargo-only source bootstrap on Windows
+        run: cargo check --locked -p guac-bridge --bin guac-bridge
       - uses: actions/download-artifact@v8
         with: {name: linux-agent, path: crates/guac-bridge/assets}
       - uses: actions/setup-python@v7
@@ -136,7 +138,7 @@ jobs:
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           python scripts/package-native.py dist/*.whl
       - name: Check source distribution contains the helper
-        run: tar -tzf dist/*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
+        run: tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
       - uses: actions/upload-artifact@v7
         with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 

@@ -2,6 +2,16 @@
 
 One workspace contains the standalone `guac-bridge` Cargo package and the optional Python launcher. Application logic, authentication, native keychain access, background management, provisioning and forwarding are Rust code. The helper-only feature set omits client networking and keychain dependencies.
 
+## Cargo installation
+
+Install directly from the repository on Windows or Linux x86-64:
+
+```shell
+cargo install --git https://github.com/himbeles/guac-bridge --branch feat/native-core --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
+```
+
+The source build prepares the helper automatically. The commands below also support development and packaging.
+
 ## Linux x86-64
 
 Install a current stable Rust toolchain. Build the static Linux helper and native clients:
@@ -23,7 +33,7 @@ cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge
 cargo build --release -p guac-bridge --bins
 ```
 
-Client builds embed the helper bytes and fail explicitly if the asset is absent or not an x86-64 ELF executable. Rebuild the helper after changing its source or package version. Release CI always builds it from the same commit first. `GUAC_BRIDGE_AGENT` can select a prepared agent during development.
+Client builds embed the helper bytes and reject a non-x86-64 ELF asset. If a source checkout has no prepared asset, the Cargo build script compiles the Linux helper itself using Rust’s musl target and bundled linker, including when building on Windows. This requires rustup to obtain that target, but no Python or Linux C compiler. Cargo packages and source distributions prepared by CI already contain the agent. Rebuild the helper after changing its source or package version. Release CI always builds it from the same commit first. `GUAC_BRIDGE_AGENT` can select a prepared agent during development.
 
 ## Windows x86-64
 

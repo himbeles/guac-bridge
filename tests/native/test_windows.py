@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import struct
 import unittest
+import tomllib
 from aiohttp import web
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -95,7 +96,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
                     await ws.send_str(instruction('blob','1',base64.b64encode(f'{nonce}:CACHED\n'.encode()).decode()))
                     await ws.send_str(instruction('end','1'))
                     await ws.send_str(instruction('pipe','2','text/plain','LLM'))
-                    body = json.dumps({'package_version':'0.11.0','version':5,'protocol':'tcp','window':32,'frame_size':65536}).encode()
+                    body = json.dumps({'package_version':tomllib.loads((ROOT/'pyproject.toml').read_text())['project']['version'],'version':5,'protocol':'tcp','window':32,'frame_size':65536}).encode()
                     frame = struct.pack('!2sBBII',b'GB',5,1,0,len(body))+body
                     frame = frame.replace(b'\x1d',b'\x1d\x3d').replace(b'\x1b',b'\x1d\x3b')
                     await ws.send_str(instruction('blob','2',base64.b64encode(frame).decode()))
@@ -110,7 +111,15 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         env = dict(os.environ, GUAC_BRIDGE_PASSWORD='synthetic-password',NO_PROXY='127.0.0.1')
         process = await asyncio.create_subprocess_exec(*args,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
         self.children.append(process)
-        output,error = await asyncio.wait_for(process.communicate(),30)
+        try:
+            output,error = await asyncio.wait_for(process.communicate(),30)
+        except TimeoutError:
+            details = [f'parent return code: {process.returncode}; bootstrap commands: {self.commands}']
+            root = Path(os.environ['LOCALAPPDATA'])/'guac-bridge'
+            if root.exists():
+                for log in root.rglob('*.log'):
+                    details.append(str(log)+':\n'+log.read_text(errors='replace'))
+            self.fail('Windows startup timed out: '+'\n'.join(details))
         self.assertEqual(process.returncode,0,error.decode())
         return error.decode()
 
