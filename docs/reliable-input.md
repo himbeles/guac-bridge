@@ -1,11 +1,12 @@
-# Optional reliable input transport (v2.0.0)
+# Reliable input transport
 
-Available from v2.0.0. Use `--reliable-input` with either `guac-bridge ssh` or `guac-bridge llm`, including
-`--ensure-running` and the executable aliases. Stop an existing managed bridge
-before changing its transport settings. Raw input remains the default.
+All SSH and LLM bridges use this transport automatically, including managed
+bridges and executable aliases. There is no protocol selection flag and no raw
+input fallback. Stop an existing managed bridge after upgrading, then restart it
+with your normal command. The bundled helper updates automatically by content hash.
 
 ```powershell
-guac-ssh-client --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223 --reliable-input
+guac-ssh-client --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223
 ```
 
 This protects the **client-to-helper console input** against missing, duplicated
@@ -33,13 +34,12 @@ sees the contents. Windows applies its existing Base64/Enter console carrier to
 these same records. CRC detects accidental damage; it is not authentication.
 
 The helper retains up to 64 out-of-order records and delivers contiguous records
-exactly once. An optional `InputAck` frame (kind 12, channel 0) carries the next
+exactly once. An `InputAck` frame (kind 12, channel 0) carries the next
 required sequence, a 64-bit selective acknowledgement mask, a cumulative rejected
 record count, and a CRC32 (28 payload bytes). Duplicate records are acknowledged
 without repeating TCP delivery. Ready metadata confirms the selected mode.
 
-The client retains a bounded sequence window (`--reliable-window`, default 64,
-range 1–64). Selectively acknowledged buffers are freed, but the permitted sequence
+The client retains a fixed bounded sequence window of 64 records. Selectively acknowledged buffers are freed, but the permitted sequence
 range advances only with contiguous delivery. Maximum payload retained in either
 sequence window is about 4 MiB; encoded wire copies can be larger for escape-heavy
 payloads. Existing queues and TCP credit bounds also apply.
@@ -69,12 +69,12 @@ is emitted for healthy traffic.
 If warnings repeat:
 
 1. Reduce `--input-window` from 8 to 4, then 2. This limits gateway input pressure.
-2. Try `--window 2` or `--reliable-window 32` if bursts remain problematic.
+2. Try `--window 2` if bursts remain problematic.
 3. Increase `--connect-timeout` for an otherwise healthy but slow link.
 4. Capture both logs as described in [transport debugging](transport-debugging.md).
 
 Permanent loss produces an actionable error rather than a successful but damaged
-stream. Both raw and protected modes retain gateway input ACK handling: that ACK
+stream. The transport also retains gateway input ACK handling: that ACK
 alone still does not prove that the remote shell consumed the bytes.
 
 ## Helper upload and progress
@@ -121,7 +121,7 @@ latency; the real PTY, WebSocket and process scheduling still have cost.
 
 No healthy bulk throughput regression was measured in these workloads. This is
 not a guarantee across hardware, gateways, payload distributions or very small
-window settings, and the small measured improvements should not be treated as
+flow-control window settings, and the small measured improvements should not be treated as
 universal speedups.
 
 At zero added RTT, client CPU was 7.10 versus 6.74 ms/MiB and
@@ -151,20 +151,25 @@ hashes matched after 11 injected drops. Throughput was 0.7598 MiB/s per directio
 11 rejected records and 11 sequence gaps. Separate integration cases cover
 corruption, duplication, simultaneous streams and permanent loss.
 
-To reproduce after a local build (Python and aiohttp are only test dependencies):
+The comparison uses a dedicated benchmark binary. Its exact hash, settings and
+captured output are preserved in the results JSON. Protocol-selection controls in
+that measurement harness are not part of the application CLI.
+
+To measure the current transport after a local build (Python and aiohttp are only
+test dependencies):
 
 ```sh
 make check
 make integration
 python scripts/benchmark.py --warm-cache --mib 16 --repeats 5
-python scripts/benchmark.py --warm-cache --mib 16 --repeats 5 --reliable-input
-python scripts/benchmark.py --warm-cache --mib 4 --repeats 3 --rtt-ms 50 --reliable-input
-python scripts/benchmark.py --warm-cache --mib 4 --repeats 3 --rtt-ms 50 --reliable-input --drop-every 200
-python scripts/benchmark.py --warm-cache --rtt-ms 50 --pings 50 --repeats 3 --reliable-input
+python scripts/benchmark.py --warm-cache --mib 4 --repeats 3 --rtt-ms 50
+python scripts/benchmark.py --warm-cache --mib 4 --repeats 3 --rtt-ms 50 --drop-every 200
+python scripts/benchmark.py --warm-cache --rtt-ms 50 --pings 50 --repeats 3
 ```
 
 Use `--connections 4 --mib 1` for parallel streams and `--idle-seconds 5` for idle
-measurements. Omit `--reliable-input` for each raw comparison. The JSON records
-all settings and the tested client SHA256.
+measurements. The JSON records all settings and the tested client SHA256. A raw
+comparison requires the comparison binary recorded in the results; the application
+CLI has no raw transport option.
 Native Windows runtime performance has not been measured here; Linux-hosted
 Windows carrier tests do not replace a ConPTY integration run.

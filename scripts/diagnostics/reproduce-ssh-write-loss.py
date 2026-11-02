@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Reproduce ignored libssh2 writes using isolated loopback SSH and synthetic frames.
-Requires AsyncSSH, libssh2.so, and a Linux helper binary. No root required.
+Requires AsyncSSH and libssh2.so. No root required.
 No production credentials or remote systems are used. All test servers are loopback.
 """
 import argparse
@@ -13,7 +13,6 @@ from pathlib import Path
 import random
 import select
 import socket
-import subprocess
 import tempfile
 import threading
 import time
@@ -241,19 +240,17 @@ def main(args):
                 received = capture.read_bytes()
                 first = next((i for i,(a,b) in enumerate(zip(wire,received)) if a!=b),
                              min(len(wire),len(received)) if wire!=received else None)
-                # Feed both synthetic streams through the actual shipped helper decoder.
-                check = subprocess.run([args.agent,'--stdio'], input=received, capture_output=True, timeout=10)
                 entry = dict(case=name, libssh2=ssh.version, burst_bytes=burst,
                              wire_bytes=len(wire), received_bytes=len(received), exact_match=wire==received,
                              first_mismatch_offset=first, expected_sha256=hashlib.sha256(wire).hexdigest(),
                              received_sha256=hashlib.sha256(received).hexdigest(),
-                             helper_exit=check.returncode, helper_error=check.stderr.decode(errors='replace').strip(), **stats)
+                             **stats)
                 results.append(entry)
                 print(json.dumps(entry), flush=True)
-            assert results[0]['eagain'] > 0 and results[0]['helper_exit'] != 0
-            assert results[1]['exact_match'] and results[1]['helper_exit'] == 0
+            assert results[0]['eagain'] > 0
+            assert results[1]['exact_match']
             assert not results[0]['exact_match'], 'Large burst did not reproduce loss; increase backpressure'
-            assert results[2]['exact_match'] and results[2]['helper_exit']==0, 'Retry control failed'
+            assert results[2]['exact_match'], 'Retry control failed'
         finally:
             server.close()
     if args.output:
@@ -262,6 +259,5 @@ def main(args):
 if __name__ == '__main__':
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--libssh2',required=True)
-    p.add_argument('--agent',required=True)
     p.add_argument('--output')
     main(p.parse_args())

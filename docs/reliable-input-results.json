@@ -1,5 +1,5 @@
 {
-  "description": "Local Linux PTY measurements of unreleased reliable input, after queued-frame coalescing; helper cache preseeded, startup excluded from client trials.",
+  "description": "Comparison-binary measurements and application transport validation through a Linux PTY.",
   "platform": {
     "system": "Linux",
     "machine": "x86_64",
@@ -712,6 +712,114 @@
       "helper_cpu_s": 0.045082000000000004,
       "injected_drops": 0,
       "warnings": ""
+    }
+  },
+  "application_validation": {
+    "rust_tests": 24,
+    "native_integration_tests": 22,
+    "format_and_clippy": "passed",
+    "input_protocol": "reliable-v1; always enabled; fixed 64-record sequence window",
+    "runs": {
+      "healthy": {
+        "client_sha256": "9d2b5577b45d3912a8b661af0347e2211d5306018ff000e3f68def4fd8ceb30e",
+        "settings": {
+          "client": "target/release/guac-bridge",
+          "mib": 4,
+          "repeats": 3,
+          "window": 4,
+          "input_window": 8,
+          "frame_size": 65536,
+          "rtt_ms": 0,
+          "drop_every": 0,
+          "warm_cache": true,
+          "connections": 1,
+          "pings": 0,
+          "idle_seconds": 0,
+          "output": "healthy.json"
+        },
+        "trials": [
+          {
+            "client_cpu_s": 0.051711,
+            "client_peak_rss_kib": 36296,
+            "wall_s": 0.230184802,
+            "bytes_each_direction": 4194304,
+            "elapsed_s": 0.23004271299987522,
+            "mib_per_s_each_direction": 17.38807523106446,
+            "input_wire_bytes": 4247684
+          },
+          {
+            "client_cpu_s": 0.055077,
+            "client_peak_rss_kib": 36296,
+            "wall_s": 0.262462427,
+            "bytes_each_direction": 4194304,
+            "elapsed_s": 0.26234141399982036,
+            "mib_per_s_each_direction": 15.247306702413136,
+            "input_wire_bytes": 4247680
+          },
+          {
+            "client_cpu_s": 0.04915599999999999,
+            "client_peak_rss_kib": 36296,
+            "wall_s": 0.229814481,
+            "bytes_each_direction": 4194304,
+            "elapsed_s": 0.22963358000015432,
+            "mib_per_s_each_direction": 17.419055174758466,
+            "input_wire_bytes": 4247516
+          }
+        ],
+        "helper_cpu_s": 0.18722200000000003,
+        "injected_drops": 0,
+        "warnings": ""
+      },
+      "loss": {
+        "client_sha256": "9d2b5577b45d3912a8b661af0347e2211d5306018ff000e3f68def4fd8ceb30e",
+        "settings": {
+          "client": "target/release/guac-bridge",
+          "mib": 4,
+          "repeats": 3,
+          "window": 4,
+          "input_window": 8,
+          "frame_size": 65536,
+          "rtt_ms": 50.0,
+          "drop_every": 200,
+          "warm_cache": true,
+          "connections": 1,
+          "pings": 0,
+          "idle_seconds": 0,
+          "output": "loss.json"
+        },
+        "trials": [
+          {
+            "client_cpu_s": 0.070242,
+            "client_peak_rss_kib": 36308,
+            "wall_s": 5.175760984,
+            "bytes_each_direction": 4194304,
+            "elapsed_s": 5.175261758000033,
+            "mib_per_s_each_direction": 0.7729077652578079,
+            "input_wire_bytes": 4446141
+          },
+          {
+            "client_cpu_s": 0.078402,
+            "client_peak_rss_kib": 36308,
+            "wall_s": 5.287822842,
+            "bytes_each_direction": 4194304,
+            "elapsed_s": 5.287691337000069,
+            "mib_per_s_each_direction": 0.7564738077675632,
+            "input_wire_bytes": 4512577
+          },
+          {
+            "client_cpu_s": 0.07788400000000001,
+            "client_peak_rss_kib": 36308,
+            "wall_s": 5.288722318,
+            "bytes_each_direction": 4194304,
+            "elapsed_s": 5.288493646000006,
+            "mib_per_s_each_direction": 0.7563590443236008,
+            "input_wire_bytes": 4512741
+          }
+        ],
+        "helper_cpu_s": 0.31631000000000004,
+        "injected_drops": 11,
+        "warnings": "Warning: reliable input recovery: retransmitted=1 rejected_records=1 invalid_acks=0 sequence_gaps=1. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\nWarning: reliable input recovery: retransmitted=4 rejected_records=4 invalid_acks=0 sequence_gaps=4. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\nWarning: reliable input recovery: retransmitted=8 rejected_records=8 invalid_acks=0 sequence_gaps=8. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\nWarning: reliable input recovery: retransmitted=11 rejected_records=11 invalid_acks=0 sequence_gaps=11. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\n"
+      }
     }
   }
 }

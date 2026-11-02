@@ -39,8 +39,6 @@ async def trial(args):
         server = await asyncio.start_server(echo, '127.0.0.1', 0)
         env = dict(os.environ, GUAC_BRIDGE_PASSWORD='test', NO_PROXY='127.0.0.1')
         command_line = [str(args.client.resolve()), 'ssh', '--url', url, '--username', 'test', '--no-keyring', '--port', '0', '--target-port', str(server.sockets[0].getsockname()[1]), '--startup-delay', '0', '--window', str(args.window), '--frame-size', str(args.frame_size), '--input-window', str(args.input_window), '--benchmark-control']
-        if args.reliable_input:
-            command_line += ['--reliable-input']
         child = await asyncio.create_subprocess_exec(*command_line, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env)
         async def command(text):
             child.stdin.write(text.encode()+b'\n')
@@ -135,7 +133,6 @@ def main():
     p.add_argument('--window', type=int, choices=range(1,65), default=4)
     p.add_argument('--input-window', type=int, choices=range(1,129), default=8)
     p.add_argument('--frame-size', type=int, choices=(4096,8192,16384,32768,65536), default=65536)
-    p.add_argument('--reliable-input', action='store_true')
     p.add_argument('--rtt-ms', type=float, default=0)
     p.add_argument('--drop-every', type=int, default=0)
     p.add_argument('--warm-cache', action='store_true')

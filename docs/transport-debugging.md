@@ -1,6 +1,6 @@
 # Diagnosing SSH disconnects
 
-These diagnostics are available in v1.1.3 and later. Stop the old managed bridge first so it does not retain the listener.
+Stop the managed bridge first so it does not retain the listener.
 
 Run the bridge in a PowerShell terminal while reproducing the problem:
 
@@ -47,9 +47,9 @@ preserve existing SSH sessions.
 
 ## Performance and limits
 
-Normal frame encoding, frame sizes, credits, and flow control are unchanged.
-There are no additional acknowledgements or diagnostic packets during healthy
-forwarding. Data and Credit frames never allocate log messages, acquire logging
+Logging does not change frame encoding, frame sizes, credits or flow control.
+It adds no acknowledgements or diagnostic packets. Data, Credit and InputAck
+frames never allocate log messages, acquire logging
 locks, or write files. When logging is disabled their diagnostic hook only checks
 a flag. When enabled it increments relaxed atomic aggregate counters. Lifecycle
 records and periodic heartbeat summaries are offered to a bounded nonblocking
@@ -58,15 +58,14 @@ dropped and counted instead of delaying forwarding. Disk errors disable file
 logging. Pending log records are drained only after forwarding stops.
 
 Client debug logs record `window`, `frame_size`, `input_window`, and `input_chunk`
-on startup from v1.1.4 onward. Use those values to verify which
+on startup. Use those values to verify which
 configuration a foreground or managed bridge actually started with.
 
 Counters show aggregate sent/received frames and payload bytes, and dropped log
 records. Compare their progress across heartbeat summaries to investigate stalls.
 The always-on in-memory history records only lifecycle/control events, not every
-Data or Credit frame. Logging is not a packet capture: valid-looking payload
-corruption cannot be detected without changing the protocol to add integrity
-checks. A blocked OS stdout write can also prevent a fatal report from being sent.
+Data, Credit or InputAck frame. Logging is not a packet capture. The reliable
+input transport checks record integrity and reports recovery counters separately. A blocked OS stdout write can also prevent a fatal report from being sent.
 EOF/decoder failures report partial frame state; silence alone is not proof of
 corruption.
 
@@ -78,7 +77,7 @@ make integration
 ```
 
 The integration tests inject invalid bytes into the actual helper's Bash PTY with
-two channels open and assert that the decoder error reaches the client. They also
+two channels open and assert that recovery preserves both connections. They also
 check payload exclusion, private Unix log permissions, and exact binary transfer
 with both logs enabled.
 
@@ -86,7 +85,7 @@ with both logs enabled.
 
 Five trials per case transferred 32 MiB in each direction through the Guacamole
 simulator and a real Bash PTY. Every transfer was checked for exact equality.
-The baseline was built from the unmodified v1.1.2 release source. Order alternated
+The comparison uses independently built baseline and instrumented binaries. Order alternated
 between trials; startup/upload time was excluded.
 
 | Build | Median seconds | Combined transfer MiB/s |
@@ -105,13 +104,13 @@ To repeat with independently built baseline and modified binaries:
 
 ```sh
 python scripts/benchmark-diagnostics.py \
-  --baseline /path/to/v1.1.2/target/release/guac-bridge \
+  --baseline /path/to/baseline/guac-bridge \
   --modified target/release/guac-bridge --trials 5 --mib 32
 ```
 
 The follow-up [SSH disconnect investigation](ssh-disconnect-root-cause.md) contains
 a reproducible libssh2 write-loss experiment and deployment confirmation steps.
 
-For the optional checksummed input mode available from v2.0.0 and recovery counters, see
+For checksummed input transport and recovery counters, see
 [reliable input transport](reliable-input.md). Counters describe transport records,
 not IP packet loss.

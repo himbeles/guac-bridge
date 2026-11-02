@@ -48,9 +48,6 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
-    if args.reliable_input {
-        options.push_str(" --reliable-input");
-    }
     if args.benchmark_control {
         options.push_str(" --benchmark-control");
     }
@@ -97,9 +94,6 @@ fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
-    if args.reliable_input {
-        options.push_str(" --reliable-input");
-    }
     if args.benchmark_control {
         options.push_str(" --benchmark-control");
     }

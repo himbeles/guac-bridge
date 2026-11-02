@@ -101,12 +101,6 @@ pub(crate) struct Args {
     /// Guacamole input blobs awaiting gateway ACKs (1-128); independent of TCP credits.
     #[arg(long, default_value_t = 8)]
     pub input_window: usize,
-    /// Experimental checksummed, selectively retried client-to-helper input.
-    #[arg(long)]
-    pub reliable_input: bool,
-    /// Reliable records in flight (1-64); independent of gateway input blobs.
-    #[arg(long, default_value_t = 64)]
-    pub reliable_window: usize,
     #[arg(skip)]
     pub input_chunk: usize,
     #[arg(skip)]
@@ -155,10 +149,6 @@ impl Args {
             (1..=128).contains(&self.input_window),
             "--input-window must be between 1 and 128"
         );
-        ensure!(
-            (1..=64).contains(&self.reliable_window),
-            "--reliable-window must be between 1 and 64"
-        );
         self.input_chunk = 6048;
         Ok(())
     }
@@ -197,13 +187,8 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         if !args.ensure_running && !args.stop && !args.status {
             crate::diagnostics::init(args.debug_log.as_deref())?;
             crate::diagnostics::event(&format!(
-                "transport window={} frame_size={} input_window={} input_chunk={} reliable_input={} reliable_window={}",
-                args.window,
-                args.frame_size,
-                args.input_window,
-                args.input_chunk,
-                args.reliable_input,
-                args.reliable_window
+                "transport window={} frame_size={} input_window={} input_chunk={} input_protocol=reliable-v1",
+                args.window, args.frame_size, args.input_window, args.input_chunk
             ));
         }
         if args.managed_child {
@@ -273,6 +258,24 @@ mod tests {
                 args.validate().unwrap();
                 assert_eq!((args.window, args.input_window), expected);
                 assert_eq!(args.frame_size, 65536);
+            }
+        }
+    }
+
+    #[test]
+    fn protocol_selection_options_are_not_exposed() {
+        for mode in ["ssh", "llm"] {
+            for option in ["--reliable-input", "--reliable-window"] {
+                assert!(
+                    Cli::try_parse_from([
+                        "guac-bridge",
+                        mode,
+                        "--url",
+                        "http://example.invalid",
+                        option
+                    ])
+                    .is_err()
+                );
             }
         }
     }

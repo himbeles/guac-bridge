@@ -2,7 +2,7 @@
 
 ## 2.0.0
 
-- Add opt-in `--reliable-input` for SSH and LLM, including managed bridges: bounded checksummed records, resynchronization, selective acknowledgements, duplicate suppression and retries. Raw mode remains the default.
+- Use reliable input for all SSH and LLM bridges, including managed bridges: bounded checksummed records, resynchronization, selective acknowledgements, duplicate suppression and retries. This is the only input transport, with no selection flags or raw fallback. The reliable record window is fixed at 64; existing gateway and TCP flow-control settings remain available.
 - Report record recovery counters and actionable window/timeout suggestions on the client, with rate-limited warnings and bounded delivery errors.
 - Display one updating helper-upload bar in interactive terminals and SSH hooks, with sparse progress in redirected logs. Keep first-install remote block acknowledgements and final checksums.
 - Add damaged-stream and progress integration tests, codec bounds tests, and reproducible RTT/CPU/loss benchmarks. Document the first-install bootstrap limitation and the scope of input protection.

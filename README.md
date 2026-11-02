@@ -74,30 +74,13 @@ Keep the bridge running while using the application. Stop it with **Ctrl+C**.
 
 The commands `guac-ssh-client` and `guac-llm-client` also work. Run any client with `--help` for credential storage, certificates, background operation and transport tuning.
 
-## Transport defaults
-
-The conservative configuration uses 4 TCP frame credits per connection, a 65536-byte
-frame limit, and 8 Guacamole input blobs awaiting gateway acknowledgements across
-the bridge. `--window` and `--input-window` are independent: increasing TCP credits
-no longer increases gateway buffering. See [transport tuning](docs/benchmarking.md)
-for examples and the distinction between gateway and remote delivery acknowledgements.
-The independent `--input-window` option is available from v1.1.4.
-
-Stop an existing managed bridge before changing transport settings. Its original
-settings remain in effect until it is restarted.
-
-Since v2.0.0, the optional [reliable input transport](docs/reliable-input.md) adds
-checksummed records, selective retries and actionable recovery warnings for both
-SSH and LLM bridges. It is enabled with `--reliable-input`.
-
 ## Contribution
 
 The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). The uv package installs the same native executables.
 
 See [Building](docs/building.md), [Testing](docs/testing.md), [Transport debugging](docs/transport-debugging.md) and [Benchmarking](docs/benchmarking.md). Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
 
-## Architecture
+## Documentation
 
-Each bridge opens a Guacamole WebSocket connection, checks or uploads its bundled helper, and runs it inside the remote terminal. Both bridge types forward TCP streams with bounded flow control; HTTP headers, bodies and streaming responses pass through unchanged. The helper exits with the session; only its cached executable remains.
-
-See [Connection details](docs/connections.md) for diagrams, loopback interfaces and process lifetimes.
+See [Transport](docs/transport.md) for flow control and reliability, and
+[Connections](docs/connections.md) for deployment and process lifetimes.

@@ -1,4 +1,4 @@
-import asyncio, base64, json, re, struct, unittest
+import asyncio, base64, json, re, struct, unittest, zlib
 from pathlib import Path
 from conpty import Terminal
 
@@ -6,10 +6,34 @@ ROOT = Path(__file__).resolve().parents[2]
 PATTERN = re.compile(rb"\x1b\]482202;2;GBW1:([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)")
 
 
-def encode(kind, ident=0, payload=b""):
-    raw = struct.pack("!2sBBII", b"GB", 5, kind, ident, len(payload)) + payload
-    raw = raw.replace(b"\x1d", b"\x1d\x3d").replace(b"\x1b", b"\x1d\x3b")
-    return base64.b64encode(raw) + b"\r"
+class Encoder:
+    def __init__(self):
+        self.sequence = 0
+
+    def encode(self, kind, ident=0, payload=b""):
+        self.sequence += 1
+        frame = struct.pack("!2sBBII", b"GB", 5, kind, ident, len(payload)) + payload
+        raw = b"RI\x01" + struct.pack("!QI", self.sequence, len(frame)) + frame
+        raw += struct.pack("!I", zlib.crc32(raw))
+        encoded = bytearray([0])
+        code_at, code = 0, 1
+        for byte in raw:
+            if byte == 0:
+                encoded[code_at] = code
+                code_at = len(encoded)
+                encoded.append(0)
+                code = 1
+            else:
+                encoded.append(byte)
+                code += 1
+                if code == 255:
+                    encoded[code_at] = code
+                    code_at = len(encoded)
+                    encoded.append(0)
+                    code = 1
+        encoded[code_at] = code
+        wire = b"\x00" + bytes(encoded).replace(b"\x1d", b"\x1d\x3d").replace(b"\x1b", b"\x1d\x3b") + b"\x00"
+        return base64.b64encode(wire) + b"\r"
 
 
 class Frames:
@@ -54,7 +78,7 @@ class Frames:
                 self.poll()
                 if self.events:
                     event = self.events.pop(0)
-                    if event[0] != 10:
+                    if event[0] not in (10, 12):
                         return event
                 await asyncio.sleep(0.005)
 
@@ -84,6 +108,7 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
             ]
         )
         f = Frames(t)
+        encode = Encoder().encode
         try:
             ready = await f.next()
             self.assertEqual(ready[:2], (1, 0))

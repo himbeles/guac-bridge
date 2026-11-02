@@ -80,16 +80,14 @@ impl ReceivedFrames<'_> {
                         "Helper transport settings do not match"
                     );
                     ensure!(
-                        meta["reliable_input"].as_bool().unwrap_or(false)
-                            == self.args.reliable_input,
-                        "Helper reliable-input mode does not match client"
+                        meta["input_protocol"] == "reliable-v1",
+                        "Helper must support reliable-v1 input; rebuild client and helper from the same release"
                     );
                     self.started.store(true, Ordering::Relaxed);
                     self.ready.notify_one();
                 }
                 Kind::Heartbeat => (),
                 Kind::InputAck => {
-                    ensure!(self.args.reliable_input, "Unexpected reliable input ACK");
                     self.reliable
                         .sender
                         .lock()
@@ -306,7 +304,7 @@ async fn input_sender(
         } else {
             tokio::select! {
                 message=input.recv()=>{let Some(message)=message else {break;};message},
-                _=tick.tick(),if args.reliable_input && !reliable.sender.lock().unwrap().idle()=>{
+                _=tick.tick(),if !reliable.sender.lock().unwrap().idle()=>{
                     reliable_retries(&reliable,&acks,&out,&args,windows.load(Ordering::Relaxed)).await?;continue;
                 }
             }
@@ -326,26 +324,18 @@ async fn input_sender(
                 false,
             ),
             Input::Event(frame) => {
-                let bytes = if args.reliable_input {
-                    crate::diagnostics::frame("tx", &frame);
-                    crate::encode_plain(&frame)?
-                } else {
-                    crate::terminal_wire::input(&frame, printable)?
-                };
+                crate::diagnostics::frame("tx", &frame);
+                let bytes = crate::encode_plain(&frame)?;
                 (bytes, None, args.input_chunk, false, true)
             }
             Input::Shutdown(done) => {
                 let frame = Frame::control(Kind::Shutdown, 0);
-                let bytes = if args.reliable_input {
-                    crate::diagnostics::frame("tx", &frame);
-                    crate::encode_plain(&frame)?
-                } else {
-                    crate::terminal_wire::input(&frame, printable)?
-                };
+                crate::diagnostics::frame("tx", &frame);
+                let bytes = crate::encode_plain(&frame)?;
                 (bytes, Some(done), args.input_chunk, true, true)
             }
         };
-        if args.reliable_input && event {
+        if event {
             // Coalesce only events already queued. Never wait to fill a record:
             // interactive messages retain their latency, while bursts of small
             // Credit/control frames avoid a separate carrier ACK per event.
@@ -377,7 +367,7 @@ async fn input_sender(
             raw_input(&bytes,chunk,&acks,&out,timeout).await.context("Guacamole terminal input stopped progressing; reduce --input-window or increase --connect-timeout for a slow link")?;
         }
         if let Some(done) = done {
-            if shutdown && args.reliable_input {
+            if shutdown {
                 let warning = reliable
                     .sender
                     .lock()
@@ -701,7 +691,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
     });
     let reliable = Arc::new(ReliableInput {
         sender: Mutex::new(crate::reliable::Sender::new(
-            args.reliable_window,
+            crate::reliable::MAX_WINDOW,
             Duration::from_secs(args.connect_timeout),
         )),
         changed: Notify::new(),

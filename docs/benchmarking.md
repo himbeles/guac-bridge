@@ -23,9 +23,6 @@ The conservative profile is `--window 4 --frame-size 65536 --input-window 8`. In
 
 For the real path, run your usual SSH transfer or streamed API request through a foreground bridge. Measure total bytes and elapsed time, plus client process CPU, with the same server workload before and after. A proxy, guacd, PTY, remote SSH service or upstream application can set a throughput ceiling even if client CPU falls. Measure idle and interactive use separately from bulk transfers. Lower CPU time is useful evidence of reduced processing; it does not by itself establish watts or battery savings.
 
-`--input-window` is available from v1.1.4. The older `--window 4 --frame-size 65536` command remains the tested
-workaround for v1.1.3, where the input window was implicitly twice the TCP window.
-
 The benchmark script accepts all three controls and records them in every trial:
 
 ```sh

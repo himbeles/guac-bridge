@@ -103,7 +103,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         target = await self.target(self.echo)
         for mode in ('ssh', 'llm'):
             with self.subTest(mode=mode):
-                child, port = await self.bridge(target, mode, '--reliable-input')
+                child, port = await self.bridge(target, mode)
                 term = self.gateway.terminals[-1]
                 term.live_faults = ['drop', 'corrupt', 'duplicate']
                 await asyncio.wait_for(asyncio.gather(
@@ -116,7 +116,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reliable_permanent_loss_has_bounded_actionable_error(self):
         child, port = await self.bridge(await self.target(self.echo), 'ssh',
-                                        '--reliable-input', '--connect-timeout', '2')
+                                        '--connect-timeout', '2')
         self.gateway.terminals[-1].drop_live_data = True
         reader, writer = await asyncio.open_connection('127.0.0.1', port)
         writer.write(bytes(range(256))*2048)
@@ -183,27 +183,21 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Remote helper failed:', error)
         self.assertIn('Cannot initialize remote debug log', error)
 
-    async def test_remote_decoder_fatal_reaches_client_and_closes_all_channels(self):
-        target = await self.target(self.echo)
-        child, port = await self.bridge(target)
+    async def test_remote_console_noise_recovers_without_closing_channels(self):
+        child, port = await self.bridge(await self.target(self.echo))
         sockets = [await asyncio.open_connection('127.0.0.1', port) for _ in range(2)]
         await asyncio.sleep(.1)
-        # Corrupt the live remote console input after deployment, independently
-        # of Guacamole ACKs. The helper must report the actual decoder error.
         os.write(self.gateway.terminals[0].fd, b'\x1d\x00')
-        await asyncio.wait_for(child.wait(), 10)
-        self.assertNotEqual(child.returncode, 0)
-        error = (await child.stderr.read()).decode()
-        self.assertIn('Remote helper failed:', error)
-        self.assertIn('Invalid byte escape', error)
-        self.assertIn('wire_bytes=', error)
-        self.assertIn('Recent remote events', error)
         for reader, writer in sockets:
-            with contextlib.suppress(ConnectionResetError):
-                self.assertEqual(await asyncio.wait_for(reader.read(), 2), b'')
+            writer.write(b'survives console noise')
+            await writer.drain()
+            writer.write_eof()
+            self.assertEqual(await asyncio.wait_for(reader.read(), 10), b'survives console noise')
             writer.close()
-            with contextlib.suppress(ConnectionResetError):
-                await writer.wait_closed()
+            await writer.wait_closed()
+        error = await self.finish(child)
+        self.assertIn('rejected_records=1', error)
+        self.assertIn('--input-window', error)
 
     async def test_gateway_input_window_is_independent_of_tcp_credits(self):
         target = await self.target(self.echo)
@@ -484,7 +478,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         binary = BINARY.with_name('guac-ssh-client')
         async def command(*flags, input_window=3, expected=0):
             child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',
-                                     '--input-window',input_window,'--reliable-input',*flags,binary=binary)
+                                     '--input-window',input_window,*flags,binary=binary)
             await asyncio.wait_for(child.wait(),25)
             error = (await child.stderr.read()).decode()
             self.assertEqual(child.returncode,expected,error)

@@ -1,4 +1,4 @@
-//! Optional checksummed input records; TCP frame fields remain unchanged.
+//! Checksummed input records; TCP frame fields remain unchanged.
 use anyhow::{Result, bail, ensure};
 use std::{
     collections::BTreeMap,
@@ -372,7 +372,7 @@ impl Sender {
         for (&seq, packet) in &mut self.pending {
             if now.duration_since(packet.first) > self.timeout {
                 bail!(
-                    "Reliable input delivery stalled at record {seq}; try --input-window 4 (then 2), --window 2 or --reliable-window 32; collect client/server debug logs"
+                    "Reliable input delivery stalled at record {seq}; try --input-window 4 (then 2), --window 2; collect client/server debug logs"
                 );
             }
             if packet.fast
@@ -402,7 +402,7 @@ impl Sender {
         }
         self.last_report = Some((now, counts));
         Some(format!(
-            "Warning: reliable input recovery: retransmitted={} rejected_records={} invalid_acks={} sequence_gaps={}. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2 or --reliable-window 32. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.",
+            "Warning: reliable input recovery: retransmitted={} rejected_records={} invalid_acks={} sequence_gaps={}. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.",
             counts.0, counts.1, counts.2, counts.3
         ))
     }

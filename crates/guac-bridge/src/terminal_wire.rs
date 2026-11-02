@@ -1,6 +1,6 @@
 //! Terminal carriers share the same binary protocol and flow control.
 //! Windows ConPTY needs printable input and short OSC-only output envelopes.
-use crate::{Decoder, Frame, MAX_FRAME, encode};
+use crate::{Decoder, Frame, encode};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 pub const OSC_PREFIX: &str = "GBW1:";
@@ -29,42 +29,19 @@ pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
         bytes
     })
 }
-pub fn input(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
-    let bytes = encode(frame)?;
-    crate::diagnostics::frame("tx", frame);
-    Ok(if windows {
-        let mut out = STANDARD.encode(bytes).into_bytes();
-        // ConPTY translates Enter from CR; LF alone may not produce an input event.
-        out.push(b'\r');
-        out
-    } else {
-        bytes
-    })
-}
 #[derive(Default)]
 pub struct InputDecoder {
     binary: Decoder,
     line: Vec<u8>,
-    reliable: Option<crate::reliable::Receiver>,
+    reliable: crate::reliable::Receiver,
     armor_discard: bool,
 }
 impl InputDecoder {
-    pub fn with_reliability(enabled: bool) -> Self {
-        Self {
-            reliable: enabled.then(crate::reliable::Receiver::default),
-            ..Self::default()
-        }
-    }
     fn binary_feed(&mut self, bytes: &[u8]) -> Result<Vec<Frame>> {
-        if let Some(receiver) = &mut self.reliable {
-            receiver.feed(bytes, &mut self.binary)
-        } else {
-            self.binary.feed(bytes)
-        }
+        self.reliable.feed(bytes, &mut self.binary)
     }
     pub fn take_ack(&mut self) -> Option<Frame> {
         self.reliable
-            .as_mut()?
             .take_ack()
             .map(|ack| Frame::payload(crate::Kind::InputAck, 0, ack.encode()))
     }
@@ -73,18 +50,12 @@ impl InputDecoder {
             return self.binary_feed(bytes);
         }
         let mut frames = Vec::new();
-        let limit = if self.reliable.is_some() {
-            (crate::reliable::CHUNK + crate::reliable::CHUNK / 254 + 64) * 8 / 3 + 32
-        } else {
-            (MAX_FRAME + 12) * 8 / 3 + 8
-        };
+        let limit = (crate::reliable::CHUNK + crate::reliable::CHUNK / 254 + 64) * 8 / 3 + 32;
         for &byte in bytes {
             if matches!(byte, b'\r' | b'\n') {
                 if self.armor_discard {
                     self.armor_discard = false;
-                    if let Some(rx) = &mut self.reliable {
-                        rx.reject_armor();
-                    }
+                    self.reliable.reject_armor();
                     continue;
                 }
                 if self.line.is_empty() {
@@ -92,27 +63,20 @@ impl InputDecoder {
                 }
                 let decoded = match STANDARD.decode(&self.line) {
                     Ok(decoded) => decoded,
-                    Err(error) => {
-                        if let Some(rx) = &mut self.reliable {
-                            rx.reject_armor();
-                            self.line.clear();
-                            continue;
-                        }
-                        return Err(error.into());
+                    Err(_) => {
+                        self.reliable.reject_armor();
+                        self.line.clear();
+                        continue;
                     }
                 };
                 self.line.clear();
                 frames.extend(self.binary_feed(&decoded)?);
-                ensure!(
-                    self.reliable.is_some() || self.binary.complete(),
-                    "Incomplete armored frame"
-                );
             } else {
                 if self.armor_discard {
                     continue;
                 }
                 let valid = byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=');
-                if self.reliable.is_some() && (!valid || self.line.len() >= limit) {
+                if !valid || self.line.len() >= limit {
                     self.line.clear();
                     self.armor_discard = true;
                     continue;
@@ -132,17 +96,14 @@ impl InputDecoder {
             "{} armor_buffered={} {}",
             self.binary.status(),
             self.line.len(),
-            self.reliable
-                .as_ref()
-                .map(|r| r.status())
-                .unwrap_or_default()
+            self.reliable.status()
         )
     }
     pub fn complete(&self) -> bool {
         self.line.is_empty()
             && !self.armor_discard
             && self.binary.complete()
-            && self.reliable.as_ref().is_none_or(|r| r.complete())
+            && self.reliable.complete()
     }
 }
 #[cfg(test)]
@@ -152,7 +113,9 @@ mod tests {
     #[test]
     fn armored_input_survives_crlf_and_all_bytes() {
         let frame = Frame::payload(Kind::Data, 1, (0..65536).map(|n| (n % 256) as u8).collect());
-        let wire = input(&frame, true).unwrap();
+        let packet = crate::reliable::record(1, &crate::encode_plain(&frame).unwrap()).unwrap();
+        let mut wire = STANDARD.encode(packet).into_bytes();
+        wire.push(b'\r');
         let mut decoder = InputDecoder::default();
         let mut result = Vec::new();
         for part in wire.chunks(17) {
@@ -161,7 +124,8 @@ mod tests {
         assert_eq!(result, vec![frame]);
         assert!(decoder.complete());
         assert_eq!(decoder.feed(b"\r\n", true).unwrap().len(), 0);
-        assert!(decoder.feed(b"!", true).is_err());
+        assert!(decoder.feed(b"!\r", true).unwrap().is_empty());
+        assert!(decoder.complete());
     }
     #[test]
     fn console_output_reconstructs_binary_frames() {
@@ -185,7 +149,7 @@ mod tests {
                 crate::reliable::record(1, &crate::encode_plain(&expected).unwrap()).unwrap();
             let mut line = STANDARD.encode(packet).into_bytes();
             line.push(b'\r');
-            let mut decoder = InputDecoder::with_reliability(true);
+            let mut decoder = InputDecoder::default();
             assert!(decoder.feed(b"@\r", true).unwrap().is_empty());
             let mut truncated = line.clone();
             truncated.remove(18);

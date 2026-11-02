@@ -21,8 +21,6 @@ struct Args {
     stdio: bool,
     #[arg(long)]
     debug_log: Option<String>,
-    #[arg(long)]
-    reliable_input: bool,
     #[arg(long, hide = true)]
     benchmark_control: bool,
     /// Use the printable Windows console carrier.
@@ -107,18 +105,16 @@ async fn read_input(
     sender: mpsc::Sender<Frame>,
     output: mpsc::Sender<Frame>,
     windows: bool,
-    reliable: bool,
 ) -> Result<()> {
     #[cfg(windows)]
     if windows {
         // Console handles are character devices, not ordinary files. Read input
         // records directly so ConPTY keyboard events cannot remain in a cooked
         // or redirected stream reader. Keep blocking console I/O off Tokio.
-        return tokio::task::spawn_blocking(move || read_console_input(sender, output, reliable))
-            .await?;
+        return tokio::task::spawn_blocking(move || read_console_input(sender, output)).await?;
     }
     let mut stdin = tokio::io::stdin();
-    let mut decoder = guac_bridge::terminal_wire::InputDecoder::with_reliability(reliable);
+    let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
     let mut chunk = [0; 16384];
     loop {
         let n = stdin.read(&mut chunk).await?;
@@ -148,11 +144,7 @@ async fn read_input(
     }
 }
 #[cfg(windows)]
-fn read_console_input(
-    sender: mpsc::Sender<Frame>,
-    output: mpsc::Sender<Frame>,
-    reliable: bool,
-) -> Result<()> {
+fn read_console_input(sender: mpsc::Sender<Frame>, output: mpsc::Sender<Frame>) -> Result<()> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::System::Console::{INPUT_RECORD, KEY_EVENT, ReadConsoleInputW};
     let input = std::fs::OpenOptions::new()
@@ -160,7 +152,7 @@ fn read_console_input(
         .write(true)
         .open("CONIN$")?;
     let mut records = [INPUT_RECORD::default(); 256];
-    let mut decoder = guac_bridge::terminal_wire::InputDecoder::with_reliability(reliable);
+    let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
     loop {
         let mut count = 0;
         let success = unsafe {
@@ -234,7 +226,7 @@ async fn serve(args: Arc<Args>) -> Result<()> {
         stdout.write_all(b"\x1b]482202;2;LLM\x07")?;
     }
     let ready = serde_json::to_vec(
-        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"reliable_input":args.reliable_input}),
+        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"input_protocol":"reliable-v1"}),
     )?;
     stdout.write_all(&guac_bridge::terminal_wire::output(
         &Frame::payload(Kind::Ready, 0, ready),
@@ -246,10 +238,9 @@ async fn serve(args: Arc<Args>) -> Result<()> {
     // Reader sends a fatal error via a separate channel rather than losing queued frames.
     let (error_tx, mut error_rx) = mpsc::channel(1);
     let windows = args.windows_console;
-    let reliable = args.reliable_input;
     let input_output = output_tx.clone();
     let stdin_task = tokio::spawn(async move {
-        if let Err(error) = read_input(input_tx, input_output, windows, reliable).await {
+        if let Err(error) = read_input(input_tx, input_output, windows).await {
             let _ = error_tx.send(error).await;
         }
     });

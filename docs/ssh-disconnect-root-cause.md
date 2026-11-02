@@ -12,7 +12,7 @@ The local experiment uses real libssh2 and an SSH server, not a mock of the writ
 return value. It compares one fixed synthetic wire stream under three conditions.
 A TCP proxy briefly stops reading, creating actual socket backpressure; it never
 edits or deliberately drops stream bytes. The damaged capture is then supplied to
-the v1.1.3 native helper, which reports the same `Wrong bridge protocol` decoder
+the decoder probe used in the experiment, which reports the same `Wrong bridge protocol` decoder
 failure as the reported crashes. The identical intended stream passes unchanged
 through the same helper when delivery is correct.
 
@@ -47,30 +47,18 @@ It is not acknowledgement that the separate SSH input thread forwarded every byt
 to the remote process. The bridge cannot treat those gateway ACKs as end-to-end
 TCP delivery acknowledgements.
 
-## Why changing --window helped
+## Effect of flow-control limits
 
-The v1.1.3 client couples two different limits in `Args::validate()`:
+`--window` limits TCP frame credits per channel. `--input-window` independently
+limits Guacamole blobs awaiting gateway acknowledgements across the bridge.
+At 6048 bytes per full blob, 64 outstanding blobs represent 387072 wire bytes;
+eight represent 48384 bytes. Short blobs reduce those upper bounds.
 
-```rust
-self.input_window = self.window * 2;
-self.input_chunk = 6048;
-```
-
-| --window | TCP frame credits per channel | Guacamole blobs allowed in flight | Maximum blob bytes outstanding |
-| ---: | ---: | ---: | ---: |
-| 32 (default) | 32 | 64 | 387072 |
-| 4 (working) | 4 | 8 | 48384 |
-
-The blob-byte figures are upper bounds; short frames and short final blobs reduce
-them. A Guacamole ACK releases a blob slot before the helper necessarily consumes
-those bytes, so they do not bound the entire end-to-end queue.
-
-With a 65536-byte frame limit, the per-channel TCP budget also drops from 2 MiB to
-256 KiB. Thus changing `--window` alone does not isolate which limit matters in
-production. The local experiment isolates the gateway-forwarding failure using
-large versus small byte bursts, without altering the frame format or the decoder.
-It does not implement the entire Guacamole daemon, gateway ACK scheduling, or a
-complete bridge credit exchange.
+Gateway ACKs can release slots before the helper consumes their bytes, so the
+limit does not bound the entire end-to-end queue. A 65536-byte frame limit with
+four TCP credits provides a separate 256 KiB per-channel payload budget. Vary one
+limit at a time to isolate its effect. The experiment below changes byte bursts
+while holding its decoder and synthetic data fixed.
 
 ## Repeated experiment
 
@@ -99,10 +87,9 @@ frame header at the wrong position; it cannot reconstruct lost bytes. The exact
 amount received before the error is noticed depends on read boundaries. Its
 `buffered` field does not measure the number of lost bytes.
 
-The helper input contains Data frames for an otherwise unopened channel, which are
-ignored after decoding. This deliberately tests the exact production decoder
-without involving target SSH authentication, target socket buffering, or channel
-credit limits. It is not a full end-to-end SSH workload test.
+The decoder probe receives Data frames for an otherwise unopened channel.
+This isolates frame decoding from target SSH authentication, target socket
+buffering and channel credit limits. It is not a full end-to-end SSH workload test.
 
 Raw hashes, byte counts, return counters, and helper errors:
 [ssh-write-loss-results.json](ssh-write-loss-results.json).
@@ -131,19 +118,17 @@ byte equality is stronger confirmation. If the vendor build already retries
 correctly, investigate the remaining path instead of assuming this upstream defect
 is present there.
 
-Until then, `--window 4 --frame-size 65536` is the working deployment setting,
-not a guarantee against all future stalls or data loss.
+The bridge uses reliable records to detect and recover damaged input without
+requiring a Guacamole patch. Flow-control tuning reduces pressure but does not
+repair an upstream write-contract violation.
 
 ## Repeat locally
 
 This investigation does not change production encoding or defaults. It requires a
-Linux environment capable of running the helper and opening loopback TCP sockets;
+Linux environment capable of opening loopback TCP sockets;
 no root SSH daemon or company server access is required.
 
 ```sh
-# Build the helper with the normal local build entry point.
-make build
-
 # Optional isolated tools environment.
 python -m venv /tmp/guac-write-tools
 /tmp/guac-write-tools/bin/pip install asyncssh==2.24.1 cmake
@@ -155,7 +140,6 @@ git clone --branch libssh2-1.11.1 --depth 1 https://github.com/libssh2/libssh2.g
 
 /tmp/guac-write-tools/bin/python scripts/diagnostics/reproduce-ssh-write-loss.py \
   --libssh2 /tmp/guac-libssh2/build/src/libssh2.so \
-  --agent target/release/guac-bridge-agent \
   --output /tmp/guac-write-results.json
 ```
 
