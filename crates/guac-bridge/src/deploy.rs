@@ -3,9 +3,9 @@ use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 // Bound terminal input between remote shell acknowledgements. Base64 boundaries must be multiples of four.
-pub(crate) const UPLOAD_CHUNK: usize = 16 * 1024;
+pub(crate) const UPLOAD_CHUNK: usize = 3072;
 // Keep each Guacamole input blob below typical PTY input-buffer capacity.
-pub(crate) const UPLOAD_INPUT_CHUNK: usize = 2048;
+pub(crate) const UPLOAD_INPUT_CHUNK: usize = 1024;
 pub(crate) const AGENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/agent"));
 pub(crate) fn digest() -> String {
     format!("{:x}", Sha256::digest(AGENT))
