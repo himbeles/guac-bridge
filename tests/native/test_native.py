@@ -251,6 +251,31 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(child.wait(),5)
         self.assertEqual(child.returncode,0)
 
+    async def test_guacamole_ack_without_remote_consumption_fails_at_exact_block(self):
+        # Gateway accepts/ACKs one input blob, but never writes it to the PTY.
+        # The client must not claim 100% or wait indefinitely for helper readiness.
+        self.gateway.drop_upload_after = 12000
+        child = await self.child('--port', '0', '--target-port', 22,
+                                 '--connect-timeout', '2', '--benchmark-control')
+        await asyncio.wait_for(child.wait(), 10)
+        self.assertNotEqual(child.returncode, 0)
+        error = (await child.stderr.read()).decode()
+        self.assertIn('Remote shell did not acknowledge helper upload block', error)
+        self.assertGreater(self.gateway.terminals[0].dropped_upload_bytes, 0)
+
+    async def test_remote_decoder_stderr_reaches_client(self):
+        tools = self.home/'tools'
+        tools.mkdir()
+        decoder = tools/'base64'
+        decoder.write_text('#!/bin/sh\necho synthetic-decoder-failure >&2\nexit 2\n')
+        decoder.chmod(0o755)
+        child = await self.child('--port','0','--target-port',22,'--connect-timeout','3','--benchmark-control')
+        await asyncio.wait_for(child.wait(),10)
+        self.assertNotEqual(child.returncode,0)
+        error=(await child.stderr.read()).decode()
+        self.assertIn('synthetic-decoder-failure',error)
+        self.assertIn('decode failed',error)
+
     async def test_stalled_upload_completion_reports_its_stage(self):
         tools = self.home/'tools'
         tools.mkdir()
@@ -260,7 +285,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         child = await self.child('--port','0','--target-port',22,'--connect-timeout','2','--benchmark-control')
         await asyncio.wait_for(child.wait(),8)
         self.assertNotEqual(child.returncode,0)
-        self.assertIn('waiting for server to finish helper upload',(await child.stderr.read()).decode())
+        self.assertIn('waiting for remote upload block acknowledgement',(await child.stderr.read()).decode())
 
     async def test_disconnect_ends_client_and_helper(self):
         child, _ = await self.bridge(await self.target(self.echo))

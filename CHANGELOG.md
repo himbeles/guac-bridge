@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1
+
+- Prevent Linux helper-upload bursts: wait for remote acknowledgement of each small upload block and show remote-confirmed progress. The active TCP transport and Windows upload protocol are unchanged.
+- Relay upload decoder stderr and preserve underlying login, WebSocket-close and target-connection errors.
+- Keep healthy tunnels running after transient HTTP session-refresh failures and perform refresh requests without blocking connection acceptance. Authentication rejection still stops the bridge.
+- Add Makefile and PowerShell entry points for local helper/client builds, checks, portable archives and Windows installer packaging.
+- Correct the Cargo lockfile package version while retaining dependency versions.
+
 ## 1.1.0
 
 - Add Windows server helper

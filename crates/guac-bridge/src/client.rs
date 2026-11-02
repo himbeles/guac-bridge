@@ -193,7 +193,16 @@ async fn input_sender(
     while let Some(message) = input.recv().await {
         let (bytes, done, chunk, shutdown) = match message {
             Input::Raw(data) => (data, None, 3072, false),
-            Input::Upload(data, done) => (data, Some(done), args.input_chunk, false),
+            Input::Upload(data, done) => (
+                data,
+                Some(done),
+                if args.server_os == "linux" {
+                    crate::deploy::UPLOAD_INPUT_CHUNK
+                } else {
+                    args.input_chunk
+                },
+                false,
+            ),
             Input::Event(frame) => (
                 crate::terminal_wire::input(&frame, windows.load(Ordering::Relaxed))?,
                 None,
@@ -245,7 +254,8 @@ async fn channel(
             .ok_or_else(|| anyhow!("Channel ended before open"))?;
         ensure!(
             opened.kind == Kind::Opened,
-            "Remote target refused the TCP connection"
+            "Remote target refused the TCP connection: {}",
+            String::from_utf8_lossy(&opened.data[..opened.data.len().min(1024)]).escape_debug()
         );
         let upload = async {
             let mut buffer = vec![0; args.frame_size as usize];
@@ -285,7 +295,11 @@ async fn channel(
                     }
                     Kind::Error => {
                         remote_closed.store(true, Ordering::Relaxed);
-                        bail!("Remote target connection failed");
+                        bail!(
+                            "Remote target connection failed: {}",
+                            String::from_utf8_lossy(&frame.data[..frame.data.len().min(1024)])
+                                .escape_debug()
+                        );
                     }
                     _ => bail!("Unexpected TCP event"),
                 }
@@ -446,7 +460,8 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         ])
         .send()
         .await
-        .map_err(|_| anyhow!("Guacamole login request failed"))?;
+        .map_err(|error| error.without_url())
+        .context("Guacamole login request failed")?;
     ensure!(
         response.status().is_success(),
         "Guacamole login rejected (HTTP {})",
@@ -570,7 +585,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     let message=message.map_err(|_|anyhow!("WebSocket read failed"))?;
                     match message {
                         Message::Ping(bytes)=>{read_out.send(Message::Pong(bytes)).await?;continue;},
-                        Message::Close(_)=>bail!("Guacamole tunnel closed"),
+                        Message::Close(reason)=>bail!("Guacamole WebSocket closed: {reason:?}"),
                         Message::Text(text)=>for values in parser.feed(&text)?{
                             let op=values.first().map(String::as_str).unwrap_or("");
                             match op {
@@ -657,14 +672,49 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                 if response==format!("{nonce}:UPLOAD") {
                     *phase.lock().unwrap()="uploading bundled helper";
                     let encoded=crate::deploy::encoded_agent(&deploy_args)?;
-                    let block=args.input_chunk*args.input_window;
                     if !args.benchmark_control {eprintln!("Uploading bundled helper ({} KiB)…",crate::deploy::agent(&deploy_args)?.len().div_ceil(1024));}
-                    for (index,part) in encoded.chunks(block).enumerate() {
-                        let (sent,receipt)=oneshot::channel();
-                        input.send(Input::Upload(part.to_vec(),sent)).await?;
-                        receipt.await.context("Helper upload sender stopped")?;
-                        let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
-                        if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                    if is_windows {
+                        // Windows PowerShell bootstrap uses a different (console-safe) upload protocol.
+                        let block=args.input_chunk*args.input_window;
+                        for (index,part) in encoded.chunks(block).enumerate() {
+                            let (sent,receipt)=oneshot::channel();
+                            input.send(Input::Upload(part.to_vec(),sent)).await?;
+                            receipt.await.context("Helper upload sender stopped")?;
+                            let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
+                            if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                        }
+                    } else {
+                        // A Guacamole input ACK only says that the gateway accepted an input blob.
+                        // Wait for the remote shell to confirm it has decoded each block.
+                        let block=crate::deploy::UPLOAD_CHUNK;
+                        let mut reported=0;
+                        for (index,part) in encoded.chunks(block).enumerate() {
+                            let (sent,receipt)=oneshot::channel();
+                            input.send(Input::Upload(part.to_vec(),sent)).await?;
+                            receipt.await.context("Helper upload sender stopped")?;
+                            *phase.lock().unwrap()="waiting for remote upload block acknowledgement";
+                            let response=tokio::time::timeout(
+                                Duration::from_secs(args.connect_timeout),
+                                boot_rx.recv()
+                            ).await.with_context(||format!(
+                                "Remote shell did not acknowledge helper upload block {} ({} / {} encoded bytes sent)",
+                                index+1, ((index+1)*block).min(encoded.len()), encoded.len()
+                            ))?.context("Helper bootstrap closed during upload")?;
+                            ensure!(
+                                response==format!("{nonce}:CHUNK:{}",index+1),
+                                "Unexpected remote upload acknowledgement for block {}: {response}",
+                                index+1
+                            );
+                            // The shell can report VERIFY/STARTING immediately after the final
+                            // chunk; do not overwrite those newer stages.
+                            let mut stage=phase.lock().unwrap();
+                            if *stage=="waiting for remote upload block acknowledgement" {
+                                *stage="uploading bundled helper";
+                            }
+                            drop(stage);
+                            let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
+                            if !args.benchmark_control && (percent>=reported+5 || percent==100) {eprintln!("Helper upload: {percent}% (confirmed by remote shell)");reported=percent;}
+                        }
                     }
                     let mut stage=phase.lock().unwrap();
                     if *stage=="uploading bundled helper" {*stage="waiting for server to finish helper upload";}
@@ -694,18 +744,22 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         tokio::pin!(control);
         let next_id=AtomicU32::new(1);
         let mut connections=tokio::task::JoinSet::new();
-        let mut refresh=tokio::time::interval(Duration::from_secs(60));refresh.tick().await;
+        let refresh=async {
+            loop {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                let mut url=base.clone();url.path_segments_mut().map_err(|_|anyhow!("Invalid refresh URL"))?
+                    .pop_if_empty().extend(["api","session","data",&source,"connections",&connection]);
+                refresh_once(&http,url,&token).await?;
+            }
+            #[allow(unreachable_code)] Ok::<(),anyhow::Error>(())
+        };
+        tokio::pin!(refresh);
         loop {
             tokio::select!{
                 _=stop_rx.recv(),if args.managed_child=>break,
                 result=&mut control=>{result?;break;},
                 _=failed.changed()=>bail!("{}",failed.borrow().as_deref().unwrap_or("Bridge failed")),
-                _=refresh.tick(),if kind=="c"=>{
-                    let mut url=base.clone();url.path_segments_mut().map_err(|_|anyhow!("Invalid refresh URL"))?
-                        .pop_if_empty().extend(["api","session","data",&source,"connections",&connection]);
-                    let response=http.get(url).query(&[("token",&token)]).timeout(Duration::from_secs(15)).send().await.map_err(|_|anyhow!("Session refresh failed"))?;
-                    ensure!(response.status().is_success(),"Guacamole session refresh rejected");
-                },
+                result=&mut refresh,if kind=="c"=>{result?;break;},
                 accepted=listener.accept()=>{
                     let (stream,_)=accepted?;
                     stream.set_nodelay(true)?;
@@ -740,6 +794,69 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         let _ = task.await;
     }
     result
+}
+
+// Refresh failures used to terminate healthy forwarding every 60 seconds.
+// Keep servicing local sockets while HTTP refresh is pending; the independent
+// WebSocket/remote-heartbeat checks still detect an actual disconnected session.
+async fn refresh_once(http: &reqwest::Client, url: Url, token: &str) -> Result<()> {
+    match http
+        .get(url)
+        .query(&[("token", token)])
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+    {
+        Ok(response) if response.status().as_u16() == 401 || response.status().as_u16() == 403 => {
+            bail!(
+                "Guacamole session refresh rejected (HTTP {}); reconnect and authenticate",
+                response.status()
+            )
+        }
+        Ok(response) if !response.status().is_success() => {
+            eprintln!(
+                "Session refresh returned HTTP {}; keeping the active tunnel and retrying in 60 seconds",
+                response.status()
+            );
+        }
+        Err(error) => {
+            eprintln!(
+                "Session refresh failed: {:#}; keeping the active tunnel and retrying in 60 seconds",
+                error.without_url()
+            );
+        }
+        _ => (),
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod refresh_tests {
+    use super::*;
+    #[tokio::test]
+    async fn refresh_transient_failure_then_success_and_auth_rejection() {
+        let http = reqwest::Client::builder().no_proxy().build().unwrap();
+        for (status, fatal) in [(503, false), (200, false), (401, true), (403, true)] {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = Url::parse(&format!(
+                "http://{}/refresh",
+                listener.local_addr().unwrap()
+            ))
+            .unwrap();
+            let server = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut bytes = [0; 4096];
+                let received = stream.read(&mut bytes).await.unwrap();
+                assert!(received > 0);
+                stream.write_all(format!("HTTP/1.1 {status} Test\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+            });
+            assert_eq!(
+                refresh_once(&http, url, "synthetic-token").await.is_err(),
+                fatal
+            );
+            server.await.unwrap();
+        }
+    }
 }
 
 #[derive(Debug)]

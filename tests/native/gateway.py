@@ -34,8 +34,11 @@ def parse(text):
 
 
 class Terminal:
-    def __init__(self, home):
+    def __init__(self, home, drop_upload_after=None):
         self.home = home
+        # Fault injection: acknowledge a blob but drop it before the remote PTY.
+        self.drop_upload_after = drop_upload_after
+        self.dropped_upload_bytes = 0
         self.output = asyncio.Queue()
         self.raw = b''
         self.screen = bytearray()
@@ -108,6 +111,10 @@ class Terminal:
                 assert len(payload) <= 6048
                 self.all_input.extend(payload)
                 self.upload_bytes += len(payload)
+                if self.drop_upload_after is not None and self.upload_bytes > self.drop_upload_after:
+                    self.dropped_upload_bytes = len(payload)
+                    self.drop_upload_after = None
+                    payload = b''
                 while payload:
                     try:
                         count = os.write(self.fd, payload)
@@ -128,6 +135,7 @@ class Terminal:
 class Gateway:
     def __init__(self, home):
         self.home = home
+        self.drop_upload_after = None
         self.terminals = []
         self.ws = None
 
@@ -155,7 +163,7 @@ class Gateway:
         assert request.query['GUAC_ID'] == '1'
         ws = self.ws = web.WebSocketResponse(protocols=('guacamole',))
         await ws.prepare(request)
-        term = Terminal(self.home)
+        term = Terminal(self.home, self.drop_upload_after)
         self.terminals.append(term)
         await term.start()
         async def write():

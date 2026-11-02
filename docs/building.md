@@ -4,6 +4,28 @@ The workspace contains one standalone Cargo package, `guac-bridge`, and an optio
 
 The instructions below build from a checkout without GitHub Actions or the Python build scripts. Run commands from the repository root. Build both helpers from the same commit and version as the clients: helper bytes are embedded at client compile time.
 
+## One-command local builds
+
+From an extracted source checkout, with Rust/rustup and native build tools installed:
+
+```powershell
+# Windows: both server helpers, Windows clients and portable ZIP
+.\build.ps1
+# Also run Rust checks and create the installer (Inno Setup 6 required)
+.\build.ps1 -Check -Installer
+```
+
+```sh
+# Linux: static Linux helper and Linux clients
+make build
+make check
+make package
+# Optionally embed a Windows helper built from the same source revision
+make build WINDOWS_AGENT=/path/to/guac-bridge-agent-windows-x86_64.exe
+```
+
+These commands rebuild and embed the helper before the clients. They do not push, publish, call GitHub Actions or use Python. `make integration` additionally runs the local PTY integration tests and requires Python with aiohttp. Windows integration tests still need a Windows machine; the PowerShell build script is provided for local verification there.
+
 ## Prerequisites
 
 - Current stable Rust installed with rustup, plus Git.
