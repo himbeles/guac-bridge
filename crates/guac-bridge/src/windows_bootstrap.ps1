@@ -23,7 +23,7 @@ $d=New-Object byte[] @COUNT@;$f=[Console]::OpenStandardInput();$j=0
 while($j -lt $d.Length){$n=$f.Read($d,$j,$d.Length-$j);if($n -eq 0){throw 'Upload ended early'};$j+=$n}
 [IO.File]::WriteAllBytes($t,[Convert]::FromBase64String([Text.Encoding]::ASCII.GetString($d)));S 'VERIFY'
 if((GBHash $t) -ne $h){throw 'Helper checksum mismatch'}
-if([IO.File]::Exists($a)){[IO.File]::Replace($t,$a,$null)}else{[IO.File]::Move($t,$a)};$t=$null
+if([IO.File]::Exists($a)){[IO.File]::Replace($t,$a,[NullString]::Value)}else{[IO.File]::Move($t,$a)};$t=$null
 }}
 S 'STARTING'
 & $a --stdio --windows-console @OPTIONS@
