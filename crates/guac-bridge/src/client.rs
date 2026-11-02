@@ -1,6 +1,6 @@
 //! Independent native client: Guacamole login, WebSocket, ESC-safe mux, loopback TCP.
 use crate::cli::Args;
-use crate::{Decoder, Frame, Kind, Parser, encode, instruction};
+use crate::{Decoder, Frame, Kind, Parser, instruction};
 use anyhow::{Context, Result, anyhow, bail, ensure};
 use base64::{
     Engine,
@@ -44,6 +44,98 @@ enum Input {
     Upload(Vec<u8>, oneshot::Sender<()>),
     Event(Frame),
     Shutdown(oneshot::Sender<()>),
+}
+struct ReceivedFrames<'a> {
+    decoder: Decoder,
+    args: &'a Args,
+    channels: &'a Channels,
+    ready: &'a Notify,
+    started: &'a AtomicBool,
+}
+impl ReceivedFrames<'_> {
+    fn feed(&mut self, data: &[u8]) -> Result<bool> {
+        let frames = self.decoder.feed(data)?;
+        let any = !frames.is_empty();
+        for frame in frames {
+            match frame.kind {
+                Kind::Ready => {
+                    ensure!(frame.id == 0, "Invalid helper ready frame");
+                    let meta: serde_json::Value = serde_json::from_slice(&frame.data)?;
+                    ensure!(
+                        meta["package_version"] == env!("CARGO_PKG_VERSION"),
+                        "Bundled helper version does not match client"
+                    );
+                    ensure!(
+                        meta["window"] == self.args.window
+                            && meta["frame_size"] == self.args.frame_size,
+                        "Helper transport settings do not match"
+                    );
+                    self.started.store(true, Ordering::Relaxed);
+                    self.ready.notify_one();
+                }
+                Kind::Heartbeat => (),
+                Kind::Credit => {
+                    if let Some(channel) = self.channels.lock().unwrap().get(&frame.id) {
+                        ensure!(
+                            channel.credits.available_permits() < self.args.window,
+                            "Excess channel credits"
+                        );
+                        channel.credits.add_permits(1);
+                    }
+                }
+                _ => {
+                    ensure!(
+                        frame.kind != Kind::Data
+                            || frame.data.len() <= self.args.frame_size as usize,
+                        "TCP frame exceeds limit"
+                    );
+                    if let Some(channel) = self.channels.lock().unwrap().get(&frame.id) {
+                        channel.queue.try_send(frame)?;
+                    }
+                }
+            }
+        }
+        Ok(any)
+    }
+}
+fn bootstrap_bytes(
+    buffer: &mut Vec<u8>,
+    data: &[u8],
+    nonce: &str,
+    args: &Args,
+    phase: &Mutex<&'static str>,
+    tx: &mpsc::Sender<String>,
+) -> Result<()> {
+    buffer.extend(data);
+    ensure!(buffer.len() < 4096, "Bootstrap output exceeds limit");
+    while let Some(n) = buffer.iter().position(|b| *b == b'\n') {
+        let line = String::from_utf8(buffer.drain(..=n).collect())?;
+        let line = line.trim();
+        if !line.starts_with(&format!("{nonce}:")) {
+            continue;
+        }
+        if let Some(message) = line.strip_prefix(&format!("{nonce}:ERROR:")) {
+            bail!("Server helper bootstrap failed: {message}");
+        }
+        if let Some(path) = line.strip_prefix(&format!("{nonce}:LOCATION:")) {
+            if !args.benchmark_control {
+                eprintln!("Server helper cache: {path}");
+            }
+        } else if line == format!("{nonce}:VERIFY") {
+            *phase.lock().unwrap() = "verifying helper checksum";
+            if !args.benchmark_control {
+                eprintln!("Verifying helper checksum…");
+            }
+        } else if line == format!("{nonce}:STARTING") {
+            *phase.lock().unwrap() = "starting server helper";
+            if !args.benchmark_control {
+                eprintln!("Starting server helper…");
+            }
+        } else {
+            tx.try_send(line.to_owned())?;
+        }
+    }
+    Ok(())
 }
 fn fail(failure: &Failure, closing: &AtomicBool, message: &str) {
     if !closing.load(Ordering::Relaxed) && failure.borrow().is_none() {
@@ -95,15 +187,24 @@ async fn input_sender(
     acks: Arc<Acks>,
     out: mpsc::Sender<Message>,
     args: Arc<Args>,
+    windows: Arc<AtomicBool>,
 ) -> Result<()> {
     let timeout = Duration::from_secs(args.connect_timeout);
     while let Some(message) = input.recv().await {
         let (bytes, done, chunk, shutdown) = match message {
             Input::Raw(data) => (data, None, 3072, false),
             Input::Upload(data, done) => (data, Some(done), args.input_chunk, false),
-            Input::Event(frame) => (encode(&frame)?, None, args.input_chunk, false),
+            Input::Event(frame) => (
+                crate::terminal_wire::input(&frame, windows.load(Ordering::Relaxed))?,
+                None,
+                args.input_chunk,
+                false,
+            ),
             Input::Shutdown(done) => (
-                encode(&Frame::control(Kind::Shutdown, 0))?,
+                crate::terminal_wire::input(
+                    &Frame::control(Kind::Shutdown, 0),
+                    windows.load(Ordering::Relaxed),
+                )?,
                 Some(done),
                 args.input_chunk,
                 true,
@@ -423,8 +524,10 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
     let closing = Arc::new(AtomicBool::new(false));
     let synced = Arc::new(Notify::new());
     let ready = Arc::new(Notify::new());
+    let windows = Arc::new(AtomicBool::new(false));
     let helper_started = Arc::new(AtomicBool::new(false));
     let read_started = helper_started.clone();
+    let read_windows = windows.clone();
     let (boot_tx, mut boot_rx) = mpsc::channel::<String>(8);
     let nonce = uuid::Uuid::new_v4().simple().to_string();
     let read_nonce = nonce.clone();
@@ -453,7 +556,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         closing.clone(),
     );
     tasks.push(spawn_guard(async move {
-        let mut parser=Parser::default();let mut decoder=Decoder::default();let mut output_stream=None;let mut boot_stream=None;let mut boot_buffer=Vec::new();
+        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started};let mut output_stream=None;let mut boot_stream=None;let mut boot_buffer=Vec::new();
         let mut heartbeat=Instant::now();let mut tick=tokio::time::interval(Duration::from_secs(1));
         loop {
             tokio::select!{
@@ -468,7 +571,19 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     match message {
                         Message::Ping(bytes)=>{read_out.send(Message::Pong(bytes)).await?;continue;},
                         Message::Close(_)=>bail!("Guacamole tunnel closed"),
-                        Message::Text(text)=>for values in parser.feed(&text)?{
+                        Message::Text(text)=>for mut values in parser.feed(&text)?{
+                            // ConPTY preserves short OSC envelopes, but transforms raw output.
+                            // Windows carries bytes in the Guacamole pipe name itself.
+                            if values.first().map(String::as_str)==Some("pipe") && values.len()>=4 {
+                                let name=values[3].clone();
+                                if let Some(data)=name.strip_prefix(crate::terminal_wire::OSC_PREFIX) {
+                                    output_stream=Some(values[1].clone());
+                                    values=vec!["blob".into(), values[1].clone(), data.into()];
+                                } else if let Some(data)=name.strip_prefix(crate::terminal_wire::BOOT_PREFIX) {
+                                    boot_stream=Some(values[1].clone());
+                                    values=vec!["blob".into(), values[1].clone(), data.into()];
+                                }
+                            }
                             let op=values.first().map(String::as_str).unwrap_or("");
                             match op {
                                 "sync"=>{ensure!(values.len()>=2,"Invalid sync");ws_send(&read_out,&["sync",&values[1]]).await?;read_synced.notify_one();},
@@ -479,61 +594,31 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                                 },
                                 "pipe"=>{
                                     ensure!(values.len()>=4,"Invalid pipe");
-                                    if values[3]=="BOOT"&&boot_stream.is_none(){boot_stream=Some(values[1].clone());ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;}
+                                    if read_windows.load(Ordering::Relaxed)&&values[3].starts_with(crate::terminal_wire::BOOT_PREFIX){
+                                        bootstrap_bytes(&mut boot_buffer,&B64.decode(&values[3][crate::terminal_wire::BOOT_PREFIX.len()..])?,&read_nonce,&read_args,&read_phase,&boot_tx)?;
+                                        ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
+                                    }else if read_windows.load(Ordering::Relaxed)&&values[3].starts_with(crate::terminal_wire::OSC_PREFIX){
+                                        let data=B64.decode(&values[3][crate::terminal_wire::OSC_PREFIX.len()..])?;
+                                        if frames.feed(&data)?{heartbeat=Instant::now();}
+                                        ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
+                                    }else if values[3]=="BOOT"&&boot_stream.is_none(){boot_stream=Some(values[1].clone());ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;}
                                     else if values[3]=="LLM"&&output_stream.is_none(){output_stream=Some(values[1].clone());ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;}
                                     else{ws_send(&read_out,&["ack",&values[1],"Unsupported","256"]).await?;}
                                 },
                                 "blob" if values.get(1)==boot_stream.as_ref()=>{
                                     ensure!(values.len()>=3,"Invalid bootstrap blob");
-                                    boot_buffer.extend(B64.decode(&values[2])?);
-                                    ensure!(boot_buffer.len()<4096,"Bootstrap output exceeds limit");
-                                    while let Some(n)=boot_buffer.iter().position(|b|*b==b'\n') {
-                                        let line=String::from_utf8(boot_buffer.drain(..=n).collect())?;
-                                        let line=line.trim();
-                                        if let Some(message)=line.strip_prefix(&format!("{read_nonce}:ERROR:")) {
-                                            bail!("Server helper bootstrap failed: {message}");
-                                        }
-                                        if line==format!("{read_nonce}:VERIFY") {
-                                            *read_phase.lock().unwrap()="verifying helper checksum";
-                                            if !read_args.benchmark_control {eprintln!("Verifying helper checksum…");}
-                                        }else if line==format!("{read_nonce}:STARTING") {
-                                            *read_phase.lock().unwrap()="starting server helper";
-                                            if !read_args.benchmark_control {eprintln!("Starting server helper…");}
-                                        }else {
-                                            boot_tx.try_send(line.to_owned())?;
-                                        }
-                                    }
+                                    bootstrap_bytes(&mut boot_buffer,&B64.decode(&values[2])?,&read_nonce,&read_args,&read_phase,&boot_tx)?;
                                     ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
                                 },
                                 "end" if values.get(1)==boot_stream.as_ref()=>{boot_stream=None;},
                                 "blob" if values.get(1)==output_stream.as_ref()=>{
                                     ensure!(values.len()>=3,"Invalid blob");
                                     let data=B64.decode(&values[2])?;
-                                    for frame in decoder.feed(&data)?{
-                                        heartbeat=Instant::now();
-                                        match frame.kind {
-                                            Kind::Ready=>{
-                                                ensure!(frame.id==0,"Invalid helper ready frame");
-                                                let meta:serde_json::Value=serde_json::from_slice(&frame.data)?;
-                                                ensure!(meta["package_version"]==env!("CARGO_PKG_VERSION"),"Bundled helper version does not match client");
-                                                ensure!(meta["window"]==read_args.window && meta["frame_size"]==read_args.frame_size,"Helper transport settings do not match");
-                                                read_started.store(true,Ordering::Relaxed);
-                                                read_ready.notify_one();
-                                            },
-                                            Kind::Heartbeat=>(),
-                                            Kind::Credit=>{if let Some(channel)=read_channels.lock().unwrap().get(&frame.id){
-                                                ensure!(channel.credits.available_permits()<read_args.window,"Excess channel credits");channel.credits.add_permits(1);
-                                            }},
-                                            _=>{
-                                                ensure!(frame.kind!=Kind::Data||frame.data.len()<=read_args.frame_size as usize,"TCP frame exceeds limit");
-                                                if let Some(channel)=read_channels.lock().unwrap().get(&frame.id){channel.queue.try_send(frame)?;}
-                                            },
-                                        }
-                                    }
+                                    if frames.feed(&data)? {heartbeat=Instant::now();}
                                     ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
                                 },
                                 "end" if values.get(1)==output_stream.as_ref()=>{
-                                    ensure!(read_closing.load(Ordering::Relaxed),"Remote helper output pipe closed");output_stream=None;
+                                    ensure!(read_windows.load(Ordering::Relaxed) || read_closing.load(Ordering::Relaxed),"Remote helper output pipe closed");output_stream=None;
                                 },
                                 "error"|"disconnect"=>bail!("Guacamole disconnected or reported a terminal error"),
                                 "img"|"file"|"audio"|"video"|"body" if values.len()>1=>ws_send(&read_out,&["ack",&values[1],"Not needed","256"]).await?,
@@ -547,7 +632,13 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         }
     },failure.clone(),closing.clone()));
     tasks.push(spawn_guard(
-        input_sender(inputs, acks.clone(), out.clone(), args.clone()),
+        input_sender(
+            inputs,
+            acks.clone(),
+            out.clone(),
+            args.clone(),
+            windows.clone(),
+        ),
         failure.clone(),
         closing.clone(),
     ));
@@ -559,19 +650,33 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
             acks.pending.lock().unwrap().push_back(Instant::now());
             ws_send(&out,&["pipe","0","text/plain","STDIN"]).await?;
             drain(&acks,Duration::from_secs(args.connect_timeout)).await?;
-            input.send(Input::Raw(crate::deploy::prepare(&nonce))).await?;
-            let prepared=tokio::time::timeout(Duration::from_secs(args.connect_timeout),boot_rx.recv()).await?.context("Terminal preparation closed")?;
-            ensure!(prepared==format!("{nonce}:PREPARED"),"Unexpected terminal preparation response");
+            let is_windows=if args.server_os=="windows" {true} else if args.server_os=="linux" {false} else {
+                input.send(Input::Raw(crate::deploy::probe(&nonce))).await?;
+                match tokio::time::timeout(Duration::from_secs(2),boot_rx.recv()).await {
+                    Ok(Some(response))=>{ensure!(response==format!("{nonce}:LINUX"),"Unexpected OS probe response");false},
+                    Ok(None)=>bail!("OS probe channel closed"),
+                    Err(_)=>true,
+                }
+            };
+            windows.store(is_windows,Ordering::Relaxed);
+            let mut deploy_args=(*args).clone();
+            deploy_args.server_os=if is_windows {"windows"}else{"linux"}.into();
+            if !args.benchmark_control {eprintln!("Remote helper platform: {} x86-64",if is_windows {"Windows"}else{"Linux"});}
+            {
+                input.send(Input::Raw(crate::deploy::prepare(&deploy_args,&nonce)?)).await?;
+                let prepared=tokio::time::timeout(Duration::from_secs(args.connect_timeout),boot_rx.recv()).await?.context("Terminal preparation closed")?;
+                ensure!(prepared==format!("{nonce}:PREPARED"),"Unexpected terminal preparation response");
+            }
             *phase.lock().unwrap()="checking server helper cache";
             if !args.benchmark_control {eprintln!("Checking server helper…");}
-            input.send(Input::Raw(crate::deploy::command(&args,&nonce)?)).await?;
+            input.send(Input::Raw(crate::deploy::command(&deploy_args,&nonce)?)).await?;
             if args.server_command.is_none() {
                 let response=tokio::time::timeout(Duration::from_secs(args.connect_timeout),boot_rx.recv()).await?.context("Helper bootstrap closed")?;
                 if response==format!("{nonce}:UPLOAD") {
                     *phase.lock().unwrap()="uploading bundled helper";
-                    let encoded=crate::deploy::encoded_agent();
+                    let encoded=crate::deploy::encoded_agent(&deploy_args)?;
                     let block=args.input_chunk*args.input_window;
-                    if !args.benchmark_control {eprintln!("Uploading bundled helper ({} KiB)…",crate::deploy::AGENT.len().div_ceil(1024));}
+                    if !args.benchmark_control {eprintln!("Uploading bundled helper ({} KiB)…",crate::deploy::agent(&deploy_args)?.len().div_ceil(1024));}
                     for (index,part) in encoded.chunks(block).enumerate() {
                         let (sent,receipt)=oneshot::channel();
                         input.send(Input::Upload(part.to_vec(),sent)).await?;

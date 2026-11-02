@@ -330,3 +330,5 @@ mod proxy;
 
 #[cfg(feature = "client")]
 mod console;
+
+pub mod terminal_wire;

@@ -47,6 +47,8 @@ fn build_agent(manifest: &Path, out: &Path) -> PathBuf {
 }
 fn main() {
     println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_AGENT");
+    println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_WINDOWS_AGENT");
+    println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT");
     if env::var_os("CARGO_FEATURE_CLIENT").is_none() {
         return;
     }
@@ -73,4 +75,33 @@ fn main() {
         "Bundled agent must be Linux x86-64 ELF"
     );
     fs::write(out.join("agent"), bytes).unwrap();
+    let windows = env::var_os("GUAC_BRIDGE_WINDOWS_AGENT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| manifest.join("assets/guac-bridge-agent-windows-x86_64.exe"));
+    println!("cargo:rerun-if-changed={}", windows.display());
+    let bytes = if windows.exists() {
+        fs::read(windows).unwrap()
+    } else {
+        Vec::new()
+    };
+    if bytes.is_empty() {
+        assert!(
+            env::var_os("GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT").is_none(),
+            "Release clients must bundle the Windows agent"
+        );
+    } else {
+        let offset = u32::from_le_bytes(
+            bytes
+                .get(0x3c..0x40)
+                .expect("Invalid Windows helper")
+                .try_into()
+                .unwrap(),
+        ) as usize;
+        assert!(
+            bytes.starts_with(b"MZ")
+                && bytes.get(offset..offset + 6) == Some(&[b'P', b'E', 0, 0, 0x64, 0x86]),
+            "Windows helper must be an x86-64 PE executable"
+        );
+    }
+    fs::write(out.join("agent-windows"), bytes).unwrap();
 }

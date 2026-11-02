@@ -6,7 +6,17 @@ on:
 permissions:
   contents: read
 jobs:
+  linux-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with: {targets: x86_64-unknown-linux-musl}
+      - run: cargo build --locked --release --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+      - uses: actions/upload-artifact@v7
+        with: {name: windows-test-linux-agent, path: target/x86_64-unknown-linux-musl/release/guac-bridge-agent}
   console:
+    needs: linux-agent
     strategy:
       fail-fast: false
       matrix:
@@ -18,5 +28,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v7
         with: {python-version: '3.12'}
-      - run: cargo build --release --no-default-features --example console_probe
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v8
+        with: {name: windows-test-linux-agent, path: linux-agent}
+      - run: |
+          New-Item -ItemType Directory -Force crates/guac-bridge/assets
+          Copy-Item linux-agent/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
+          cargo build --locked --release --no-default-features --bin guac-bridge-agent --examples
+          Copy-Item target/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe
+          cargo build --locked --release --bins --examples
+      - run: python -m pip install aiohttp
       - run: python tests/windows/probe.py
+      - run: python -m unittest discover -s tests/windows -p test_agent.py -v
+      - run: python -m unittest discover -s tests/windows -p test_bootstrap.py -v

@@ -77,9 +77,12 @@ pub(crate) struct Args {
     /// Show a separate console for the managed process on Windows.
     #[arg(long)]
     pub show_console: bool,
-    /// Use a manually installed helper instead of deploying the bundled Linux agent.
+    /// Use a manually installed helper instead of deploying the bundled agent.
     #[arg(long)]
     pub server_command: Option<String>,
+    /// Remote SSH server OS. Auto probes Linux first, then Windows PowerShell.
+    #[arg(long, default_value = "auto", value_parser = ["auto", "linux", "windows"])]
+    pub server_os: String,
     #[arg(long, hide = true)]
     pub benchmark_control: bool,
     #[arg(long, hide = true)]

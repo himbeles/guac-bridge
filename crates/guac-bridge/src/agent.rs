@@ -1,7 +1,7 @@
 //! Independent loopback TCP helper using ESC-safe binary frames.
 use anyhow::{Result, bail, ensure};
 use clap::Parser;
-use guac_bridge::{Decoder, FRAME, Frame, Kind, WINDOW, encode};
+use guac_bridge::{FRAME, Frame, Kind, WINDOW};
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -18,6 +18,9 @@ use tokio::{
 struct Args {
     #[arg(long)]
     stdio: bool,
+    /// Use the printable Windows console carrier.
+    #[arg(long)]
+    windows_console: bool,
     #[arg(long, default_value = "127.0.0.1")]
     target_host: String,
     #[arg(long, default_value_t = 22)]
@@ -85,9 +88,9 @@ async fn connection(
     tokio::try_join!(upload, download)?;
     Ok(())
 }
-async fn read_input(sender: mpsc::Sender<Frame>) -> Result<()> {
+async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
     let mut stdin = tokio::io::stdin();
-    let mut decoder = Decoder::default();
+    let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
     let mut chunk = [0; 16384];
     loop {
         let n = stdin.read(&mut chunk).await?;
@@ -96,7 +99,7 @@ async fn read_input(sender: mpsc::Sender<Frame>) -> Result<()> {
             sender.send(Frame::control(Kind::Shutdown, 0)).await?;
             return Ok(());
         }
-        for frame in decoder.feed(&chunk[..n])? {
+        for frame in decoder.feed(&chunk[..n], windows)? {
             let stop = frame.kind == Kind::Shutdown;
             sender.send(frame).await?;
             if stop {
@@ -121,19 +124,31 @@ async fn termination() {
 async fn serve(args: Arc<Args>) -> Result<()> {
     #[cfg(unix)]
     let _terminal = guac_bridge::RawTerminal::enter()?;
+    #[cfg(windows)]
+    let _windows_terminal = if args.windows_console {
+        Some(WindowsTerminal::enter()?)
+    } else {
+        None
+    };
     let mut stdout = std::io::stdout().lock();
-    stdout.write_all(b"\x1b]482202;2;LLM\x07")?;
+    if !args.windows_console {
+        stdout.write_all(b"\x1b]482202;2;LLM\x07")?;
+    }
     let ready = serde_json::to_vec(
         &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size}),
     )?;
-    stdout.write_all(&encode(&Frame::payload(Kind::Ready, 0, ready))?)?;
+    stdout.write_all(&guac_bridge::terminal_wire::output(
+        &Frame::payload(Kind::Ready, 0, ready),
+        args.windows_console,
+    )?)?;
     stdout.flush()?;
     let (input_tx, mut input_rx) = mpsc::channel(64);
     let (output_tx, mut output_rx) = mpsc::channel::<Frame>(64);
     // Reader sends a fatal error via a separate channel rather than losing queued frames.
     let (error_tx, mut error_rx) = mpsc::channel(1);
+    let windows = args.windows_console;
     let stdin_task = tokio::spawn(async move {
-        if let Err(error) = read_input(input_tx).await {
+        if let Err(error) = read_input(input_tx, windows).await {
             let _ = error_tx.send(error).await;
         }
     });
@@ -147,10 +162,10 @@ async fn serve(args: Arc<Args>) -> Result<()> {
             tokio::select!{
                 _=&mut stop=>break,
                 Some(error)=error_rx.recv()=>return Err(error),
-                _=heartbeat.tick()=>{stdout.write_all(&encode(&Frame::control(Kind::Heartbeat,0))?)?;stdout.flush()?;},
+                _=heartbeat.tick()=>{stdout.write_all(&guac_bridge::terminal_wire::output(&Frame::control(Kind::Heartbeat,0),args.windows_console)?)?;stdout.flush()?;},
                 Some(frame)=output_rx.recv()=>{
                     if matches!(frame.kind,Kind::Closed|Kind::Error){channels.remove(&frame.id);}
-                    stdout.write_all(&encode(&frame)?)?;stdout.flush()?;
+                    stdout.write_all(&guac_bridge::terminal_wire::output(&frame,args.windows_console)?)?;stdout.flush()?;
                 },
                 frame=input_rx.recv()=>{
                     let Some(frame)=frame else {break;};
@@ -160,7 +175,7 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                         Kind::Open=>{
                             ensure!(id>0&&!channels.contains_key(&id),"Invalid or duplicate channel ID");
                             if channels.len()>=args.max_connections {
-                                stdout.write_all(&encode(&Frame::payload(Kind::Error,id,b"SSH connection limit reached".to_vec()))?)?;
+                                stdout.write_all(&guac_bridge::terminal_wire::output(&Frame::payload(Kind::Error,id,b"Connection limit reached".to_vec()),args.windows_console)?)?;
                                 stdout.flush()?;continue;
                             }
                             let (tx,rx)=mpsc::channel(args.window+1);
@@ -175,7 +190,7 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                         },
                         Kind::Close=>{
                             if let Some(channel)=channels.remove(&id){channel.task.abort();let _=channel.task.await;}
-                            stdout.write_all(&encode(&Frame::control(Kind::Closed,id))?)?;stdout.flush()?;
+                            stdout.write_all(&guac_bridge::terminal_wire::output(&Frame::control(Kind::Closed,id),args.windows_console)?)?;stdout.flush()?;
                         },
                         _=>if let Some(channel)=channels.get_mut(&id){match frame.kind {
                             Kind::Data=>{
@@ -204,7 +219,9 @@ async fn serve(args: Arc<Args>) -> Result<()> {
     for (_, channel) in channels {
         let _ = channel.task.await;
     }
-    stdout.write_all(b"\x1b]482203;\x07")?;
+    if !args.windows_console {
+        stdout.write_all(b"\x1b]482203;\x07")?;
+    }
     stdout.flush()?;
     result
 }
@@ -235,4 +252,62 @@ fn main() -> Result<()> {
     let result = runtime.block_on(serve(Arc::new(args)));
     runtime.shutdown_timeout(Duration::from_millis(100));
     result
+}
+
+#[cfg(windows)]
+struct WindowsTerminal {
+    input: std::fs::File,
+    output: std::fs::File,
+    input_mode: u32,
+    output_mode: u32,
+}
+#[cfg(windows)]
+impl WindowsTerminal {
+    fn enter() -> Result<Self> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::Console::*;
+        let input = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("CONIN$")?;
+        let output = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open("CONOUT$")?;
+        let (mut input_mode, mut output_mode) = (0, 0);
+        unsafe {
+            ensure!(
+                GetConsoleMode(input.as_raw_handle(), &mut input_mode) != 0
+                    && GetConsoleMode(output.as_raw_handle(), &mut output_mode) != 0,
+                "Cannot read Windows console modes"
+            );
+            ensure!(
+                SetConsoleMode(input.as_raw_handle(), ENABLE_EXTENDED_FLAGS) != 0
+                    && SetConsoleMode(
+                        output.as_raw_handle(),
+                        output_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+                    ) != 0,
+                "Cannot configure Windows console"
+            );
+            SetStdHandle(STD_INPUT_HANDLE, input.as_raw_handle());
+            SetStdHandle(STD_OUTPUT_HANDLE, output.as_raw_handle());
+        }
+        Ok(Self {
+            input,
+            output,
+            input_mode,
+            output_mode,
+        })
+    }
+}
+#[cfg(windows)]
+impl Drop for WindowsTerminal {
+    fn drop(&mut self) {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::Console::SetConsoleMode;
+        unsafe {
+            SetConsoleMode(self.input.as_raw_handle(), self.input_mode);
+            SetConsoleMode(self.output.as_raw_handle(), self.output_mode);
+        }
+    }
 }
