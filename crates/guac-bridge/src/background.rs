@@ -53,6 +53,7 @@ fn identity(args: &Args) -> String {
         args.server_debug_log,
         args.upload_batch_size,
         args.window,
+        args.input_window,
         args.frame_size,
         args.ca_file,
         args.insecure
@@ -206,6 +207,8 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         &args.target_host,
         "--window",
         &args.window.to_string(),
+        "--input-window",
+        &args.input_window.to_string(),
         "--frame-size",
         &args.frame_size.to_string(),
         "--connect-timeout",

@@ -28,7 +28,7 @@ async def trial(args):
                 writer.close()
         server = await asyncio.start_server(echo,'127.0.0.1',0)
         env = dict(os.environ,GUAC_BRIDGE_PASSWORD='test',NO_PROXY='127.0.0.1')
-        child = await asyncio.create_subprocess_exec(str(args.client.resolve()),'ssh','--url',url,'--username','test','--no-keyring','--port','0','--target-port',str(server.sockets[0].getsockname()[1]),'--startup-delay','0','--window',str(args.window),'--frame-size',str(args.frame_size),'--benchmark-control',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
+        child = await asyncio.create_subprocess_exec(str(args.client.resolve()),'ssh','--url',url,'--username','test','--no-keyring','--port','0','--target-port',str(server.sockets[0].getsockname()[1]),'--startup-delay','0','--window',str(args.window),'--frame-size',str(args.frame_size),'--input-window',str(args.input_window),'--benchmark-control',stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
         async def command(text):
             child.stdin.write(text.encode()+b'\n')
             await child.stdin.drain()
@@ -65,7 +65,7 @@ async def trial(args):
                 elapsed = time.perf_counter()-start
                 counters = await command('stop')
                 assert sent.digest()==received.digest() and total==args.mib*1048576
-                results.append({**counters,'bytes_each_direction':total,'mib_per_s_each_direction':args.mib/elapsed,'window':args.window,'frame_size':args.frame_size})
+                results.append({**counters,'bytes_each_direction':total,'mib_per_s_each_direction':args.mib/elapsed,'window':args.window,'input_window':args.input_window,'frame_size':args.frame_size})
             child.stdin.write(b'quit\n')
             await child.stdin.drain()
             await asyncio.wait_for(child.wait(),10)
@@ -83,8 +83,9 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--client',type=Path,default=ROOT/'target/release/guac-bridge')
 p.add_argument('--mib',type=int,default=32)
 p.add_argument('--repeats',type=int,default=3)
-p.add_argument('--window',type=int,choices=(16,32,64),default=32)
-p.add_argument('--frame-size',type=int,choices=(16384,32768,65536),default=65536)
+p.add_argument('--window',type=int,choices=range(1,65),default=4)
+p.add_argument('--input-window',type=int,choices=range(1,129),default=8)
+p.add_argument('--frame-size',type=int,choices=(4096,8192,16384,32768,65536),default=65536)
 p.add_argument('--output',type=Path)
 a = p.parse_args()
 if a.mib<1 or a.repeats<1:

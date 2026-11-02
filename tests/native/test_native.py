@@ -146,6 +146,34 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             with contextlib.suppress(ConnectionResetError):
                 await writer.wait_closed()
 
+    async def test_gateway_input_window_is_independent_of_tcp_credits(self):
+        target = await self.target(self.echo)
+        for window, input_window in [(32, 2), (1, 8)]:
+            with self.subTest(window=window, input_window=input_window):
+                child, port = await self.bridge(target, 'ssh', '--window', window,
+                                               '--input-window', input_window)
+                self.gateway.hold_input_acks = True
+                reader, writer = await asyncio.open_connection('127.0.0.1', port)
+                payload = bytes(range(256))*4096
+                writer.write(payload)
+                await writer.drain()
+                async def paused():
+                    while len(self.gateway.held_input_acks) < input_window:
+                        await asyncio.sleep(.01)
+                await asyncio.wait_for(paused(), 5)
+                await asyncio.sleep(.1)
+                self.assertEqual(len(self.gateway.held_input_acks), input_window)
+                # Release real gateway ACKs and verify that the exact stream resumes.
+                self.gateway.hold_input_acks = False
+                for ack in self.gateway.held_input_acks:
+                    await self.gateway.terminals[-1].output.put(ack)
+                self.gateway.held_input_acks.clear()
+                writer.write_eof()
+                self.assertEqual(await asyncio.wait_for(reader.read(), 10), payload)
+                writer.close()
+                await writer.wait_closed()
+                await self.finish(child)
+
     async def test_first_upload_cache_reuse_and_repair(self):
         target = await self.target(self.echo)
         payload = bytes(range(256))*4096 + b'\x1b]482203;\x07'
@@ -395,11 +423,12 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         dummy.close()
         await dummy.wait_closed()
         binary = BINARY.with_name('guac-ssh-client')
-        async def command(*flags):
-            child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',*flags,binary=binary)
+        async def command(*flags, input_window=3, expected=0):
+            child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',
+                                     '--input-window',input_window,*flags,binary=binary)
             await asyncio.wait_for(child.wait(),25)
             error = (await child.stderr.read()).decode()
-            self.assertEqual(child.returncode,0,error)
+            self.assertEqual(child.returncode,expected,error)
             return error
         try:
             self.assertIn('Bridge ready',await command('--ensure-running'))
@@ -407,6 +436,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.gateway.upload_ack_count,(encoded_size+12287)//12288)
             await self.roundtrip(port,b'managed')
             self.assertIn('already running',await command('--ensure-running'))
+            self.assertIn('different settings',await command('--ensure-running',input_window=4,expected=1))
             self.assertIn('Bridge running',await command('--status'))
         finally:
             await command('--stop')

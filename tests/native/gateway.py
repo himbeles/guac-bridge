@@ -138,6 +138,8 @@ class Gateway:
         self.drop_upload_after = None
         self.upload_ack_delay = 0.0
         self.upload_ack_count = 0
+        self.hold_input_acks = False
+        self.held_input_acks = []
         self.terminals = []
         self.ws = None
 
@@ -172,6 +174,9 @@ class Gateway:
             while True:
                 message=await term.output.get()
                 values=next(parse(message))
+                if values[0]=='ack' and values[1]=='0' and self.hold_input_acks:
+                    self.held_input_acks.append(message)
+                    continue
                 if values[0]=='blob' and b':CHUNK:' in base64.b64decode(values[2]):
                     self.upload_ack_count+=1
                     if self.upload_ack_delay:

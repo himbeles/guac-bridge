@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.4
+
+- Use conservative defaults for both SSH and LLM bridges: 4 TCP frame credits, 65536-byte frames, and an 8-blob Guacamole input window.
+- Add independent `--input-window` tuning (1-128, default 8). Changing `--window` no longer expands gateway input buffering. Managed bridges forward and validate the setting; client debug logs record the effective transport settings.
+- Update tuning documentation and the benchmark tool. Keep binary framing, TCP credit semantics, the Linux helper-upload protocol, and checksum verification unchanged. Reliable transport and retransmission are a separate future change.
+
 ## 1.1.3
 
 - Relay fatal remote-helper errors through a separate printable terminal envelope, including decoder state and recent lifecycle events, so malformed console input no longer appears only as a closed output pipe.

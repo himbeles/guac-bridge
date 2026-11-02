@@ -16,8 +16,23 @@ The most useful tuning controls are:
 | Option | Default | Effect |
 | --- | --- | --- |
 | `--frame-size` | 65536 bytes | Maximum bytes per TCP frame. Larger frames reduce overhead; partial reads still send immediately. |
-| `--window` | 32 frames | Per-connection data credits; the input ACK window is twice this value. Larger windows help delayed links at the cost of more buffered data. |
+| `--window` | 4 frames | TCP data credits per connection. Increasing this does not change the Guacamole input window. |
+| `--input-window` | 8 blobs | Global per-bridge limit on Guacamole stdin blobs awaiting gateway ACKs; independent of TCP credits. |
 
-Try only `--window 32` versus `64`, or `--frame-size 32768` versus `65536`, keeping everything else fixed. Allowed production frame sizes are 4096, 8192, 16384, 32768 and 65536. Input blobs remain bounded at 6048 bytes by Guacamole’s instruction limit.
+The conservative profile is `--window 4 --frame-size 65536 --input-window 8`. Increase one limit at a time: for example compare `--window 4` and `--window 8` with `--input-window 8` held fixed. Then vary `--input-window` separately if needed. Allowed production frame sizes are 4096, 8192, 16384, 32768 and 65536. Live input blobs remain bounded at 6048 bytes. Eight outstanding full blobs represent up to 48384 wire bytes awaiting gateway ACKs, shared by all channels. These ACKs confirm gateway acceptance, not remote-helper consumption; the limit is mitigation for burst-sensitive paths, not end-to-end loss recovery.
 
 For the real path, run your usual SSH transfer or streamed API request through a foreground bridge. Measure total bytes and elapsed time, plus client process CPU, with the same server workload before and after. A proxy, guacd, PTY, remote SSH service or upstream application can set a throughput ceiling even if client CPU falls. Measure idle and interactive use separately from bulk transfers. Lower CPU time is useful evidence of reduced processing; it does not by itself establish watts or battery savings.
+
+`--input-window` is available from v1.1.4. The older `--window 4 --frame-size 65536` command remains the tested
+workaround for v1.1.3, where the input window was implicitly twice the TCP window.
+
+The benchmark script accepts all three controls and records them in every trial:
+
+```sh
+python scripts/benchmark.py --window 4 --frame-size 65536 --input-window 8 \
+  --mib 32 --repeats 3 --output conservative-results.json
+```
+
+Changing the gateway window also bounds stdin traffic during bootstrap. The Linux
+helper-upload block size and its remote acknowledgements remain independently
+controlled by `--upload-batch-size`; their defaults and encoding are unchanged.

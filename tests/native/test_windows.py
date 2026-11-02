@@ -108,7 +108,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
                     if self.hold_ready:
                         await self.ready_allowed.wait()
                     await ws.send_str(instruction('pipe','2','text/plain','LLM'))
-                    body = json.dumps({'package_version':tomllib.loads((ROOT/'pyproject.toml').read_text())['project']['version'],'version':5,'protocol':'tcp','window':32,'frame_size':65536}).encode()
+                    body = json.dumps({'package_version':tomllib.loads((ROOT/'pyproject.toml').read_text())['project']['version'],'version':5,'protocol':'tcp','window':int(re.search(r'--window (\d+)',text)[1]),'frame_size':int(re.search(r'--frame-size (\d+)',text)[1])}).encode()
                     frame = struct.pack('!2sBBII',b'GB',5,1,0,len(body))+body
                     frame = frame.replace(b'\x1d',b'\x1d\x3d').replace(b'\x1b',b'\x1d\x3b')
                     await ws.send_str(instruction('blob','2',base64.b64encode(frame).decode()))

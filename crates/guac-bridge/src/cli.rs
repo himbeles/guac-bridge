@@ -46,7 +46,7 @@ pub(crate) struct Args {
     pub startup_delay: f64,
     #[arg(long, default_value_t = 8)]
     pub max_connections: usize,
-    /// Frames in flight per TCP connection. A larger window helps high-latency links and uses more memory.
+    /// TCP frames in flight per connection; independent of --input-window.
     #[arg(long, default_value_t=WINDOW)]
     pub window: usize,
     /// Maximum bytes per frame. Larger frames reduce overhead; small writes still send immediately.
@@ -98,7 +98,8 @@ pub(crate) struct Args {
     pub managed_child: bool,
     #[arg(skip)]
     pub mode: String,
-    #[arg(skip)]
+    /// Guacamole input blobs awaiting gateway ACKs (1-128); independent of TCP credits.
+    #[arg(long, default_value_t = 8)]
     pub input_window: usize,
     #[arg(skip)]
     pub input_chunk: usize,
@@ -144,7 +145,10 @@ impl Args {
             !(self.ensure_running || self.stop || self.status) || self.port() > 0,
             "Managed bridges require a fixed --port greater than zero"
         );
-        self.input_window = self.window * 2;
+        ensure!(
+            (1..=128).contains(&self.input_window),
+            "--input-window must be between 1 and 128"
+        );
         self.input_chunk = 6048;
         Ok(())
     }
@@ -182,6 +186,10 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         args.validate()?;
         if !args.ensure_running && !args.stop && !args.status {
             crate::diagnostics::init(args.debug_log.as_deref())?;
+            crate::diagnostics::event(&format!(
+                "transport window={} frame_size={} input_window={} input_chunk={}",
+                args.window, args.frame_size, args.input_window, args.input_chunk
+            ));
         }
         if args.managed_child {
             use std::io::BufRead;
@@ -225,4 +233,54 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     };
     crate::diagnostics::shutdown();
     code
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tcp_and_gateway_windows_are_independent() {
+        for (flags, expected) in [
+            (vec![], (4, 8)),
+            (vec!["--window", "32"], (32, 8)),
+            (vec!["--input-window", "64"], (4, 64)),
+            (vec!["--window", "1", "--input-window", "128"], (1, 128)),
+        ] {
+            for mode in ["ssh", "llm"] {
+                let cli = Cli::try_parse_from(
+                    ["guac-bridge", mode, "--url", "http://example.invalid"]
+                        .into_iter()
+                        .chain(flags.iter().copied()),
+                )
+                .unwrap();
+                let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command;
+                args.validate().unwrap();
+                assert_eq!((args.window, args.input_window), expected);
+                assert_eq!(args.frame_size, 65536);
+            }
+        }
+    }
+
+    #[test]
+    fn gateway_window_bounds_reject_zero_and_excessive_queues() {
+        for value in ["0", "129"] {
+            let cli = Cli::try_parse_from([
+                "guac-bridge",
+                "ssh",
+                "--url",
+                "http://example.invalid",
+                "--input-window",
+                value,
+            ])
+            .unwrap();
+            let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command;
+            assert!(
+                args.validate()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("--input-window")
+            );
+        }
+    }
 }

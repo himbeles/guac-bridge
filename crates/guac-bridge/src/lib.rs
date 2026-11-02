@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 pub const VERSION: u8 = 5;
 pub const FRAME: usize = 65536;
-pub const WINDOW: usize = 32;
+pub const WINDOW: usize = 4;
 pub const MAX_FRAME: usize = 65536;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

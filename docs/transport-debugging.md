@@ -57,6 +57,10 @@ queue. A separate thread writes/rotates files. When that queue fills, records ar
 dropped and counted instead of delaying forwarding. Disk errors disable file
 logging. Pending log records are drained only after forwarding stops.
 
+Client debug logs record `window`, `frame_size`, `input_window`, and `input_chunk`
+on startup from v1.1.4 onward. Use those values to verify which
+configuration a foreground or managed bridge actually started with.
+
 Counters show aggregate sent/received frames and payload bytes, and dropped log
 records. Compare their progress across heartbeat summaries to investigate stalls.
 The always-on in-memory history records only lifecycle/control events, not every
@@ -104,3 +108,6 @@ python scripts/benchmark-diagnostics.py \
   --baseline /path/to/v1.1.2/target/release/guac-bridge \
   --modified target/release/guac-bridge --trials 5 --mib 32
 ```
+
+The follow-up [SSH disconnect investigation](ssh-disconnect-root-cause.md) contains
+a reproducible libssh2 write-loss experiment and deployment confirmation steps.

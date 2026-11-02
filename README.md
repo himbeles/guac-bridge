@@ -74,6 +74,18 @@ Keep the bridge running while using the application. Stop it with **Ctrl+C**.
 
 The commands `guac-ssh-client` and `guac-llm-client` also work. Run any client with `--help` for credential storage, certificates, background operation and transport tuning.
 
+## Transport defaults
+
+The conservative configuration uses 4 TCP frame credits per connection, a 65536-byte
+frame limit, and 8 Guacamole input blobs awaiting gateway acknowledgements across
+the bridge. `--window` and `--input-window` are independent: increasing TCP credits
+no longer increases gateway buffering. See [transport tuning](docs/benchmarking.md)
+for examples and the distinction between gateway and remote delivery acknowledgements.
+The independent `--input-window` option is available from v1.1.4.
+
+Stop an existing managed bridge before changing transport settings. Its original
+settings remain in effect until it is restarted.
+
 ## Contribution
 
 The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). The uv package installs the same native executables.
