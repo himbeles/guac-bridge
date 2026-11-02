@@ -1,0 +1,17 @@
+name: Stop superseded release build
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stop-superseded-release.yaml']
+permissions:
+  actions: write
+jobs:
+  stop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel the superseded optional-transport builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST repos/himbeles/guac-bridge/actions/runs/41500515238/cancel
+          gh api --method POST repos/himbeles/guac-bridge/actions/runs/41500514908/cancel
