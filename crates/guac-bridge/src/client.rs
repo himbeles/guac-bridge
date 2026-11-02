@@ -193,7 +193,7 @@ async fn input_sender(
     while let Some(message) = input.recv().await {
         let (bytes, done, chunk, shutdown) = match message {
             Input::Raw(data) => (data, None, 3072, false),
-            Input::Upload(data, done) => (data, Some(done), args.input_chunk, false),
+            Input::Upload(data, done) => (data, Some(done), if args.server_os == "linux" { crate::deploy::UPLOAD_INPUT_CHUNK } else { args.input_chunk }, false),
             Input::Event(frame) => (
                 crate::terminal_wire::input(&frame, windows.load(Ordering::Relaxed))?,
                 None,
@@ -657,14 +657,42 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                 if response==format!("{nonce}:UPLOAD") {
                     *phase.lock().unwrap()="uploading bundled helper";
                     let encoded=crate::deploy::encoded_agent(&deploy_args)?;
-                    let block=args.input_chunk*args.input_window;
                     if !args.benchmark_control {eprintln!("Uploading bundled helper ({} KiB)…",crate::deploy::agent(&deploy_args)?.len().div_ceil(1024));}
-                    for (index,part) in encoded.chunks(block).enumerate() {
-                        let (sent,receipt)=oneshot::channel();
-                        input.send(Input::Upload(part.to_vec(),sent)).await?;
-                        receipt.await.context("Helper upload sender stopped")?;
-                        let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
-                        if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                    if is_windows {
+                        // Windows PowerShell bootstrap uses a different (console-safe) upload protocol.
+                        let block=args.input_chunk*args.input_window;
+                        for (index,part) in encoded.chunks(block).enumerate() {
+                            let (sent,receipt)=oneshot::channel();
+                            input.send(Input::Upload(part.to_vec(),sent)).await?;
+                            receipt.await.context("Helper upload sender stopped")?;
+                            let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
+                            if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                        }
+                    } else {
+                        // A Guacamole input ACK only says that the gateway accepted an input blob.
+                        // Wait for the remote shell to confirm it has decoded each block.
+                        let block=crate::deploy::UPLOAD_CHUNK;
+                        for (index,part) in encoded.chunks(block).enumerate() {
+                            let (sent,receipt)=oneshot::channel();
+                            input.send(Input::Upload(part.to_vec(),sent)).await?;
+                            receipt.await.context("Helper upload sender stopped")?;
+                            *phase.lock().unwrap()="waiting for remote upload block acknowledgement";
+                            let response=tokio::time::timeout(
+                                Duration::from_secs(args.connect_timeout),
+                                boot_rx.recv()
+                            ).await.with_context(||format!(
+                                "Remote shell did not acknowledge helper upload block {} ({} / {} encoded bytes sent)",
+                                index+1, ((index+1)*block).min(encoded.len()), encoded.len()
+                            ))?.context("Helper bootstrap closed during upload")?;
+                            ensure!(
+                                response==format!("{nonce}:CHUNK:{}",index+1),
+                                "Unexpected remote upload acknowledgement for block {}: {response}",
+                                index+1
+                            );
+                            *phase.lock().unwrap()="uploading bundled helper";
+                            let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
+                            if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                        }
                     }
                     let mut stage=phase.lock().unwrap();
                     if *stage=="uploading bundled helper" {*stage="waiting for server to finish helper upload";}
