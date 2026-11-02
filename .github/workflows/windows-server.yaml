@@ -1,0 +1,21 @@
+name: Windows server helper
+on:
+  push:
+    branches: [feat/windows-server]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  console:
+    strategy:
+      matrix:
+        os: [windows-2022, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v7
+        with: {python-version: '3.12'}
+      - run: cargo build --release --no-default-features --example console_probe
+      - run: python tests/windows/probe.py
