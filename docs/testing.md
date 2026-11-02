@@ -4,8 +4,8 @@
 flowchart TD
     Tests["Python test supervisor"] --> Client["Real Rust client process"]
     Client --> Gateway["Simulated Guacamole WebSocket gateway"]
-    Gateway --> PTY["Real Bash terminal"]
-    PTY --> Helper["Uploaded static Rust helper"]
+    Gateway --> PTY["Bash PTY or Windows ConPTY"]
+    PTY --> Helper["Uploaded native helper"]
     Helper --> Target["Local TCP or HTTP test service"]
 ```
 

@@ -31,6 +31,7 @@ jobs:
       - uses: actions/setup-python@v7
         with: {python-version: '3.12'}
       - uses: Swatinem/rust-cache@v2
+        with: {cache-on-failure: true}
       - uses: actions/download-artifact@v8
         with: {name: windows-test-linux-agent, path: linux-agent}
       - run: |

@@ -729,7 +729,9 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         wait.await?;
         Ok::<(), anyhow::Error>(())
     };
-    let _ = tokio::time::timeout(Duration::from_secs(3), shutdown).await;
+    if helper_started.load(Ordering::Relaxed) {
+        let _ = tokio::time::timeout(Duration::from_secs(3), shutdown).await;
+    }
     let _ = tokio::time::timeout(Duration::from_secs(1), out.send(Message::Close(None))).await;
     for task in &tasks {
         task.abort();
