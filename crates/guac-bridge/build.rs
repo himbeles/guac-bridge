@@ -76,6 +76,7 @@ fn build_windows_agent(manifest: &Path, out: &Path) -> PathBuf {
 }
 fn main() {
     println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_AGENT");
+    println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_WINDOWS_AGENT");
     println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT");
     if env::var_os("CARGO_FEATURE_CLIENT").is_none() {

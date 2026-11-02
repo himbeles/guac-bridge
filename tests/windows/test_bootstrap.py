@@ -80,8 +80,16 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
             for i in range(3):
                 if i==2:cache.write_bytes(b'corrupted')
                 c,port=await bridge('ssh',target.sockets[0].getsockname()[1]);self.assertEqual(cache.read_bytes(),helper.read_bytes())
-                r,w=await asyncio.open_connection('127.0.0.1',port);payload=bytes(range(256))*1024
-                w.write(payload);await w.drain();w.write_eof();self.assertEqual(await asyncio.wait_for(r.read(),30),payload);w.close();await w.wait_closed();await finish(c)
+                async def roundtrip(seed):
+                    r,w=await asyncio.open_connection('127.0.0.1',port)
+                    payload=bytes(range(256))*1024+bytes([seed])+b'\x1b]482203;\x07'
+                    try:
+                        w.write(payload);await w.drain();w.write_eof()
+                        self.assertEqual(await asyncio.wait_for(r.read(),30),payload)
+                    finally:
+                        w.close();await w.wait_closed()
+                await asyncio.gather(*(roundtrip(seed) for seed in range(3)))
+                await finish(c)
             self.assertLess(len(gateway.inputs[1]),len(gateway.inputs[0]))
             async def http(r,w):
                 await r.readuntil(b'\r\n\r\n');w.write(b'HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: one\n\n');await w.drain();await asyncio.sleep(.05);w.write(b'data: [DONE]\n\n');await w.drain();w.close()
@@ -90,7 +98,11 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
                 c,endpoint=await bridge('llm',server.sockets[0].getsockname()[1])
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(endpoint+'/v1/chat/completions',json={'stream':True}) as response:self.assertEqual(await response.read(),b'data: one\n\ndata: [DONE]\n\n')
+                    async with session.post(f'http://127.0.0.1:{endpoint}/v1/chat/completions',json={'stream':True}) as response:
+                        self.assertEqual(response.status,200)
+                        self.assertEqual(await asyncio.wait_for(response.content.readuntil(b'\n\n'),10),b'data: one\n\n')
+                        self.assertEqual(await asyncio.wait_for(response.content.readuntil(b'\n\n'),10),b'data: [DONE]\n\n')
+                        self.assertEqual(await response.read(),b'')
                 await finish(c)
             finally:server.close();await server.wait_closed()
         finally:

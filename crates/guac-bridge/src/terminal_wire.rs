@@ -93,6 +93,20 @@ mod tests {
         assert!(decoder.feed(b"!", true).is_err());
     }
     #[test]
+    fn console_output_reconstructs_binary_frames() {
+        let expected = Frame::payload(Kind::Data, 7, (0..65536).map(|n| (n % 256) as u8).collect());
+        let wire = output(&expected, true).unwrap();
+        let mut decoder = Decoder::default();
+        let mut frames = Vec::new();
+        for envelope in wire.split(|b| *b == 7) {
+            if let Some(encoded) = envelope.strip_prefix(b"\x1b]482202;2;GBW1:") {
+                frames.extend(decoder.feed(&STANDARD.decode(encoded).unwrap()).unwrap());
+            }
+        }
+        assert_eq!(frames, vec![expected]);
+        assert!(decoder.complete());
+    }
+    #[test]
     fn short_osc_envelopes_fit_legacy_conpty() {
         let wire = osc_bytes(OSC_PREFIX, &vec![255; 65536]);
         for part in wire.split(|b| *b == 7) {
