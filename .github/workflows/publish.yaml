@@ -2,10 +2,13 @@ name: Native build and publish
 
 on:
   push:
-    branches: [main, feat/native-core, fix/helper-bootstrap]
+    branches: [main, feat/native-core, fix/helper-bootstrap, feat/windows-server]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+
+env:
+  GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT: "1"
 
 permissions:
   contents: read
@@ -34,9 +37,26 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: {name: linux-agent, path: agent/, if-no-files-found: error}
 
+  windows-agent:
+    name: Standalone Windows x86-64 helper
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build helper with static CRT
+        shell: pwsh
+        run: |
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
+          cargo build --locked --release --no-default-features --bin guac-bridge-agent
+          New-Item -ItemType Directory -Force agent
+          Copy-Item target/release/guac-bridge-agent.exe agent/guac-bridge-agent-windows-x86_64.exe
+      - uses: actions/upload-artifact@v7
+        with: {name: windows-agent, path: agent/, if-no-files-found: error}
+
   test-linux:
     name: Native Linux integration
-    needs: agent
+    needs: [agent, windows-agent]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -45,6 +65,8 @@ jobs:
         with: {components: rustfmt, clippy}
       - uses: actions/download-artifact@v8
         with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/download-artifact@v8
+        with: {name: windows-agent, path: crates/guac-bridge/assets}
       - uses: actions/setup-python@v7
         with: {python-version: "3.12"}
       - run: python -m pip install aiohttp
@@ -58,6 +80,7 @@ jobs:
         run: |
           cargo package --locked -p guac-bridge --allow-dirty --no-verify
           tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-linux-x86_64
+          tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-windows-x86_64.exe
       - uses: actions/upload-artifact@v7
         with: {name: benchmark-smoke, path: benchmark-smoke.json}
 
@@ -75,7 +98,7 @@ jobs:
 
   windows:
     name: Windows x86-64 executable, installer and uv package
-    needs: agent
+    needs: [agent, windows-agent]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -85,6 +108,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: actions/download-artifact@v8
         with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/download-artifact@v8
+        with: {name: windows-agent, path: crates/guac-bridge/assets}
       - uses: actions/setup-python@v7
         with: {python-version: "3.12"}
       - run: python -m pip install maturin uv aiohttp
@@ -122,13 +147,15 @@ jobs:
 
   linux-distribution:
     name: Linux x86-64 portable and Python packages
-    needs: agent
+    needs: [agent, windows-agent]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with: {persist-credentials: false}
       - uses: actions/download-artifact@v8
         with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/download-artifact@v8
+        with: {name: windows-agent, path: crates/guac-bridge/assets}
       - uses: PyO3/maturin-action@v1
         with:
           target: x86_64
@@ -149,7 +176,9 @@ jobs:
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           python scripts/package-native.py dist/*.whl
       - name: Check source distribution contains the helper
-        run: tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
+        run: |
+          tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
+          tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-windows-x86_64.exe' 
       - uses: actions/upload-artifact@v7
         with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 

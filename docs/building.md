@@ -45,7 +45,7 @@ cargo test -p guac-bridge
 iscc installer\guac-bridge.iss
 ```
 
-The installer is built with Inno Setup, installs per user without administrator privileges, and offers a PATH checkbox. All three client executables embed the Linux agent. A portable zip is also produced by CI. Native clients have no Python dependency.
+The installer is built with Inno Setup, installs per user without administrator privileges, and offers a PATH checkbox. All three release client executables embed the Linux and Windows agents. A portable zip is also produced by CI. Native clients have no Python dependency.
 
 ## Python distribution
 
@@ -59,4 +59,6 @@ python -m maturin sdist --out dist
 
 Maturin `bin` bindings package the native executables, with a small optional `guac_bridge.run(arguments)` subprocess launcher and `python -m guac_bridge`. There is no PyO3 extension, Python ABI dependency or Python data path. Binary distributions need no Rust compiler on the client. Building from source requires Rust and the bundled agent asset, which is included in source distributions and Cargo packages prepared by release CI.
 
-The workflow builds a static Linux helper, Windows executables and installer, Linux clients, and platform-specific Python distributions. A `v` tag, or a main-branch commit beginning with `Release v`, whose version matches both manifests publishes through PyPI Trusted Publishing and creates a GitHub release after checks pass. Branch builds create reviewable artifacts without publishing.
+The workflow builds static Linux and Windows helpers, Windows executables and installer, Linux clients, and platform-specific Python distributions. A `v` tag, or a main-branch commit beginning with `Release v`, whose version matches both manifests publishes through PyPI Trusted Publishing and creates a GitHub release after checks pass. Branch builds create reviewable artifacts without publishing.
+
+Windows server support bundles a second helper, `assets/guac-bridge-agent-windows-x86_64.exe`. Build it on Windows with `cargo build --release --no-default-features --bin guac-bridge-agent` and static CRT (`RUSTFLAGS=-C target-feature=+crt-static`). Pass its path to `python scripts/build-native.py --windows-agent PATH`. CI builds and bundles both helpers into every release client and source package. A Linux development build without the Windows asset supports Linux servers only; selecting a Windows server reports the missing asset.

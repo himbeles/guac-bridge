@@ -27,9 +27,12 @@ class Frames:
         async def wait():
             while True:
                 self.poll()
-                if self.events:return self.events.pop(0)
+                if self.events:
+                    event=self.events.pop(0)
+                    if event[0]!=10:return event
                 await asyncio.sleep(.005)
-        return await asyncio.wait_for(wait(),15)
+        try:return await asyncio.wait_for(wait(),15)
+        except TimeoutError:raise AssertionError(repr(bytes(self.t.data)[-2000:]))
 class AgentTests(unittest.IsolatedAsyncioTestCase):
     async def test_windows_console_binary_echo_and_half_close(self):
         async def echo(reader,writer):

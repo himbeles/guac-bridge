@@ -89,6 +89,18 @@ async fn connection(
     Ok(())
 }
 async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
+    #[cfg(windows)]
+    let mut stdin: Box<dyn tokio::io::AsyncRead + Unpin + Send> = if windows {
+        Box::new(tokio::fs::File::from_std(
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open("CONIN$")?,
+        ))
+    } else {
+        Box::new(tokio::io::stdin())
+    };
+    #[cfg(not(windows))]
     let mut stdin = tokio::io::stdin();
     let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
     let mut chunk = [0; 16384];

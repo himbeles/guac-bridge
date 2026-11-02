@@ -1,5 +1,6 @@
 name: Windows server helper
 on:
+  pull_request:
   push:
     branches: [feat/windows-server]
   workflow_dispatch:
@@ -22,6 +23,7 @@ jobs:
       matrix:
         os: [windows-2022, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with: {persist-credentials: false}
@@ -34,10 +36,15 @@ jobs:
       - run: |
           New-Item -ItemType Directory -Force crates/guac-bridge/assets
           Copy-Item linux-agent/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
           cargo build --locked --release --no-default-features --bin guac-bridge-agent --examples
           Copy-Item target/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe
+          Remove-Item Env:RUSTFLAGS
           cargo build --locked --release --bins --examples
       - run: python -m pip install aiohttp
       - run: python tests/windows/probe.py
       - run: python -m unittest discover -s tests/windows -p test_agent.py -v
       - run: python -m unittest discover -s tests/windows -p test_bootstrap.py -v
+      - name: Bootstrap from cmd default shell
+        env: {GUAC_TEST_SHELL: cmd.exe}
+        run: python -m unittest discover -s tests/windows -p test_bootstrap.py -v

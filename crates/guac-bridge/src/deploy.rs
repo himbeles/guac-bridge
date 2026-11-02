@@ -113,6 +113,41 @@ fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     #[test]
+    fn windows_bootstrap_is_encoded_and_bounded() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct TestArgs {
+            #[command(flatten)]
+            args: Args,
+        }
+        let args = TestArgs::parse_from([
+            "test",
+            "--url",
+            "https://example.invalid/#/client/test",
+            "--server-os",
+            "windows",
+        ]);
+        // Command length depends on the helper hash, never its file size.
+        let script=include_str!("windows_bootstrap.ps1")
+            .replace("@NONCE@", &"a".repeat(32)).replace("@HASH@", &"b".repeat(64))
+            .replace("@COUNT@", "99999999").replace("@MANUAL@", "$null")
+            .replace("@OPTIONS@", "--target-host '127.0.0.1' --target-port 22 --connect-timeout 30 --max-connections 8 --window 32 --frame-size 65536");
+        assert!(
+            STANDARD
+                .encode(
+                    script
+                        .encode_utf16()
+                        .flat_map(u16::to_le_bytes)
+                        .collect::<Vec<_>>()
+                )
+                .len()
+                + 80
+                < 8000
+        );
+        assert_eq!(args.args.server_os, "windows");
+        assert_eq!(powershell_quote("a'b"), "'a''b'");
+    }
+    #[test]
     fn bundled_agent_is_linux_x64() {
         assert_eq!(&AGENT[..4], b"\x7fELF");
         assert_eq!(&AGENT[18..20], &[62, 0]);

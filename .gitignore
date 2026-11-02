@@ -8,3 +8,5 @@ dist/
 
 /target/
 /crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
+
+/crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe

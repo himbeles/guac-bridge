@@ -9,6 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--agent-only', action='store_true')
+p.add_argument('--windows-agent', type=Path, help='Use a prepared Windows x86-64 helper')
 p.add_argument('--wheel', action='store_true')
 p.add_argument('--agent', type=Path, help='Use an existing Linux x86-64 musl agent, e.g. on Windows')
 a = p.parse_args()
@@ -21,6 +22,11 @@ else:
 dest = ROOT / 'crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64'
 dest.parent.mkdir(exist_ok=True)
 shutil.copyfile(agent, dest)
+if a.windows_agent:
+    shutil.copyfile(a.windows_agent.resolve(), dest.with_name('guac-bridge-agent-windows-x86_64.exe'))
+elif os.name == 'nt' and not a.agent_only:
+    subprocess.run(['cargo', 'build', '--locked', '--release', '--no-default-features', '--bin', 'guac-bridge-agent'], cwd=ROOT, check=True, env={**os.environ, 'RUSTFLAGS': '-C target-feature=+crt-static'})
+    shutil.copyfile(ROOT/'target/release/guac-bridge-agent.exe', dest.with_name('guac-bridge-agent-windows-x86_64.exe'))
 if not a.agent_only:
     command = [sys.executable, '-m', 'maturin', 'build', '--release'] if a.wheel else ['cargo', 'build', '--release', '-p', 'guac-bridge', '--bins']
     subprocess.run(command, cwd=ROOT, check=True)
