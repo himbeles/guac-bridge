@@ -644,6 +644,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
             deploy_args.server_os=if is_windows {"windows"}else{"linux"}.into();
             if !args.benchmark_control {eprintln!("Remote helper platform: {} x86-64",if is_windows {"Windows"}else{"Linux"});}
             {
+                if is_windows {*phase.lock().unwrap()="configuring Windows SSH console; check PowerShell availability and application policy";}
                 input.send(Input::Raw(crate::deploy::prepare(&deploy_args,&nonce)?)).await?;
                 let prepared=tokio::time::timeout(Duration::from_secs(args.connect_timeout),boot_rx.recv()).await?.context("Terminal preparation closed")?;
                 ensure!(prepared==format!("{nonce}:PREPARED"),"Unexpected terminal preparation response");

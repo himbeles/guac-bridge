@@ -31,7 +31,8 @@ pub fn input(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
     let bytes = encode(frame)?;
     Ok(if windows {
         let mut out = STANDARD.encode(bytes).into_bytes();
-        out.push(b'\n');
+        // ConPTY translates Enter from CR; LF alone may not produce an input event.
+        out.push(b'\r');
         out
     } else {
         bytes
