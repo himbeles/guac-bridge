@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.0
+
+- Add Windows server helper
+
 ## 1.0.1
 
 - Report helper upload progress and surface remote bootstrap errors immediately.
