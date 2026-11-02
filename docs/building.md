@@ -36,7 +36,8 @@ For a reproducible build, check out the desired tag or commit instead of a movin
 ### 2. Build and stage the static Linux helper
 
 ```powershell
-cargo build --locked --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+$env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = 'rust-lld'
+cargo build --locked --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl
 Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64 -Force
 ```
 
