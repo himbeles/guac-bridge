@@ -6,16 +6,35 @@ pub(crate) const AGENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/agent"
 pub(crate) fn digest() -> String {
     format!("{:x}", Sha256::digest(AGENT))
 }
-pub(crate) fn encoded_agent() -> Vec<u8> {
-    STANDARD.encode(AGENT).into_bytes()
+pub(crate) const WINDOWS_AGENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/agent-windows"));
+pub(crate) fn agent(args: &Args) -> Result<&'static [u8]> {
+    if args.server_os == "windows" {
+        ensure!(
+            !WINDOWS_AGENT.is_empty(),
+            "This source build has no bundled Windows helper. Use a release build or set GUAC_BRIDGE_WINDOWS_AGENT when compiling."
+        );
+        Ok(WINDOWS_AGENT)
+    } else {
+        Ok(AGENT)
+    }
 }
+pub(crate) fn encoded_agent(args: &Args) -> Result<Vec<u8>> {
+    Ok(STANDARD.encode(agent(args)?).into_bytes())
+}
+
 /// Wait for raw/no-echo mode before sending a long command or upload.
 /// Replace the interactive shell so readline cannot re-enable echo for the script.
-pub(crate) fn prepare(nonce: &str) -> Vec<u8> {
-    format!(r"stty raw -echo || exit; printf '\033]482202;2;BOOT\007{nonce}:PREPARED\n\033]482203;\007'; exec /bin/sh -s
-").into_bytes()
+pub(crate) fn prepare(args: &Args, nonce: &str) -> Result<Vec<u8>> {
+    if args.server_os == "windows" {
+        return windows_command(args, nonce);
+    }
+    Ok(format!(r"stty raw -echo || exit; printf '\033]482202;2;BOOT\007{nonce}:PREPARED\n\033]482203;\007'; exec /bin/sh -s
+").into_bytes())
 }
 pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
+    if args.server_os == "windows" {
+        return Ok(Vec::new());
+    }
     let options = format!(
         "--stdio --target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
         shell_quote(&args.target_host),
@@ -48,9 +67,83 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     );
     Ok(command.into_bytes())
 }
+
+fn powershell_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "''"))
+}
+fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
+    let bytes = agent(args)?;
+    let hash = format!("{:x}", Sha256::digest(bytes));
+    let options = format!(
+        "--target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
+        powershell_quote(&args.target_host),
+        args.target_port(),
+        args.connect_timeout,
+        args.max_connections,
+        args.window,
+        args.frame_size
+    );
+    let script = include_str!("windows_bootstrap.ps1")
+        .replace("@NONCE@", nonce)
+        .replace("@HASH@", &hash)
+        .replace("@COUNT@", &(bytes.len().div_ceil(3) * 4).to_string())
+        .replace(
+            "@MANUAL@",
+            &args
+                .server_command
+                .as_deref()
+                .map(powershell_quote)
+                .unwrap_or_else(|| "$null".into()),
+        )
+        .replace("@OPTIONS@", &options);
+    powershell_command(&script)
+}
+
+fn powershell_command(script: &str) -> Result<Vec<u8>> {
+    let script: String = script.lines().map(str::trim).collect::<Vec<_>>().join("\n");
+    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let command = format!(
+        "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand {}\r",
+        STANDARD.encode(utf16)
+    );
+    ensure!(
+        command.len() < 8000,
+        "Windows bootstrap exceeds the command line limit"
+    );
+    Ok(command.into_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn windows_bootstrap_is_encoded_and_bounded() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct TestArgs {
+            #[command(flatten)]
+            args: Args,
+        }
+        let args = TestArgs::parse_from([
+            "test",
+            "--url",
+            "https://example.invalid/#/client/test",
+            "--server-os",
+            "windows",
+        ]);
+        // Command length depends on the helper hash, never its file size.
+        let script=include_str!("windows_bootstrap.ps1")
+            .replace("@NONCE@", &"a".repeat(32)).replace("@HASH@", &"b".repeat(64))
+            .replace("@COUNT@", "99999999").replace("@MANUAL@", "$null")
+            .replace("@OPTIONS@", "--target-host '127.0.0.1' --target-port 22 --connect-timeout 30 --max-connections 8 --window 32 --frame-size 65536");
+        let lf = script.replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+        let command = powershell_command(&lf).unwrap();
+        assert!(command.len() < 8000);
+        assert_eq!(command, powershell_command(&crlf).unwrap());
+        assert_eq!(args.args.server_os, "windows");
+        assert_eq!(powershell_quote("a'b"), "'a''b'");
+    }
     #[test]
     fn bundled_agent_is_linux_x64() {
         assert_eq!(&AGENT[..4], b"\x7fELF");

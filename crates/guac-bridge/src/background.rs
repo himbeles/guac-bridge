@@ -48,6 +48,7 @@ fn identity(args: &Args) -> String {
         args.target_host,
         args.target_port(),
         args.server_command,
+        args.server_os,
         args.window,
         args.frame_size,
         args.ca_file,
@@ -188,6 +189,8 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         }
     }
     command.args([
+        "--server-os",
+        args.server_os.as_str(),
         "--port",
         &args.port().to_string(),
         "--target-port",

@@ -38,3 +38,9 @@ Foreground bridges stop with Ctrl+C. `--ensure-running` launches a managed backg
 A connection failure ends the client and its helper session. Cached executables remain for later connections. New client releases carry their own helper; the server does not need a runtime installation, package index, root privileges or internet access.
 
 Bootstrap first acknowledges a short raw/no-echo terminal preparation step, then runs the longer script in a noninteractive shell. The CLI reports upload progress, checksum verification and helper startup. Bootstrap failures, including errors after the upload has begun, are reported immediately. Each wait for input acknowledgements or server readiness is bounded by `--connect-timeout`. The hook relays progress through the calling terminal even if OpenSSH redirects its standard streams. Execution failures include the helper path, exit status and system error. This does not disable shell history or audit logging or clear existing terminal scrollback.
+
+## Windows servers
+
+Add `--server-os windows` when the Guacamole connection opens a Windows SSH terminal. PowerShell 5.1+ uploads the bundled x86-64 executable to `%LOCALAPPDATA%\guac-bridge\helpers`, verifies its SHA-256 hash, and runs it for that session. Later connections reuse the verified file. No service or scheduled task is installed. The same helper forwards SSH or an OpenAI-compatible endpoint; the target service must already be running.
+
+Windows console processing changes arbitrary terminal bytes, so this carrier uses Base64 input and short OSC pipe envelopes for output. The shared framing and flow control remain the same, with more carrier overhead than Linux. RDP desktops are outside this transport. Application control or cache execution restrictions produce an error and must be resolved through the server’s normal administration process.

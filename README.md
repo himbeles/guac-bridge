@@ -15,7 +15,7 @@ uv tool install guac-bridge
 uv tool update-shell
 ```
 
-No installation is needed on the server. The client uploads its bundled Linux x86-64 helper through the Guacamole terminal and reuses it on later connections. The server needs a normal shell and core utilities, with an executable user cache directory; no runtime installation, root access or internet connection is required there.
+No installation is needed on the server. The client uploads the matching bundled x86-64 helper through the Guacamole SSH terminal and reuses it on later connections. Linux servers need a shell and core utilities; Windows servers need PowerShell 5.1+ and a Windows SSH console. No runtime installation, administrator access or internet connection is required there. The user’s helper cache must allow execution.
 
 Open the desired Guacamole terminal in your browser and copy its full URL. Use it as `CONNECTION_URL` below.
 
@@ -26,6 +26,8 @@ Open the desired Guacamole terminal in your browser and copy its full URL. Use i
 ```shell
 guac-bridge ssh --url CONNECTION_URL
 ```
+
+For a Windows server, add `--server-os windows` to either bridge command or the SSH Match hook. The default is Linux. RDP connections are not supported.
 
 Enter your Guacamole username and password. In another terminal:
 
