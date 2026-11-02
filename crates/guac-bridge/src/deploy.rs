@@ -2,6 +2,10 @@ use crate::{cli::Args, shell_quote};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
+// Bound terminal input between remote shell acknowledgements. Base64 boundaries must be multiples of four.
+pub(crate) const UPLOAD_CHUNK: usize = 16 * 1024;
+// Keep each Guacamole input blob below typical PTY input-buffer capacity.
+pub(crate) const UPLOAD_INPUT_CHUNK: usize = 2048;
 pub(crate) const AGENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/agent"));
 pub(crate) fn digest() -> String {
     format!("{:x}", Sha256::digest(AGENT))
@@ -54,10 +58,11 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     } else {
         let hash = digest();
         let n = AGENT.len().div_ceil(3) * 4;
+        let chunk = UPLOAD_CHUNK;
         // One shell command. All incoming payload bytes are consumed by head before exec.
         // A failure exits the login shell, so later upload bytes cannot become shell commands.
         format!(
-            r#"umask 077; stty raw -echo || exit; printf '\033]482202;2;BOOT\007'; fail() {{ printf '{nonce}:ERROR:%s\n' "$1"; printf '\033]482203;\007'; exit 1; }}; [ "$(uname -s):$(uname -m)" = Linux:x86_64 ] || fail 'Requires Linux x86-64'; for cmd in head base64 sha256sum cut mktemp chmod mv mkdir rm; do command -v "$cmd" >/dev/null 2>&1 || fail "Missing $cmd"; done; cache="${{XDG_CACHE_HOME:-$HOME/.cache}}/guac-bridge/helpers"; mkdir -p "$cache" || fail 'Cannot create helper cache'; chmod 700 "$cache" || fail 'Cannot protect cache'; agent="$cache/{hash}"; if [ -f "$agent" ] && [ -x "$agent" ] && [ "$(sha256sum "$agent" | cut -d ' ' -f1)" = {hash} ]; then printf '{nonce}:CACHED\n'; else tmp=$(mktemp "$cache/.upload.XXXXXX") || fail 'Cannot create temporary helper'; trap 'rm -f "$tmp"' EXIT HUP INT TERM; printf '{nonce}:UPLOAD\n'; head -c {n} | base64 -d > "$tmp" || fail 'Upload failed'; printf '{nonce}:VERIFY\n'; [ "$(sha256sum "$tmp" | cut -d ' ' -f1)" = {hash} ] || fail 'Helper checksum mismatch'; chmod 700 "$tmp" && mv -f "$tmp" "$agent" || fail 'Cannot install helper'; trap - EXIT HUP INT TERM; fi; printf '{nonce}:STARTING\n'; reason=$("$agent" --version 2>&1) || fail "Helper cannot execute $agent (exit $?): $reason"; printf '\033]482203;\007'; exec "$agent" {options}; exit
+            r#"umask 077; stty raw -echo || exit; printf '\033]482202;2;BOOT\007'; fail() {{ printf '{nonce}:ERROR:%s\n' "$1"; printf '\033]482203;\007'; exit 1; }}; [ "$(uname -s):$(uname -m)" = Linux:x86_64 ] || fail 'Requires Linux x86-64'; for cmd in head base64 sha256sum cut mktemp chmod mv mkdir rm; do command -v "$cmd" >/dev/null 2>&1 || fail "Missing $cmd"; done; cache="${{XDG_CACHE_HOME:-$HOME/.cache}}/guac-bridge/helpers"; mkdir -p "$cache" || fail 'Cannot create helper cache'; chmod 700 "$cache" || fail 'Cannot protect cache'; agent="$cache/{hash}"; if [ -f "$agent" ] && [ -x "$agent" ] && [ "$(sha256sum "$agent" | cut -d ' ' -f1)" = {hash} ]; then printf '{nonce}:CACHED\n'; else tmp=$(mktemp "$cache/.upload.XXXXXX") || fail 'Cannot create temporary helper'; trap 'rm -f "$tmp"' EXIT HUP INT TERM; printf '{nonce}:UPLOAD\n'; remaining={n}; index=0; while [ "$remaining" -gt 0 ]; do count={chunk}; if [ "$remaining" -lt "$count" ]; then count="$remaining"; fi; head -c "$count" | base64 -d >> "$tmp" || fail 'Upload failed'; remaining=$((remaining-count)); index=$((index+1)); printf '{nonce}:CHUNK:%s\n' "$index"; done; printf '{nonce}:VERIFY\n'; [ "$(sha256sum "$tmp" | cut -d ' ' -f1)" = {hash} ] || fail 'Helper checksum mismatch'; chmod 700 "$tmp" && mv -f "$tmp" "$agent" || fail 'Cannot install helper'; trap - EXIT HUP INT TERM; fi; printf '{nonce}:STARTING\n'; reason=$("$agent" --version 2>&1) || fail "Helper cannot execute $agent (exit $?): $reason"; printf '\033]482203;\007'; exec "$agent" {options}; exit
 "#
         )
     };
@@ -143,6 +148,19 @@ mod tests {
         assert_eq!(command, powershell_command(&crlf).unwrap());
         assert_eq!(args.args.server_os, "windows");
         assert_eq!(powershell_quote("a'b"), "'a''b'");
+    }
+    #[test]
+    fn chunked_upload_can_decode_each_block_independently() {
+        assert_eq!(UPLOAD_CHUNK % 4, 0);
+        for size in [0, 1, 2, 3, 10, UPLOAD_CHUNK, UPLOAD_CHUNK + 1, UPLOAD_CHUNK * 2 + 9] {
+            let bytes: Vec<u8> = (0..size).map(|i| i as u8).collect();
+            let encoded = STANDARD.encode(&bytes);
+            let mut decoded = Vec::new();
+            for part in encoded.as_bytes().chunks(UPLOAD_CHUNK) {
+                decoded.extend(STANDARD.decode(part).unwrap());
+            }
+            assert_eq!(decoded, bytes);
+        }
     }
     #[test]
     fn bundled_agent_is_linux_x64() {
