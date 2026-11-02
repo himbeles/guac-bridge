@@ -689,7 +689,13 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                                 "Unexpected remote upload acknowledgement for block {}: {response}",
                                 index+1
                             );
-                            *phase.lock().unwrap()="uploading bundled helper";
+                            // The shell can report VERIFY/STARTING immediately after the final
+                            // chunk; do not overwrite those newer stages.
+                            let mut stage=phase.lock().unwrap();
+                            if *stage=="waiting for remote upload block acknowledgement" {
+                                *stage="uploading bundled helper";
+                            }
+                            drop(stage);
                             let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
                             if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
                         }
