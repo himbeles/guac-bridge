@@ -133,7 +133,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
         if cache.exists():
             cache.unlink()
 
-        async def bridge(mode, port):
+        async def bridge(mode, port, reliable=False):
             child = await asyncio.create_subprocess_exec(
                 str(ROOT / "target/release/guac-bridge.exe"),
                 mode,
@@ -151,6 +151,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
                 "--target-port",
                 str(port),
                 "--benchmark-control",
+                *(["--reliable-input"] if reliable else []),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -189,7 +190,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
             for i in range(3):
                 if i == 2:
                     cache.write_bytes(b"corrupted")
-                c, port = await bridge("ssh", target.sockets[0].getsockname()[1])
+                c, port = await bridge("ssh", target.sockets[0].getsockname()[1], reliable=(i == 1))
                 self.assertEqual(cache.read_bytes(), helper.read_bytes())
 
                 async def roundtrip(seed):
@@ -223,7 +224,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
 
             server = await asyncio.start_server(http, "127.0.0.1", 0)
             try:
-                c, endpoint = await bridge("llm", server.sockets[0].getsockname()[1])
+                c, endpoint = await bridge("llm", server.sockets[0].getsockname()[1], reliable=True)
                 import aiohttp
 
                 async with aiohttp.ClientSession() as session:

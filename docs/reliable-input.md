@@ -1,6 +1,6 @@
-# Optional reliable input transport (unreleased)
+# Optional reliable input transport (v2.0.0)
 
-Use `--reliable-input` with either `guac-bridge ssh` or `guac-bridge llm`, including
+Available from v2.0.0. Use `--reliable-input` with either `guac-bridge ssh` or `guac-bridge llm`, including
 `--ensure-running` and the executable aliases. Stop an existing managed bridge
 before changing its transport settings. Raw input remains the default.
 

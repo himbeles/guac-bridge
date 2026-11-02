@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.0
 
 - Add opt-in `--reliable-input` for SSH and LLM, including managed bridges: bounded checksummed records, resynchronization, selective acknowledgements, duplicate suppression and retries. Raw mode remains the default.
 - Report record recovery counters and actionable window/timeout suggestions on the client, with rate-limited warnings and bounded delivery errors.

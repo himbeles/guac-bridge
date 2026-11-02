@@ -86,7 +86,7 @@ The independent `--input-window` option is available from v1.1.4.
 Stop an existing managed bridge before changing transport settings. Its original
 settings remain in effect until it is restarted.
 
-The unreleased optional [reliable input transport](docs/reliable-input.md) adds
+Since v2.0.0, the optional [reliable input transport](docs/reliable-input.md) adds
 checksummed records, selective retries and actionable recovery warnings for both
 SSH and LLM bridges. It is enabled with `--reliable-input`.
 

@@ -104,7 +104,7 @@ pub(crate) struct Args {
     /// Experimental checksummed, selectively retried client-to-helper input.
     #[arg(long)]
     pub reliable_input: bool,
-    /// Reliable records in flight (1-64); one record carries up to one TCP frame.
+    /// Reliable records in flight (1-64); independent of gateway input blobs.
     #[arg(long, default_value_t = 64)]
     pub reliable_window: usize,
     #[arg(skip)]

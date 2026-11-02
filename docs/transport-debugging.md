@@ -112,6 +112,6 @@ python scripts/benchmark-diagnostics.py \
 The follow-up [SSH disconnect investigation](ssh-disconnect-root-cause.md) contains
 a reproducible libssh2 write-loss experiment and deployment confirmation steps.
 
-For the unreleased optional checksummed input mode and recovery counters, see
+For the optional checksummed input mode available from v2.0.0 and recovery counters, see
 [reliable input transport](reliable-input.md). Counters describe transport records,
 not IP packet loss.
