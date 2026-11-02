@@ -37,7 +37,7 @@ For a reproducible build, check out the desired tag or commit instead of a movin
 
 ```powershell
 $env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = 'rust-lld'
-cargo build --locked --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl
+cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl
 Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64 -Force
 ```
 
@@ -46,7 +46,7 @@ Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac
 ### 3. Build and stage the Windows helper
 
 ```powershell
-cargo build --locked --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-pc-windows-msvc
+cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-pc-windows-msvc
 Copy-Item target/x86_64-pc-windows-msvc/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe -Force
 ```
 
@@ -56,9 +56,9 @@ The repository's `.cargo/config.toml` enables the static MSVC CRT for this expli
 
 ```powershell
 $env:GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT = '1'
-cargo build --locked --release -p guac-bridge --bins --examples
-cargo test --locked -p guac-bridge
-cargo clippy --locked -p guac-bridge --all-targets -- -D warnings
+cargo build  --release -p guac-bridge --bins --examples
+cargo test  -p guac-bridge
+cargo clippy  -p guac-bridge --all-targets -- -D warnings
 
 & ./target/release/guac-bridge.exe --version
 & ./target/release/guac-ssh-client.exe --help
@@ -70,7 +70,7 @@ The three clients in `target/release` embed both staged helpers. `GUAC_BRIDGE_RE
 For a local Cargo installation of those entry points:
 
 ```powershell
-cargo install --locked --path crates/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client --force
+cargo install  --path crates/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client --force
 ```
 
 This installs into Cargo's binary directory, usually `%USERPROFILE%\.cargo\bin`. The installer below is the alternative for distributing to machines without Rust.
@@ -100,7 +100,7 @@ Run these commands on the Linux x86-64 client build machine, from the same sourc
 ```sh
 rustup target add x86_64-unknown-linux-musl
 mkdir -p crates/guac-bridge/assets
-cargo build --locked --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
 cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
 ```
 
@@ -110,10 +110,10 @@ Then build clients that support **both** remote operating systems:
 
 ```sh
 export GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT=1
-cargo build --locked --release -p guac-bridge --bins
-cargo test --locked -p guac-bridge
-cargo clippy --locked -p guac-bridge --all-targets -- -D warnings
-cargo install --locked --path crates/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client --force
+cargo build  --release -p guac-bridge --bins
+cargo test  -p guac-bridge
+cargo clippy  -p guac-bridge --all-targets -- -D warnings
+cargo install  --path crates/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client --force
 
 mkdir -p dist
 tar -czf dist/guac-bridge-linux-x86_64.tar.gz LICENSE README.md -C target/release guac-bridge guac-ssh-client guac-llm-client
@@ -172,8 +172,8 @@ These use a simulated Guacamole gateway with a real Bash PTY or Windows ConPTY. 
 After staging **both** helper assets, install maturin and build the platform wheel and source archive:
 
 ```sh
-cargo install --locked maturin
-maturin build --release --locked --out dist
+cargo install  maturin
+maturin build --release  --out dist
 maturin sdist --out dist
 ```
 
@@ -184,7 +184,7 @@ This optional step requires a Python interpreter. Maturin's `bin` bindings packa
 Once a version containing these changes is released, users can install its native commands directly with Cargo:
 
 ```sh
-cargo install --locked --git https://github.com/himbeles/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
+cargo install  --git https://github.com/himbeles/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
 ```
 
 Use `--tag <release-tag>` to select an exact release. The automatic helper build behavior above applies to Git source installs; prepared Cargo packages and source distributions can contain the helper assets already.
