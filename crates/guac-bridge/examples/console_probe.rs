@@ -5,7 +5,7 @@ fn main() {
     let mut stdout={
         use std::os::windows::io::AsRawHandle;
         use windows_sys::Win32::System::Console::*;
-        let file=std::fs::OpenOptions::new().write(true).open("CONOUT$").unwrap();
+        let file=std::fs::OpenOptions::new().read(true).write(true).open("CONOUT$").unwrap();
         unsafe {let mut mode=0;assert_ne!(GetConsoleMode(file.as_raw_handle(),&mut mode),0);assert_ne!(SetConsoleMode(file.as_raw_handle(),mode|ENABLE_VIRTUAL_TERMINAL_PROCESSING),0);}
         file
     };
