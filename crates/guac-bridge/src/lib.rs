@@ -83,9 +83,11 @@ pub fn encode(frame: &Frame) -> Result<Vec<u8>> {
 pub struct Decoder {
     buffer: Vec<u8>,
     escaped: bool,
+    received: u64,
 }
 impl Decoder {
     pub fn feed(&mut self, bytes: &[u8]) -> Result<Vec<Frame>> {
+        self.received += bytes.len() as u64;
         for &b in bytes {
             if self.escaped {
                 ensure!(b == 0x3b || b == 0x3d, "Invalid byte escape");
@@ -132,6 +134,14 @@ impl Decoder {
         }
         self.buffer.drain(..pos);
         Ok(result)
+    }
+    pub fn status(&self) -> String {
+        format!(
+            "wire_bytes={} buffered={} escape_pending={}",
+            self.received,
+            self.buffer.len(),
+            self.escaped
+        )
     }
     pub fn complete(&self) -> bool {
         self.buffer.is_empty() && !self.escaped
@@ -331,4 +341,5 @@ mod proxy;
 #[cfg(feature = "client")]
 mod console;
 
+pub mod diagnostics;
 pub mod terminal_wire;

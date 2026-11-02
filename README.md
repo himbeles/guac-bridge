@@ -78,7 +78,7 @@ The commands `guac-ssh-client` and `guac-llm-client` also work. Run any client w
 
 The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). The uv package installs the same native executables.
 
-See [Building](docs/building.md), [Testing](docs/testing.md) and [Benchmarking](docs/benchmarking.md). Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
+See [Building](docs/building.md), [Testing](docs/testing.md), [Transport debugging](docs/transport-debugging.md) and [Benchmarking](docs/benchmarking.md). Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
 
 ## Architecture
 

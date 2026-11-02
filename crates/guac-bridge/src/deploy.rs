@@ -39,7 +39,7 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     if args.server_os == "windows" {
         return Ok(Vec::new());
     }
-    let options = format!(
+    let mut options = format!(
         "--stdio --target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
         shell_quote(&args.target_host),
         args.target_port(),
@@ -48,6 +48,9 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
+    if let Some(path) = &args.server_debug_log {
+        options.push_str(&format!(" --debug-log {}", shell_quote(path)));
+    }
     let command = if let Some(path) = &args.server_command {
         let path = if let Some(tail) = path.strip_prefix("~/") {
             format!("\"$HOME\"/{}", shell_quote(tail))
@@ -79,7 +82,7 @@ fn powershell_quote(text: &str) -> String {
 fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     let bytes = agent(args)?;
     let hash = format!("{:x}", Sha256::digest(bytes));
-    let options = format!(
+    let mut options = format!(
         "--target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
         powershell_quote(&args.target_host),
         args.target_port(),
@@ -88,6 +91,9 @@ fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
+    if let Some(path) = &args.server_debug_log {
+        options.push_str(&format!(" --debug-log {}", powershell_quote(path)));
+    }
     let script = include_str!("windows_bootstrap.ps1")
         .replace("@NONCE@", nonce)
         .replace("@HASH@", &hash)

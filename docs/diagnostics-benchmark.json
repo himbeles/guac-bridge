@@ -1,0 +1,41 @@
+{
+  "baseline_sha256": "e214e03e49aeb21924f98c66d0f3facbebf00156fe83a4b8ce0d4452457e9473",
+  "modified_sha256": "d320bcea9403941ebe1506fa3061565bae0d0cce982af95ceda38766eff6083d",
+  "payload_bytes_each_direction": 33554432,
+  "transport": "local Guacamole simulator + real Linux Bash PTY; exact payload equality checked",
+  "cases": {
+    "baseline": {
+      "seconds": [
+        2.8913312310000947,
+        2.8141400549998252,
+        2.8941451739999593,
+        2.684360586999901,
+        2.66785720200005
+      ],
+      "median_seconds": 2.8141400549998252,
+      "median_mib_per_second_bidirectional": 22.742293826596338
+    },
+    "debug_off": {
+      "seconds": [
+        2.6794618480000736,
+        2.6829282190001322,
+        2.9448426809999546,
+        2.579479153999955,
+        2.698884603999886
+      ],
+      "median_seconds": 2.6829282190001322,
+      "median_mib_per_second_bidirectional": 23.854533098112995
+    },
+    "debug_on": {
+      "seconds": [
+        2.626946273000158,
+        2.653867294000065,
+        2.823338930000091,
+        2.646325984999976,
+        2.8614287989998957
+      ],
+      "median_seconds": 2.653867294000065,
+      "median_mib_per_second_bidirectional": 24.115749926416036
+    }
+  }
+}

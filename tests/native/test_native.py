@@ -97,6 +97,55 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(child.wait(), 5)
         self.assertEqual(child.returncode, 0, (await child.stderr.read()).decode())
 
+    async def test_debug_logs_exclude_payload_and_preserve_transfer(self):
+        target = await self.target(self.echo)
+        local_log = self.home/'client.log'
+        remote_log = self.home/'helper.log'
+        child, port = await self.bridge(target, 'ssh', '--debug-log', local_log,
+                                        '--server-debug-log', remote_log)
+        secret = b'PAYLOAD_MUST_NEVER_APPEAR_IN_LOG'
+        await self.roundtrip(port, secret * 40000)
+        await self.finish(child)
+        for log in (local_log, remote_log):
+            data = log.read_text()
+            self.assertIn('kind=Opened', data)
+            self.assertIn('tx_bytes=', data)
+            self.assertNotIn(secret.decode(), data)
+            self.assertNotIn('kind=Data', data)
+            self.assertNotIn('kind=Credit', data)
+            self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+
+    async def test_remote_debug_log_setup_error_reaches_client(self):
+        child = await self.child('--port', '0', '--server-debug-log',
+                                 self.home/'missing-directory/log.txt')
+        await asyncio.wait_for(child.wait(), 15)
+        self.assertNotEqual(child.returncode, 0)
+        error = (await child.stderr.read()).decode()
+        self.assertIn('Remote helper failed:', error)
+        self.assertIn('Cannot initialize remote debug log', error)
+
+    async def test_remote_decoder_fatal_reaches_client_and_closes_all_channels(self):
+        target = await self.target(self.echo)
+        child, port = await self.bridge(target)
+        sockets = [await asyncio.open_connection('127.0.0.1', port) for _ in range(2)]
+        await asyncio.sleep(.1)
+        # Corrupt the live remote console input after deployment, independently
+        # of Guacamole ACKs. The helper must report the actual decoder error.
+        os.write(self.gateway.terminals[0].fd, b'\x1d\x00')
+        await asyncio.wait_for(child.wait(), 10)
+        self.assertNotEqual(child.returncode, 0)
+        error = (await child.stderr.read()).decode()
+        self.assertIn('Remote helper failed:', error)
+        self.assertIn('Invalid byte escape', error)
+        self.assertIn('wire_bytes=', error)
+        self.assertIn('Recent remote events', error)
+        for reader, writer in sockets:
+            with contextlib.suppress(ConnectionResetError):
+                self.assertEqual(await asyncio.wait_for(reader.read(), 2), b'')
+            writer.close()
+            with contextlib.suppress(ConnectionResetError):
+                await writer.wait_closed()
+
     async def test_first_upload_cache_reuse_and_repair(self):
         target = await self.target(self.echo)
         payload = bytes(range(256))*4096 + b'\x1b]482203;\x07'

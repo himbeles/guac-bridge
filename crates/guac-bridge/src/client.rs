@@ -54,9 +54,13 @@ struct ReceivedFrames<'a> {
 }
 impl ReceivedFrames<'_> {
     fn feed(&mut self, data: &[u8]) -> Result<bool> {
-        let frames = self.decoder.feed(data)?;
+        let frames = self
+            .decoder
+            .feed(data)
+            .with_context(|| format!("Helper output decode failed: {}", self.decoder.status()))?;
         let any = !frames.is_empty();
         for frame in frames {
+            crate::diagnostics::frame("rx", &frame);
             match frame.kind {
                 Kind::Ready => {
                     ensure!(frame.id == 0, "Invalid helper ready frame");
@@ -90,7 +94,8 @@ impl ReceivedFrames<'_> {
                         "TCP frame exceeds limit"
                     );
                     if let Some(channel) = self.channels.lock().unwrap().get(&frame.id) {
-                        channel.queue.try_send(frame)?;
+                        let id = frame.id;
+                        channel.queue.try_send(frame).map_err(|error| anyhow!("Local download queue rejected frame: channel={id} capacity={} error={error}", channel.queue.capacity()))?;
                     }
                 }
             }
@@ -571,11 +576,12 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         closing.clone(),
     );
     tasks.push(spawn_guard(async move {
-        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started};let mut output_stream=None;let mut boot_stream=None;let mut boot_buffer=Vec::new();
+        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
         let mut heartbeat=Instant::now();let mut tick=tokio::time::interval(Duration::from_secs(1));
         loop {
             tokio::select!{
                 _=tick.tick()=>{
+                    ensure!(!pipe_ended.is_some_and(|time|time.elapsed()>Duration::from_secs(2)),"Remote helper output pipe closed; helper exited without a fatal report. Check --server-debug-log");
                     ensure!(!read_started.load(Ordering::Relaxed)||heartbeat.elapsed()<Duration::from_secs(45),"Remote helper heartbeat lost");
                     let timed_out=read_acks.pending.lock().unwrap().front().is_some_and(|time|time.elapsed()>Duration::from_secs(read_args.connect_timeout));
                     ensure!(!timed_out,"Guacamole input acknowledgement timed out while {}",if read_started.load(Ordering::Relaxed){"forwarding data"}else{*read_phase.lock().unwrap()});
@@ -597,7 +603,16 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                                 },
                                 "pipe"=>{
                                     ensure!(values.len()>=4,"Invalid pipe");
-                                    if read_windows.load(Ordering::Relaxed)&&values[3].starts_with(crate::terminal_wire::BOOT_PREFIX){
+                                    if values[3]=="GBERR:END" {
+                                        let report=String::from_utf8_lossy(&remote_error);
+                                        crate::diagnostics::event(&format!("remote fatal: {report}"));
+                                        bail!("Remote helper failed: {}",report.escape_debug());
+                                    }else if values[3].starts_with(crate::terminal_wire::ERROR_PREFIX){
+                                        pipe_ended=Some(Instant::now());
+                                        remote_error.extend(B64.decode(&values[3][crate::terminal_wire::ERROR_PREFIX.len()..])?);
+                                        ensure!(remote_error.len()<=8192,"Remote helper fatal report exceeds limit");
+                                        ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
+                                    }else if read_windows.load(Ordering::Relaxed)&&values[3].starts_with(crate::terminal_wire::BOOT_PREFIX){
                                         bootstrap_bytes(&mut boot_buffer,&B64.decode(&values[3][crate::terminal_wire::BOOT_PREFIX.len()..])?,&read_nonce,&read_args,&read_phase,&boot_tx)?;
                                         ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
                                     }else if read_windows.load(Ordering::Relaxed)&&values[3].starts_with(crate::terminal_wire::OSC_PREFIX){
@@ -621,7 +636,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                                     ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
                                 },
                                 "end" if values.get(1)==output_stream.as_ref()=>{
-                                    ensure!(read_windows.load(Ordering::Relaxed) || read_closing.load(Ordering::Relaxed),"Remote helper output pipe closed");output_stream=None;
+                                    if !read_windows.load(Ordering::Relaxed) && !read_closing.load(Ordering::Relaxed){pipe_ended=Some(Instant::now());}output_stream=None;
                                 },
                                 "error"|"disconnect"=>bail!("Guacamole disconnected or reported a terminal error"),
                                 "img"|"file"|"audio"|"video"|"body" if values.len()>1=>ws_send(&read_out,&["ack",&values[1],"Not needed","256"]).await?,
@@ -768,7 +783,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     let (tx,rx)=mpsc::channel(args.window+4);let credits=Arc::new(Semaphore::new(args.window));
                     channels.lock().unwrap().insert(id,Channel{queue:tx,credits:credits.clone()});
                     let (input,channels,args)=(input.clone(),channels.clone(),args.clone());
-                    connections.spawn(async move {if let Err(error)=channel(id,stream,rx,credits,input,channels,args).await{eprintln!("TCP channel {id}: {error}");}});
+                    connections.spawn(async move {if let Err(error)=channel(id,stream,rx,credits,input,channels,args).await{crate::diagnostics::event(&format!("TCP channel {id}: {error:#}"));eprintln!("TCP channel {id}: {error:#}");}});
                 },
                 _=connections.join_next(),if !connections.is_empty()=>(),
             }

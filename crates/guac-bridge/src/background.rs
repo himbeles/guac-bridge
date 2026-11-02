@@ -49,6 +49,8 @@ fn identity(args: &Args) -> String {
         args.target_port(),
         args.server_command,
         args.server_os,
+        args.debug_log,
+        args.server_debug_log,
         args.upload_batch_size,
         args.window,
         args.frame_size,
@@ -184,6 +186,8 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         ("--data-source", args.data_source.clone()),
         ("--ca-file", args.ca_file.clone()),
         ("--server-command", args.server_command.clone()),
+        ("--debug-log", args.debug_log.clone()),
+        ("--server-debug-log", args.server_debug_log.clone()),
     ] {
         if let Some(v) = value {
             command.args([flag, &v]);

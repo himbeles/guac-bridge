@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.3
+
+- Relay fatal remote-helper errors through a separate printable terminal envelope, including decoder state and recent lifecycle events, so malformed console input no longer appears only as a closed output pipe.
+- Fix a race that could discard a remote decoder error when the input reader ended. Target socket and channel queue errors now retain more context. The cause of recurring SSH disconnects remains unconfirmed; this release improves diagnosis.
+- Add opt-in `--debug-log` and `--server-debug-log`, including managed bridge support. Metadata logs use a bounded nonblocking queue, a separate writer thread, rotation, and no traffic payload capture. Data/Credit frames only update counters when logging is enabled. Healthy binary framing and flow control are unchanged.
+- Document reproduction and log collection, and add corruption-injection and payload-exclusion tests. Local Linux PTY throughput checks showed no measurable regression against v1.1.2; real corporate-gateway performance remains deployment-dependent.
+
 ## 1.1.2
 
 - Increase Linux helper-upload batches from 3 KiB to 24 KiB while retaining 1 KiB Guacamole input blobs, remote acknowledgements and final checksum verification. Live SSH/HTTP framing and flow control are unchanged.

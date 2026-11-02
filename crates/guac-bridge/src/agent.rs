@@ -1,6 +1,7 @@
 //! Independent loopback TCP helper using ESC-safe binary frames.
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
+use guac_bridge::diagnostics;
 use guac_bridge::{FRAME, Frame, Kind, WINDOW};
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 use tokio::{
@@ -18,6 +19,8 @@ use tokio::{
 struct Args {
     #[arg(long)]
     stdio: bool,
+    #[arg(long)]
+    debug_log: Option<String>,
     /// Use the printable Windows console carrier.
     #[arg(long)]
     windows_console: bool,
@@ -51,7 +54,9 @@ async fn connection(
         Duration::from_secs(args.connect_timeout),
         TcpStream::connect((args.target_host.as_str(), args.target_port)),
     )
-    .await??;
+    .await
+    .context("Target TCP connect timed out")?
+    .context("Target TCP connect failed")?;
     stream.set_nodelay(true)?;
     let (mut reader, mut writer) = stream.into_split();
     output.send(Frame::control(Kind::Opened, id)).await?;
@@ -59,7 +64,10 @@ async fn connection(
         let mut buffer = vec![0; args.frame_size];
         loop {
             credits.clone().acquire_owned().await?.forget();
-            let n = reader.read(&mut buffer).await?;
+            let n = reader
+                .read(&mut buffer)
+                .await
+                .context("Target TCP read failed")?;
             if n == 0 {
                 credits.add_permits(1);
                 output.send(Frame::control(Kind::Eof, id)).await?;
@@ -74,7 +82,10 @@ async fn connection(
         while let Some(data) = input.recv().await {
             match data {
                 Some(data) => {
-                    writer.write_all(&data).await?;
+                    writer
+                        .write_all(&data)
+                        .await
+                        .context("Target TCP write failed")?;
                     output.send(Frame::control(Kind::Credit, id)).await?;
                 }
                 None => {
@@ -102,11 +113,19 @@ async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
     loop {
         let n = stdin.read(&mut chunk).await?;
         if n == 0 {
-            ensure!(decoder.complete(), "Truncated binary frame");
+            ensure!(
+                decoder.complete(),
+                "Truncated binary frame: {}",
+                decoder.status()
+            );
             sender.send(Frame::control(Kind::Shutdown, 0)).await?;
             return Ok(());
         }
-        for frame in decoder.feed(&chunk[..n], windows)? {
+        for frame in decoder
+            .feed(&chunk[..n], windows)
+            .with_context(|| format!("Remote console decode failed: {}", decoder.status()))?
+        {
+            diagnostics::frame("rx", &frame);
             let stop = frame.kind == Kind::Shutdown;
             sender.send(frame).await?;
             if stop {
@@ -152,7 +171,10 @@ fn read_console_input(sender: mpsc::Sender<Frame>) -> Result<()> {
             }
             ensure!(character <= 127, "Non-ASCII Windows transport input");
             for _ in 0..key.wRepeatCount {
-                for frame in decoder.feed(&[character as u8], true)? {
+                for frame in decoder.feed(&[character as u8], true).with_context(|| {
+                    format!("Remote console decode failed: {}", decoder.status())
+                })? {
+                    diagnostics::frame("rx", &frame);
                     let stop = frame.kind == Kind::Shutdown;
                     sender.blocking_send(frame)?;
                     if stop {
@@ -224,7 +246,12 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                     stdout.write_all(&guac_bridge::terminal_wire::output(&frame,args.windows_console)?)?;stdout.flush()?;
                 },
                 frame=input_rx.recv()=>{
-                    let Some(frame)=frame else {break;};
+                    let Some(frame)=frame else {
+                        // The reader may drop input_tx before publishing its fatal error.
+                        // Drain its result instead of racing EOF against error_rx.
+                        if let Some(error)=error_rx.recv().await {return Err(error);}
+                        break;
+                    };
                     let id=frame.id;
                     match frame.kind {
                         Kind::Shutdown=>break,
@@ -239,7 +266,8 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                             let (owned_args,owned_credits,owned_output)=(args.clone(),credits.clone(),output_tx.clone());
                             let task=tokio::spawn(async move {
                                 let result=connection(id,owned_args.clone(),rx,owned_credits,owned_output.clone()).await;
-                                let event=match result {Ok(())=>Frame::control(Kind::Closed,id),Err(error)=>Frame::payload(Kind::Error,id,format!("Target {}:{} failed: {}",owned_args.target_host,owned_args.target_port,error).into_bytes())};
+                                if let Err(error)=&result {diagnostics::event(&format!("target channel={id}: {error:#}"));}
+                                let event=match result {Ok(())=>Frame::control(Kind::Closed,id),Err(error)=>Frame::payload(Kind::Error,id,format!("Target {}:{} failed: {error:#}",owned_args.target_host,owned_args.target_port).into_bytes())};
                                 let _=owned_output.send(event).await;
                             });
                             channels.insert(id,Channel{input:tx,credits,task,eof:false});
@@ -250,15 +278,15 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                         },
                         _=>if let Some(channel)=channels.get_mut(&id){match frame.kind {
                             Kind::Data=>{
-                                ensure!(!channel.eof&&frame.data.len()<=args.frame_size,"Invalid TCP frame");
-                                channel.input.try_send(Some(frame.data))?;
+                                ensure!(!channel.eof&&frame.data.len()<=args.frame_size,"Invalid TCP frame: channel={id} eof={} bytes={} limit={}",channel.eof,frame.data.len(),args.frame_size);
+                                channel.input.try_send(Some(frame.data)).map_err(|error| anyhow::anyhow!("Remote upload queue rejected data: channel={id} capacity={} error={error}", channel.input.capacity()))?;
                             },
                             Kind::Credit=>{
-                                ensure!(channel.credits.available_permits()<args.window,"Excess channel credits");
+                                ensure!(channel.credits.available_permits()<args.window,"Excess channel credits: channel={id} available={} window={}",channel.credits.available_permits(),args.window);
                                 channel.credits.add_permits(1);
                             },
                             Kind::Eof=>{
-                                ensure!(!channel.eof,"Duplicate EOF");channel.eof=true;channel.input.try_send(None)?;
+                                ensure!(!channel.eof,"Duplicate EOF: channel={id}");channel.eof=true;channel.input.try_send(None).map_err(|error| anyhow::anyhow!("Remote upload queue rejected EOF: channel={id} error={error}"))?;
                             },
                             _=>bail!("Unexpected channel event"),
                         }}
@@ -278,9 +306,32 @@ async fn serve(args: Arc<Args>) -> Result<()> {
     if !args.windows_console {
         stdout.write_all(b"\x1b]482203;\x07")?;
     }
+    diagnostics::event("helper stopped");
     stdout.flush()?;
     result
 }
+fn report_fatal(error: &anyhow::Error) -> Result<()> {
+    diagnostics::event(&format!("fatal: {error:#}"));
+    let report = format!(
+        "{error:#}\nRecent remote events:\n{}",
+        diagnostics::recent()
+    );
+    let mut end = report.len().min(6000);
+    while !report.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut stdout = std::io::stdout().lock();
+    // Also handles failures before the ordinary output pipe was opened.
+    stdout.write_all(b"\x1b]482203;\x07")?;
+    stdout.write_all(&guac_bridge::terminal_wire::osc_bytes(
+        guac_bridge::terminal_wire::ERROR_PREFIX,
+        &report.as_bytes()[..end],
+    ))?;
+    stdout.write_all(b"\x1b]482202;2;GBERR:END\x07\x1b]482203;\x07")?;
+    stdout.flush()?;
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     ensure!(
@@ -302,11 +353,20 @@ fn main() -> Result<()> {
             && [4096, 8192, 16384, 32768, 65536].contains(&args.frame_size),
         "Invalid transport sizes"
     );
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let result = runtime.block_on(serve(Arc::new(args)));
-    runtime.shutdown_timeout(Duration::from_millis(100));
+    let result = (|| -> Result<()> {
+        diagnostics::init(args.debug_log.as_deref())
+            .context("Cannot initialize remote debug log")?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let result = runtime.block_on(serve(Arc::new(args)));
+        runtime.shutdown_timeout(Duration::from_millis(100));
+        result
+    })();
+    if let Err(error) = &result {
+        let _ = report_fatal(error);
+    }
+    diagnostics::shutdown();
     result
 }
 

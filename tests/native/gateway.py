@@ -79,7 +79,7 @@ class Terminal:
         self.raw += data
         while self.raw:
             if not self.open:
-                match = re.search(rb'\x1b\]482202;2;(BOOT|LLM)\x07', self.raw)
+                match = re.search(rb'\x1b\]482202;2;(BOOT|LLM|GBERR:[^\x07]*)\x07', self.raw)
                 if not match:
                     return
                 self.raw = self.raw[match.end():]

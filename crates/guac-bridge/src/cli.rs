@@ -80,6 +80,12 @@ pub(crate) struct Args {
     /// Use a manually installed helper instead of deploying the bundled agent.
     #[arg(long)]
     pub server_command: Option<String>,
+    /// Local metadata-only transport log (rotates at 2 MiB, plus one backup).
+    #[arg(long)]
+    pub debug_log: Option<String>,
+    /// Remote helper metadata log; use an absolute path in a private directory.
+    #[arg(long)]
+    pub server_debug_log: Option<String>,
     /// Remote server OS. Windows requires an SSH terminal and PowerShell 5.1+.
     #[arg(long, default_value = "linux", value_parser = ["linux", "windows"])]
     pub server_os: String,
@@ -174,6 +180,9 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let hook_output = args.ensure_running || args.stop || args.status;
     let result = (|| -> Result<()> {
         args.validate()?;
+        if !args.ensure_running && !args.stop && !args.status {
+            crate::diagnostics::init(args.debug_log.as_deref())?;
+        }
         if args.managed_child {
             use std::io::BufRead;
             let mut line = String::new();
@@ -201,9 +210,10 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         runtime.shutdown_timeout(Duration::from_millis(100));
         result
     })();
-    match result {
+    let code = match result {
         Ok(()) => 0,
         Err(e) => {
+            crate::diagnostics::event(&format!("fatal: {e:#}"));
             let message = format!("\x1b[31mError: {e:#}\x1b[0m");
             if hook_output {
                 crate::console::line(&message);
@@ -212,5 +222,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             }
             1
         }
-    }
+    };
+    crate::diagnostics::shutdown();
+    code
 }

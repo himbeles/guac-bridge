@@ -4,6 +4,7 @@ use crate::{Decoder, Frame, MAX_FRAME, encode};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 pub const OSC_PREFIX: &str = "GBW1:";
+pub const ERROR_PREFIX: &str = "GBERR:";
 pub const BOOT_PREFIX: &str = "GBWB:";
 pub const OSC_CHUNK: usize = 120;
 pub fn osc_bytes(prefix: &str, bytes: &[u8]) -> Vec<u8> {
@@ -21,6 +22,7 @@ pub fn osc_bytes(prefix: &str, bytes: &[u8]) -> Vec<u8> {
 }
 pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
     let bytes = encode(frame)?;
+    crate::diagnostics::frame("tx", frame);
     Ok(if windows {
         osc_bytes(OSC_PREFIX, &bytes)
     } else {
@@ -29,6 +31,7 @@ pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
 }
 pub fn input(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
     let bytes = encode(frame)?;
+    crate::diagnostics::frame("tx", frame);
     Ok(if windows {
         let mut out = STANDARD.encode(bytes).into_bytes();
         // ConPTY translates Enter from CR; LF alone may not produce an input event.
@@ -70,6 +73,13 @@ impl InputDecoder {
             }
         }
         Ok(frames)
+    }
+    pub fn status(&self) -> String {
+        format!(
+            "{} armor_buffered={}",
+            self.binary.status(),
+            self.line.len()
+        )
     }
     pub fn complete(&self) -> bool {
         self.line.is_empty() && self.binary.complete()
