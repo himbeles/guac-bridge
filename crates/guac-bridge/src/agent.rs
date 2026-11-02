@@ -90,17 +90,12 @@ async fn connection(
 }
 async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
     #[cfg(windows)]
-    let mut stdin: Box<dyn tokio::io::AsyncRead + Unpin + Send> = if windows {
-        Box::new(tokio::fs::File::from_std(
-            std::fs::OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open("CONIN$")?,
-        ))
-    } else {
-        Box::new(tokio::io::stdin())
-    };
-    #[cfg(not(windows))]
+    if windows {
+        // Console handles are character devices, not ordinary files. Read input
+        // records directly so ConPTY keyboard events cannot remain in a cooked
+        // or redirected stream reader. Keep blocking console I/O off Tokio.
+        return tokio::task::spawn_blocking(move || read_console_input(sender)).await?;
+    }
     let mut stdin = tokio::io::stdin();
     let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
     let mut chunk = [0; 16384];
@@ -120,6 +115,55 @@ async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
         }
     }
 }
+#[cfg(windows)]
+fn read_console_input(sender: mpsc::Sender<Frame>) -> Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Console::{INPUT_RECORD, KEY_EVENT, ReadConsoleInputW};
+    let input = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("CONIN$")?;
+    let mut records = [INPUT_RECORD::default(); 256];
+    let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
+    loop {
+        let mut count = 0;
+        let success = unsafe {
+            ReadConsoleInputW(
+                input.as_raw_handle(),
+                records.as_mut_ptr(),
+                records.len() as u32,
+                &mut count,
+            )
+        };
+        if success == 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        for record in &records[..count as usize] {
+            if record.EventType != KEY_EVENT as u16 {
+                continue;
+            }
+            let key = unsafe { record.Event.KeyEvent };
+            if key.bKeyDown == 0 {
+                continue;
+            }
+            let character = unsafe { key.uChar.UnicodeChar };
+            if character == 0 {
+                continue;
+            }
+            ensure!(character <= 127, "Non-ASCII Windows transport input");
+            for _ in 0..key.wRepeatCount {
+                for frame in decoder.feed(&[character as u8], true)? {
+                    let stop = frame.kind == Kind::Shutdown;
+                    sender.blocking_send(frame)?;
+                    if stop {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+}
+
 async fn termination() {
     #[cfg(unix)]
     {
