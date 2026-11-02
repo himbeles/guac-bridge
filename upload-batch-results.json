@@ -1,0 +1,100 @@
+{
+  "simulated_remote_ack_delay_ms": 20.0,
+  "helper_bytes": 1371056,
+  "runs": [
+    {
+      "batch_bytes": 3072,
+      "seconds": 12.858,
+      "remote_acks": 596,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 3072,
+      "seconds": 12.718,
+      "remote_acks": 596,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 3072,
+      "seconds": 12.813,
+      "remote_acks": 596,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 12288,
+      "seconds": 3.318,
+      "remote_acks": 149,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 12288,
+      "seconds": 3.263,
+      "remote_acks": 149,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 12288,
+      "seconds": 3.221,
+      "remote_acks": 149,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 24576,
+      "seconds": 1.682,
+      "remote_acks": 75,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 24576,
+      "seconds": 1.666,
+      "remote_acks": 75,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 24576,
+      "seconds": 1.689,
+      "remote_acks": 75,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 49152,
+      "seconds": 0.896,
+      "remote_acks": 38,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 49152,
+      "seconds": 0.889,
+      "remote_acks": 38,
+      "integrity": true
+    },
+    {
+      "batch_bytes": 49152,
+      "seconds": 0.882,
+      "remote_acks": 38,
+      "integrity": true
+    }
+  ],
+  "faults": [
+    {
+      "batch_bytes": 3072,
+      "drop_detected": true,
+      "seconds": 1.028
+    },
+    {
+      "batch_bytes": 12288,
+      "drop_detected": true,
+      "seconds": 1.025
+    },
+    {
+      "batch_bytes": 24576,
+      "drop_detected": true,
+      "seconds": 1.027
+    },
+    {
+      "batch_bytes": 49152,
+      "drop_detected": true,
+      "seconds": 1.027
+    }
+  ]
+}

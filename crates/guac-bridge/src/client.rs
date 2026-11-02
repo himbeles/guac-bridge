@@ -686,7 +686,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     } else {
                         // A Guacamole input ACK only says that the gateway accepted an input blob.
                         // Wait for the remote shell to confirm it has decoded each block.
-                        let block=crate::deploy::UPLOAD_CHUNK;
+                        let block=args.upload_batch_size as usize;
                         let mut reported=0;
                         for (index,part) in encoded.chunks(block).enumerate() {
                             let (sent,receipt)=oneshot::channel();

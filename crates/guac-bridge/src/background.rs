@@ -49,6 +49,7 @@ fn identity(args: &Args) -> String {
         args.target_port(),
         args.server_command,
         args.server_os,
+        args.upload_batch_size,
         args.window,
         args.frame_size,
         args.ca_file,
@@ -189,6 +190,8 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         }
     }
     command.args([
+        "--upload-batch-size",
+        &args.upload_batch_size.to_string(),
         "--server-os",
         args.server_os.as_str(),
         "--port",

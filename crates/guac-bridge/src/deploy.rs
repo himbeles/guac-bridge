@@ -3,7 +3,7 @@ use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
 // Bound terminal input between remote shell acknowledgements. Base64 boundaries must be multiples of four.
-pub(crate) const UPLOAD_CHUNK: usize = 3072;
+pub(crate) const UPLOAD_CHUNK: usize = 24576;
 // Keep each Guacamole input blob below typical PTY input-buffer capacity.
 pub(crate) const UPLOAD_INPUT_CHUNK: usize = 1024;
 pub(crate) const AGENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/agent"));
@@ -58,7 +58,7 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     } else {
         let hash = digest();
         let n = AGENT.len().div_ceil(3) * 4;
-        let chunk = UPLOAD_CHUNK;
+        let chunk = args.upload_batch_size;
         // One shell command. All incoming payload bytes are consumed by head before exec.
         // A failure exits the login shell, so later upload bytes cannot become shell commands.
         format!(

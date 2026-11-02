@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2
+
+- Increase Linux helper-upload batches from 3 KiB to 24 KiB while retaining 1 KiB Guacamole input blobs, remote acknowledgements and final checksum verification. Live SSH/HTTP framing and flow control are unchanged.
+- Add `--upload-batch-size` for tuning or falling back to 3072 bytes; forward it to managed background bridges. Windows helper uploads are unchanged.
+- Add a reproducible local batch-size benchmark with integrity and dropped-input checks. With a simulated 20 ms remote-acknowledgement delay, median fresh upload time fell from 12.813 to 1.682 seconds. Actual jump-host performance and buffering limits require deployment verification.
+
 ## 1.1.1
 
 - Prevent Linux helper-upload bursts: wait for remote acknowledgement of each small upload block and show remote-confirmed progress. The active TCP transport and Windows upload protocol are unchanged.

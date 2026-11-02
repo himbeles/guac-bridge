@@ -212,3 +212,12 @@ cargo install  --git https://github.com/himbeles/guac-bridge --bin guac-bridge -
 Use `--tag <release-tag>` to select an exact release. The automatic helper build behavior above applies to Git source installs; prepared Cargo packages and source distributions can contain the helper assets already.
 
 None of the manual commands above publishes a release. The repository workflow builds and tests the helpers, clients, installers and Python distributions. A matching `v` tag, or a main-branch commit beginning with `Release v`, publishes through PyPI Trusted Publishing and creates a GitHub release after checks pass. Other branch builds only upload reviewable artifacts.
+
+
+## Linux helper upload batch size
+
+The client waits for a remote-shell acknowledgement every 24 KiB of Base64 upload data (18 KiB of helper bytes). Individual Guacamole input blobs remain at 1 KiB. This only affects helper installation; binary SSH/HTTP framing, forwarding windows and the Windows upload mechanism are unchanged.
+
+Use `--upload-batch-size 3072` for the previous conservative setting, or `--upload-batch-size 49152` to test a larger batch. Values must be multiples of four from 3072 to 49152 bytes. The setting is forwarded to managed background bridges. Already cached helpers skip the upload.
+
+Run `python scripts/benchmark-upload.py` after a native build to reproduce a fresh-upload comparison with a real Bash PTY, simulated remote acknowledgement latency, installed-file integrity checks and deliberately dropped upload input. This simulation does not establish the buffering limits of a particular deployed jump host.

@@ -136,6 +136,8 @@ class Gateway:
     def __init__(self, home):
         self.home = home
         self.drop_upload_after = None
+        self.upload_ack_delay = 0.0
+        self.upload_ack_count = 0
         self.terminals = []
         self.ws = None
 
@@ -168,7 +170,13 @@ class Gateway:
         await term.start()
         async def write():
             while True:
-                await ws.send_str(await term.output.get())
+                message=await term.output.get()
+                values=next(parse(message))
+                if values[0]=='blob' and b':CHUNK:' in base64.b64decode(values[2]):
+                    self.upload_ack_count+=1
+                    if self.upload_ack_delay:
+                        await asyncio.sleep(self.upload_ack_delay)
+                await ws.send_str(message)
         task = asyncio.create_task(write())
         try:
             async for msg in ws:

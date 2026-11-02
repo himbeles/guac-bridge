@@ -83,6 +83,9 @@ pub(crate) struct Args {
     /// Remote server OS. Windows requires an SSH terminal and PowerShell 5.1+.
     #[arg(long, default_value = "linux", value_parser = ["linux", "windows"])]
     pub server_os: String,
+    /// Linux helper-upload bytes between remote acknowledgements; live forwarding is unaffected.
+    #[arg(long,default_value_t=crate::deploy::UPLOAD_CHUNK as u32,value_parser=clap::value_parser!(u32).range(3072..=49152))]
+    pub upload_batch_size: u32,
     #[arg(long, hide = true)]
     pub benchmark_control: bool,
     #[arg(long, hide = true)]
@@ -106,6 +109,10 @@ impl Args {
             .unwrap_or(if self.mode == "ssh" { 22 } else { 8000 })
     }
     fn validate(&mut self) -> Result<()> {
+        ensure!(
+            self.upload_batch_size.is_multiple_of(4),
+            "--upload-batch-size must be a multiple of 4"
+        );
         ensure!(
             (1..=64).contains(&self.window),
             "--window must be between 1 and 64"

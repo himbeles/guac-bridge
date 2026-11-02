@@ -347,13 +347,15 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         await dummy.wait_closed()
         binary = BINARY.with_name('guac-ssh-client')
         async def command(*flags):
-            child = await self.child('--port',port,'--target-port',target,*flags,binary=binary)
+            child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',*flags,binary=binary)
             await asyncio.wait_for(child.wait(),25)
             error = (await child.stderr.read()).decode()
             self.assertEqual(child.returncode,0,error)
             return error
         try:
             self.assertIn('Bridge ready',await command('--ensure-running'))
+            encoded_size=((AGENT.stat().st_size+2)//3)*4
+            self.assertEqual(self.gateway.upload_ack_count,(encoded_size+12287)//12288)
             await self.roundtrip(port,b'managed')
             self.assertIn('already running',await command('--ensure-running'))
             self.assertIn('Bridge running',await command('--status'))
