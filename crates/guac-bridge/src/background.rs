@@ -54,6 +54,8 @@ fn identity(args: &Args) -> String {
         args.upload_batch_size,
         args.window,
         args.input_window,
+        args.reliable_input,
+        args.reliable_window,
         args.frame_size,
         args.ca_file,
         args.insecure
@@ -112,7 +114,9 @@ impl StartupLog {
         file.read_to_end(&mut bytes)?;
         let progressed = !bytes.is_empty();
         for line in self.feed(&bytes) {
-            crate::console::line(&line);
+            if !crate::console::hook_upload(&line) {
+                crate::console::line(&line);
+            }
         }
         Ok(progressed)
     }
@@ -207,6 +211,8 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         &args.target_host,
         "--window",
         &args.window.to_string(),
+        "--reliable-window",
+        &args.reliable_window.to_string(),
         "--input-window",
         &args.input_window.to_string(),
         "--frame-size",
@@ -224,6 +230,7 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         ("--no-keyring", args.no_keyring),
         ("--insecure", args.insecure),
         ("--show-console", args.show_console),
+        ("--reliable-input", args.reliable_input),
     ] {
         if set {
             command.arg(flag);

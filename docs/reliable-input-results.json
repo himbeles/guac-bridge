@@ -1,0 +1,717 @@
+{
+  "description": "Local Linux PTY measurements of unreleased reliable input, after queued-frame coalescing; helper cache preseeded, startup excluded from client trials.",
+  "platform": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "python": "3.12.14"
+  },
+  "validation": {
+    "rust_tests": 23,
+    "native_integration_tests": 22,
+    "format_and_clippy": "passed",
+    "native_windows_runtime": "not tested"
+  },
+  "method": {
+    "latency": "Propagation latency in both directions, not per-message serialization delay",
+    "payload": "Repeated bytes 0..255; simultaneous upload and echo download, SHA256 checked for every bulk stream",
+    "helper_cpu": "Whole helper lifetime, including startup/shutdown; no upload receiver work",
+    "client_cpu": "Process CPU between benchmark start/stop for each trial",
+    "wire_bytes": "Console stdin only; excludes Guacamole JSON/TLS headers and return ACK bytes",
+    "drops": "One live stdin blob >128 bytes dropped after gateway ACK every 200 eligible blobs; enabled after helper readiness"
+  },
+  "runs": {
+    "raw-0": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 16,
+        "repeats": 5,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": false,
+        "rtt_ms": 0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "raw-0.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.24421600000000002,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 0.9572911,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9571775459999117,
+          "mib_per_s_each_direction": 16.71581209449044,
+          "input_wire_bytes": 16914529
+        },
+        {
+          "client_cpu_s": 0.193443,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 0.866256272,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.866128572999969,
+          "mib_per_s_each_direction": 18.473007932969523,
+          "input_wire_bytes": 16914517
+        },
+        {
+          "client_cpu_s": 0.21173399999999998,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 0.914938046,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9148270729997421,
+          "mib_per_s_each_direction": 17.48964418765568,
+          "input_wire_bytes": 16914529
+        },
+        {
+          "client_cpu_s": 0.22247300000000003,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 0.962374204,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9622832540003401,
+          "mib_per_s_each_direction": 16.627120895522044,
+          "input_wire_bytes": 16914481
+        },
+        {
+          "client_cpu_s": 0.264887,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 1.093135954,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 1.0930041199999323,
+          "mib_per_s_each_direction": 14.638554152934931,
+          "input_wire_bytes": 16914505
+        }
+      ],
+      "helper_cpu_s": 1.343457,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "raw-200": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 2,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": false,
+        "rtt_ms": 200.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "raw-200.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.039335,
+          "client_peak_rss_kib": 36428,
+          "wall_s": 10.109981329,
+          "bytes_each_direction": 2097152,
+          "elapsed_s": 10.109857606999867,
+          "mib_per_s_each_direction": 0.1978267229614826,
+          "input_wire_bytes": 2114365
+        },
+        {
+          "client_cpu_s": 0.030888,
+          "client_peak_rss_kib": 36428,
+          "wall_s": 10.117688125,
+          "bytes_each_direction": 2097152,
+          "elapsed_s": 10.117532169999777,
+          "mib_per_s_each_direction": 0.19767666328063122,
+          "input_wire_bytes": 2114377
+        },
+        {
+          "client_cpu_s": 0.03480399999999999,
+          "client_peak_rss_kib": 36428,
+          "wall_s": 10.104390493,
+          "bytes_each_direction": 2097152,
+          "elapsed_s": 10.104323134000424,
+          "mib_per_s_each_direction": 0.19793507922070736,
+          "input_wire_bytes": 2114365
+        }
+      ],
+      "helper_cpu_s": 0.16194599999999998,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "raw-50": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 4,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": false,
+        "rtt_ms": 50.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "raw-50.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.069706,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.104761409,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.104565936000199,
+          "mib_per_s_each_direction": 0.7836121719556615,
+          "input_wire_bytes": 4228669
+        },
+        {
+          "client_cpu_s": 0.067494,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.106467756,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.106336782000199,
+          "mib_per_s_each_direction": 0.7833404201031103,
+          "input_wire_bytes": 4228669
+        },
+        {
+          "client_cpu_s": 0.061222,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.097874718,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.097719979999965,
+          "mib_per_s_each_direction": 0.7846645197643883,
+          "input_wire_bytes": 4228669
+        }
+      ],
+      "helper_cpu_s": 0.267332,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "raw-idle": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 32,
+        "repeats": 2,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": false,
+        "rtt_ms": 0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 5.0,
+        "output": "raw-idle.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.0008459999999999995,
+          "client_peak_rss_kib": 36300,
+          "wall_s": 5.005455309,
+          "bytes_each_direction": 0,
+          "elapsed_s": 5.005190298000343,
+          "mib_per_s_each_direction": 0.0,
+          "input_wire_bytes": 0
+        },
+        {
+          "client_cpu_s": 0.000732,
+          "client_peak_rss_kib": 36300,
+          "wall_s": 5.000577426,
+          "bytes_each_direction": 0,
+          "elapsed_s": 5.00022587300009,
+          "mib_per_s_each_direction": 0.0,
+          "input_wire_bytes": 0
+        }
+      ],
+      "helper_cpu_s": 0.0008510000000000002,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "raw-parallel": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 1,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": false,
+        "rtt_ms": 50.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 4,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "raw-parallel.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.09751499999999999,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.126410727,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.126273795000088,
+          "mib_per_s_each_direction": 0.7802938664535243,
+          "input_wire_bytes": 4228756
+        },
+        {
+          "client_cpu_s": 0.081096,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.154714876,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.15455646700002,
+          "mib_per_s_each_direction": 0.7760124514317371,
+          "input_wire_bytes": 4228840
+        },
+        {
+          "client_cpu_s": 0.08161000000000002,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.136543748,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.136454264999884,
+          "mib_per_s_each_direction": 0.7787473213294717,
+          "input_wire_bytes": 4228828
+        }
+      ],
+      "helper_cpu_s": 0.385386,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "raw-pings": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 32,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": false,
+        "rtt_ms": 50.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 50,
+        "idle_seconds": 0,
+        "output": "raw-pings.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.011042999999999999,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 2.684852556,
+          "bytes_each_direction": 3200,
+          "elapsed_s": 2.6846439539999665,
+          "mib_per_s_each_direction": 0.0011367458273016258,
+          "input_wire_bytes": 4524,
+          "ping_median_ms": 51.46643950001817,
+          "ping_p95_ms": 52.778838999984146
+        },
+        {
+          "client_cpu_s": 0.012448999999999998,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 2.691329402,
+          "bytes_each_direction": 3200,
+          "elapsed_s": 2.691142275000402,
+          "mib_per_s_each_direction": 0.0011340009188104125,
+          "input_wire_bytes": 4524,
+          "ping_median_ms": 51.65788549993522,
+          "ping_p95_ms": 52.72755699979825
+        },
+        {
+          "client_cpu_s": 0.010599,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 2.690422099,
+          "bytes_each_direction": 3200,
+          "elapsed_s": 2.6902689879998434,
+          "mib_per_s_each_direction": 0.0011343690263362534,
+          "input_wire_bytes": 4524,
+          "ping_median_ms": 51.611273499929666,
+          "ping_p95_ms": 52.76565399981337
+        }
+      ],
+      "helper_cpu_s": 0.040706,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "reliable-0": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 16,
+        "repeats": 5,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "reliable-0.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.220008,
+          "client_peak_rss_kib": 36432,
+          "wall_s": 0.95743056,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9572470540001632,
+          "mib_per_s_each_direction": 16.71459831935641,
+          "input_wire_bytes": 16990516
+        },
+        {
+          "client_cpu_s": 0.216922,
+          "client_peak_rss_kib": 36432,
+          "wall_s": 0.933517236,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9333947260001878,
+          "mib_per_s_each_direction": 17.141729596613107,
+          "input_wire_bytes": 16990328
+        },
+        {
+          "client_cpu_s": 0.19754100000000002,
+          "client_peak_rss_kib": 36432,
+          "wall_s": 0.912708746,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9125846540000566,
+          "mib_per_s_each_direction": 17.53262004776053,
+          "input_wire_bytes": 16989779
+        },
+        {
+          "client_cpu_s": 0.1893840000000001,
+          "client_peak_rss_kib": 36432,
+          "wall_s": 0.945613269,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9452777940000487,
+          "mib_per_s_each_direction": 16.926241261094486,
+          "input_wire_bytes": 16989805
+        },
+        {
+          "client_cpu_s": 0.253861,
+          "client_peak_rss_kib": 36432,
+          "wall_s": 0.931575903,
+          "bytes_each_direction": 16777216,
+          "elapsed_s": 0.9314865900000768,
+          "mib_per_s_each_direction": 17.176844166912463,
+          "input_wire_bytes": 16989850
+        }
+      ],
+      "helper_cpu_s": 1.265933,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "reliable-200": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 2,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 200.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "reliable-200.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.034980000000000004,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 9.731058003,
+          "bytes_each_direction": 2097152,
+          "elapsed_s": 9.72628640999983,
+          "mib_per_s_each_direction": 0.20562832675210466,
+          "input_wire_bytes": 2123750
+        },
+        {
+          "client_cpu_s": 0.031331,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 9.710373542,
+          "bytes_each_direction": 2097152,
+          "elapsed_s": 9.710184073000164,
+          "mib_per_s_each_direction": 0.20596931890932302,
+          "input_wire_bytes": 2123796
+        },
+        {
+          "client_cpu_s": 0.029507000000000005,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 9.709385132,
+          "bytes_each_direction": 2097152,
+          "elapsed_s": 9.709242120999988,
+          "mib_per_s_each_direction": 0.2059893012322998,
+          "input_wire_bytes": 2123717
+        }
+      ],
+      "helper_cpu_s": 0.14393599999999998,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "reliable-50": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 4,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 50.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "reliable-50.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.070399,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 4.965042464,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 4.964867300000151,
+          "mib_per_s_each_direction": 0.805661009308321,
+          "input_wire_bytes": 4247339
+        },
+        {
+          "client_cpu_s": 0.07805899999999999,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 4.973600541,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 4.973462015999758,
+          "mib_per_s_each_direction": 0.8042687341598056,
+          "input_wire_bytes": 4247525
+        },
+        {
+          "client_cpu_s": 0.066336,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.087853545,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.0876619220002794,
+          "mib_per_s_each_direction": 0.7862157630213269,
+          "input_wire_bytes": 4247724
+        }
+      ],
+      "helper_cpu_s": 0.30566200000000004,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "reliable-idle": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 32,
+        "repeats": 2,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 5.0,
+        "output": "reliable-idle.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.0007830000000000007,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 5.005403806,
+          "bytes_each_direction": 0,
+          "elapsed_s": 5.005175282999971,
+          "mib_per_s_each_direction": 0.0,
+          "input_wire_bytes": 0
+        },
+        {
+          "client_cpu_s": 0.0011780000000000002,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 5.001023379,
+          "bytes_each_direction": 0,
+          "elapsed_s": 5.0008393470002375,
+          "mib_per_s_each_direction": 0.0,
+          "input_wire_bytes": 0
+        }
+      ],
+      "helper_cpu_s": 0.001398,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "reliable-loss": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 4,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 50.0,
+        "drop_every": 200,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "reliable-loss.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.069887,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.119020042,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.1188545879999765,
+          "mib_per_s_each_direction": 0.7814248151094418,
+          "input_wire_bytes": 4446164
+        },
+        {
+          "client_cpu_s": 0.064727,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.267543881,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.266910531000121,
+          "mib_per_s_each_direction": 0.7594585054097073,
+          "input_wire_bytes": 4512817
+        },
+        {
+          "client_cpu_s": 0.07321899999999998,
+          "client_peak_rss_kib": 36308,
+          "wall_s": 5.264893332,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 5.264657669999906,
+          "mib_per_s_each_direction": 0.7597834941469369,
+          "input_wire_bytes": 4512510
+        }
+      ],
+      "helper_cpu_s": 0.31181099999999995,
+      "injected_drops": 11,
+      "warnings": "Warning: reliable input recovery: retransmitted=1 rejected_records=1 invalid_acks=0 sequence_gaps=1. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2 or --reliable-window 32. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\nWarning: reliable input recovery: retransmitted=4 rejected_records=4 invalid_acks=0 sequence_gaps=4. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2 or --reliable-window 32. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\nWarning: reliable input recovery: retransmitted=8 rejected_records=8 invalid_acks=0 sequence_gaps=8. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2 or --reliable-window 32. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\nWarning: reliable input recovery: retransmitted=11 rejected_records=11 invalid_acks=0 sequence_gaps=11. Retries can also mean delayed/lost ACKs. If repeated, reduce --input-window to 4 or 2; then try --window 2 or --reliable-window 32. For a merely slow link, increase --connect-timeout. Keep client/server debug logs for diagnosis.\n"
+    },
+    "reliable-parallel": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 1,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 50.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 4,
+        "pings": 0,
+        "idle_seconds": 0,
+        "output": "reliable-parallel.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.065579,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 4.957960657,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 4.956274570000005,
+          "mib_per_s_each_direction": 0.8070577897785828,
+          "input_wire_bytes": 4247539
+        },
+        {
+          "client_cpu_s": 0.05603699999999999,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 4.863663515,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 4.863524651000262,
+          "mib_per_s_each_direction": 0.8224487973300055,
+          "input_wire_bytes": 4247363
+        },
+        {
+          "client_cpu_s": 0.06286899999999998,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 4.881277755,
+          "bytes_each_direction": 4194304,
+          "elapsed_s": 4.881134083000234,
+          "mib_per_s_each_direction": 0.8194816884729713,
+          "input_wire_bytes": 4247661
+        }
+      ],
+      "helper_cpu_s": 0.28869700000000004,
+      "injected_drops": 0,
+      "warnings": ""
+    },
+    "reliable-pings": {
+      "client_sha256": "3c24966835b2688d3b9a62a97758adf48cc80d459e683f443260afbd9890d6f6",
+      "settings": {
+        "client": "target/release/guac-bridge",
+        "mib": 32,
+        "repeats": 3,
+        "window": 4,
+        "input_window": 8,
+        "frame_size": 65536,
+        "reliable_input": true,
+        "rtt_ms": 50.0,
+        "drop_every": 0,
+        "warm_cache": true,
+        "connections": 1,
+        "pings": 50,
+        "idle_seconds": 0,
+        "output": "reliable-pings.json"
+      },
+      "trials": [
+        {
+          "client_cpu_s": 0.02288,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 2.699684925,
+          "bytes_each_direction": 3200,
+          "elapsed_s": 2.6995304219999525,
+          "mib_per_s_each_direction": 0.0011304772813929243,
+          "input_wire_bytes": 6773,
+          "ping_median_ms": 51.67424050000591,
+          "ping_p95_ms": 53.151747999891086
+        },
+        {
+          "client_cpu_s": 0.022455,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 2.699338942,
+          "bytes_each_direction": 3200,
+          "elapsed_s": 2.6991851709999537,
+          "mib_per_s_each_direction": 0.001130621879998485,
+          "input_wire_bytes": 6772,
+          "ping_median_ms": 51.705967000089004,
+          "ping_p95_ms": 54.66243000000759
+        },
+        {
+          "client_cpu_s": 0.021516,
+          "client_peak_rss_kib": 36304,
+          "wall_s": 2.700620054,
+          "bytes_each_direction": 3200,
+          "elapsed_s": 2.7004914750000353,
+          "mib_per_s_each_direction": 0.0011300749662614506,
+          "input_wire_bytes": 6775,
+          "ping_median_ms": 51.577314500036664,
+          "ping_p95_ms": 54.41644800021095
+        }
+      ],
+      "helper_cpu_s": 0.045082000000000004,
+      "injected_drops": 0,
+      "warnings": ""
+    }
+  }
+}

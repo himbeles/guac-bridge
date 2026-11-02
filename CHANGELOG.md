@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Add opt-in `--reliable-input` for SSH and LLM, including managed bridges: bounded checksummed records, resynchronization, selective acknowledgements, duplicate suppression and retries. Raw mode remains the default.
+- Report record recovery counters and actionable window/timeout suggestions on the client, with rate-limited warnings and bounded delivery errors.
+- Display one updating helper-upload bar in interactive terminals and SSH hooks, with sparse progress in redirected logs. Keep first-install remote block acknowledgements and final checksums.
+- Add damaged-stream and progress integration tests, codec bounds tests, and reproducible RTT/CPU/loss benchmarks. Document the first-install bootstrap limitation and the scope of input protection.
+
 ## 1.1.4
 
 - Use conservative defaults for both SSH and LLM bridges: 4 TCP frame credits, 65536-byte frames, and an 8-blob Guacamole input window.

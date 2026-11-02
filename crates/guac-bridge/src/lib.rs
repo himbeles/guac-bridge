@@ -21,6 +21,7 @@ pub enum Kind {
     Error = 9,
     Heartbeat = 10,
     Shutdown = 11,
+    InputAck = 12,
 }
 impl TryFrom<u8> for Kind {
     type Error = anyhow::Error;
@@ -37,6 +38,7 @@ impl TryFrom<u8> for Kind {
             9 => Self::Error,
             10 => Self::Heartbeat,
             11 => Self::Shutdown,
+            12 => Self::InputAck,
             _ => bail!("Unknown frame kind"),
         })
     }
@@ -61,13 +63,17 @@ impl Frame {
     }
 }
 
-pub fn encode(frame: &Frame) -> Result<Vec<u8>> {
+pub fn encode_plain(frame: &Frame) -> Result<Vec<u8>> {
     ensure!(frame.data.len() <= MAX_FRAME, "Oversized binary frame");
     let mut raw = Vec::with_capacity(12 + frame.data.len());
     raw.extend_from_slice(&[b'G', b'B', VERSION, frame.kind as u8]);
     raw.extend_from_slice(&frame.id.to_be_bytes());
     raw.extend_from_slice(&(frame.data.len() as u32).to_be_bytes());
     raw.extend_from_slice(&frame.data);
+    Ok(raw)
+}
+pub fn encode(frame: &Frame) -> Result<Vec<u8>> {
+    let raw = encode_plain(frame)?;
     let mut wire = Vec::with_capacity(raw.len() + raw.len() / 64);
     for b in raw {
         match b {
@@ -102,6 +108,14 @@ impl Decoder {
                 }
             }
         }
+        self.parse()
+    }
+    pub fn feed_plain(&mut self, bytes: &[u8]) -> Result<Vec<Frame>> {
+        self.received += bytes.len() as u64;
+        self.buffer.extend_from_slice(bytes);
+        self.parse()
+    }
+    fn parse(&mut self) -> Result<Vec<Frame>> {
         ensure!(
             self.buffer.len() <= MAX_FRAME * 4 + 48,
             "Oversized binary input"
@@ -119,14 +133,21 @@ impl Decoder {
             let n = u32::from_be_bytes(header[8..12].try_into()?) as usize;
             ensure!(n <= MAX_FRAME, "Oversized binary frame");
             ensure!(
-                (id == 0) == matches!(kind, Kind::Ready | Kind::Heartbeat | Kind::Shutdown),
+                (id == 0)
+                    == matches!(
+                        kind,
+                        Kind::Ready | Kind::Heartbeat | Kind::Shutdown | Kind::InputAck
+                    ),
                 "Invalid channel ID"
             );
             if self.buffer.len() - pos < 12 + n {
                 break;
             }
             let data = self.buffer[pos + 12..pos + 12 + n].to_vec();
-            if !matches!(kind, Kind::Data | Kind::Error | Kind::Ready) {
+            if !matches!(
+                kind,
+                Kind::Data | Kind::Error | Kind::Ready | Kind::InputAck
+            ) {
                 ensure!(n == 0, "Unexpected control payload");
             }
             result.push(Frame { kind, id, data });
@@ -342,4 +363,5 @@ mod proxy;
 mod console;
 
 pub mod diagnostics;
+pub mod reliable;
 pub mod terminal_wire;

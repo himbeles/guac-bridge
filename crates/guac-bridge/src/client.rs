@@ -45,12 +45,17 @@ enum Input {
     Event(Frame),
     Shutdown(oneshot::Sender<()>),
 }
+struct ReliableInput {
+    sender: Mutex<crate::reliable::Sender>,
+    changed: Notify,
+}
 struct ReceivedFrames<'a> {
     decoder: Decoder,
     args: &'a Args,
     channels: &'a Channels,
     ready: &'a Notify,
     started: &'a AtomicBool,
+    reliable: &'a ReliableInput,
 }
 impl ReceivedFrames<'_> {
     fn feed(&mut self, data: &[u8]) -> Result<bool> {
@@ -74,10 +79,24 @@ impl ReceivedFrames<'_> {
                             && meta["frame_size"] == self.args.frame_size,
                         "Helper transport settings do not match"
                     );
+                    ensure!(
+                        meta["reliable_input"].as_bool().unwrap_or(false)
+                            == self.args.reliable_input,
+                        "Helper reliable-input mode does not match client"
+                    );
                     self.started.store(true, Ordering::Relaxed);
                     self.ready.notify_one();
                 }
                 Kind::Heartbeat => (),
+                Kind::InputAck => {
+                    ensure!(self.args.reliable_input, "Unexpected reliable input ACK");
+                    self.reliable
+                        .sender
+                        .lock()
+                        .unwrap()
+                        .ack(&frame.data, Instant::now())?;
+                    self.reliable.changed.notify_one();
+                }
                 Kind::Credit => {
                     if let Some(channel) = self.channels.lock().unwrap().get(&frame.id) {
                         ensure!(
@@ -120,6 +139,12 @@ fn bootstrap_bytes(
             continue;
         }
         if let Some(message) = line.strip_prefix(&format!("{nonce}:ERROR:")) {
+            let lower = message.to_ascii_lowercase();
+            if lower.contains("checksum") || lower.contains("decode") || lower.contains("upload") {
+                bail!(
+                    "Server helper bootstrap failed: {message}. Possible upload corruption or stalled input; reduce --input-window to 4 or 2; on Linux also try --upload-batch-size 12288 or 3072"
+                );
+            }
             bail!("Server helper bootstrap failed: {message}");
         }
         if let Some(path) = line.strip_prefix(&format!("{nonce}:LOCATION:")) {
@@ -127,11 +152,13 @@ fn bootstrap_bytes(
                 eprintln!("Server helper cache: {path}");
             }
         } else if line == format!("{nonce}:VERIFY") {
+            crate::console::complete_upload();
             *phase.lock().unwrap() = "verifying helper checksum";
             if !args.benchmark_control {
                 eprintln!("Verifying helper checksum…");
             }
         } else if line == format!("{nonce}:STARTING") {
+            crate::console::finish_progress();
             *phase.lock().unwrap() = "starting server helper";
             if !args.benchmark_control {
                 eprintln!("Starting server helper…");
@@ -187,19 +214,108 @@ async fn drain(acks: &Acks, timeout: Duration) -> Result<()> {
     drop(permit);
     Ok(())
 }
+fn reliable_wire(bytes: &[u8], windows: bool) -> Vec<u8> {
+    if windows {
+        let mut wire = B64.encode(bytes).into_bytes();
+        wire.push(b'\r');
+        wire
+    } else {
+        bytes.to_vec()
+    }
+}
+async fn reliable_retries(
+    state: &ReliableInput,
+    acks: &Acks,
+    out: &mpsc::Sender<Message>,
+    args: &Args,
+    windows: bool,
+) -> Result<()> {
+    let (packets, warning) = {
+        let mut tx = state.sender.lock().unwrap();
+        let packets = tx.due(Instant::now())?;
+        (packets, tx.warning(Instant::now()))
+    };
+    if let Some(warning) = warning {
+        crate::diagnostics::event(&warning);
+        eprintln!("{warning}");
+    }
+    for packet in packets {
+        raw_input(
+            &reliable_wire(&packet, windows),
+            args.input_chunk,
+            acks,
+            out,
+            Duration::from_secs(args.connect_timeout),
+        )
+        .await?;
+    }
+    Ok(())
+}
+async fn reliable_wait(
+    state: &ReliableInput,
+    acks: &Acks,
+    out: &mpsc::Sender<Message>,
+    args: &Args,
+    windows: bool,
+) -> Result<()> {
+    tokio::select! {_=state.changed.notified()=>(),_=tokio::time::sleep(Duration::from_millis(25))=>()}
+    reliable_retries(state, acks, out, args, windows).await
+}
+async fn reliable_send(
+    bytes: &[u8],
+    state: &ReliableInput,
+    acks: &Acks,
+    out: &mpsc::Sender<Message>,
+    args: &Args,
+    windows: bool,
+) -> Result<()> {
+    for part in bytes.chunks(crate::reliable::CHUNK) {
+        loop {
+            let packet = state.sender.lock().unwrap().queue(part, Instant::now())?;
+            if let Some(packet) = packet {
+                raw_input(
+                    &reliable_wire(&packet, windows),
+                    args.input_chunk,
+                    acks,
+                    out,
+                    Duration::from_secs(args.connect_timeout),
+                )
+                .await?;
+                break;
+            }
+            reliable_wait(state, acks, out, args, windows).await?;
+        }
+    }
+    Ok(())
+}
 async fn input_sender(
     mut input: mpsc::Receiver<Input>,
     acks: Arc<Acks>,
     out: mpsc::Sender<Message>,
     args: Arc<Args>,
     windows: Arc<AtomicBool>,
+    reliable: Arc<ReliableInput>,
 ) -> Result<()> {
     let timeout = Duration::from_secs(args.connect_timeout);
-    while let Some(message) = input.recv().await {
-        let (bytes, done, chunk, shutdown) = match message {
-            Input::Raw(data) => (data, None, 3072, false),
-            Input::Upload(data, done) => (
-                data,
+    let mut tick = tokio::time::interval(Duration::from_millis(25));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut pending = None;
+    loop {
+        let message = if let Some(message) = pending.take() {
+            message
+        } else {
+            tokio::select! {
+                message=input.recv()=>{let Some(message)=message else {break;};message},
+                _=tick.tick(),if args.reliable_input && !reliable.sender.lock().unwrap().idle()=>{
+                    reliable_retries(&reliable,&acks,&out,&args,windows.load(Ordering::Relaxed)).await?;continue;
+                }
+            }
+        };
+        let printable = windows.load(Ordering::Relaxed);
+        let (mut bytes, done, chunk, shutdown, event) = match message {
+            Input::Raw(bytes) => (bytes, None, 3072, false, false),
+            Input::Upload(bytes, done) => (
+                bytes,
                 Some(done),
                 if args.server_os == "linux" {
                     crate::deploy::UPLOAD_INPUT_CHUNK
@@ -207,27 +323,71 @@ async fn input_sender(
                     args.input_chunk
                 },
                 false,
-            ),
-            Input::Event(frame) => (
-                crate::terminal_wire::input(&frame, windows.load(Ordering::Relaxed))?,
-                None,
-                args.input_chunk,
                 false,
             ),
-            Input::Shutdown(done) => (
-                crate::terminal_wire::input(
-                    &Frame::control(Kind::Shutdown, 0),
-                    windows.load(Ordering::Relaxed),
-                )?,
-                Some(done),
-                args.input_chunk,
-                true,
-            ),
+            Input::Event(frame) => {
+                let bytes = if args.reliable_input {
+                    crate::diagnostics::frame("tx", &frame);
+                    crate::encode_plain(&frame)?
+                } else {
+                    crate::terminal_wire::input(&frame, printable)?
+                };
+                (bytes, None, args.input_chunk, false, true)
+            }
+            Input::Shutdown(done) => {
+                let frame = Frame::control(Kind::Shutdown, 0);
+                let bytes = if args.reliable_input {
+                    crate::diagnostics::frame("tx", &frame);
+                    crate::encode_plain(&frame)?
+                } else {
+                    crate::terminal_wire::input(&frame, printable)?
+                };
+                (bytes, Some(done), args.input_chunk, true, true)
+            }
         };
-        raw_input(&bytes, chunk, &acks, &out, timeout)
-            .await
-            .context("Guacamole terminal input stopped progressing")?;
+        if args.reliable_input && event {
+            // Coalesce only events already queued. Never wait to fill a record:
+            // interactive messages retain their latency, while bursts of small
+            // Credit/control frames avoid a separate carrier ACK per event.
+            while !shutdown && bytes.len() < crate::reliable::CHUNK {
+                match input.try_recv() {
+                    Ok(Input::Event(frame)) => {
+                        let extra = crate::encode_plain(&frame)?;
+                        if bytes.len() + extra.len() > crate::reliable::CHUNK {
+                            pending = Some(Input::Event(frame));
+                            break;
+                        }
+                        crate::diagnostics::frame("tx", &frame);
+                        bytes.extend_from_slice(&extra);
+                    }
+                    Ok(other) => {
+                        pending = Some(other);
+                        break;
+                    }
+                    Err(_) => break,
+                }
+            }
+            if shutdown {
+                while !reliable.sender.lock().unwrap().idle() {
+                    reliable_wait(&reliable, &acks, &out, &args, printable).await?;
+                }
+            }
+            reliable_send(&bytes, &reliable, &acks, &out, &args, printable).await?;
+        } else {
+            raw_input(&bytes,chunk,&acks,&out,timeout).await.context("Guacamole terminal input stopped progressing; reduce --input-window or increase --connect-timeout for a slow link")?;
+        }
         if let Some(done) = done {
+            if shutdown && args.reliable_input {
+                let warning = reliable
+                    .sender
+                    .lock()
+                    .unwrap()
+                    .final_warning(Instant::now());
+                if let Some(warning) = warning {
+                    crate::diagnostics::event(&warning);
+                    eprintln!("{warning}");
+                }
+            }
             drain(&acks, timeout)
                 .await
                 .context("Guacamole did not acknowledge terminal input")?;
@@ -539,6 +699,14 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         pending: Mutex::new(VecDeque::new()),
         window: args.input_window,
     });
+    let reliable = Arc::new(ReliableInput {
+        sender: Mutex::new(crate::reliable::Sender::new(
+            args.reliable_window,
+            Duration::from_secs(args.connect_timeout),
+        )),
+        changed: Notify::new(),
+    });
+    let read_reliable = reliable.clone();
     let channels: Channels = Arc::new(Mutex::new(HashMap::new()));
     let (failure, mut failed) = watch::channel(None);
     let closing = Arc::new(AtomicBool::new(false));
@@ -576,7 +744,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         closing.clone(),
     );
     tasks.push(spawn_guard(async move {
-        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
+        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started,reliable:&read_reliable};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
         let mut heartbeat=Instant::now();let mut tick=tokio::time::interval(Duration::from_secs(1));
         loop {
             tokio::select!{
@@ -656,6 +824,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
             out.clone(),
             args.clone(),
             windows.clone(),
+            reliable.clone(),
         ),
         failure.clone(),
         closing.clone(),
@@ -688,6 +857,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     *phase.lock().unwrap()="uploading bundled helper";
                     let encoded=crate::deploy::encoded_agent(&deploy_args)?;
                     if !args.benchmark_control {eprintln!("Uploading bundled helper ({} KiB)…",crate::deploy::agent(&deploy_args)?.len().div_ceil(1024));}
+                    let mut progress=crate::console::UploadProgress::new(!args.benchmark_control);
                     if is_windows {
                         // Windows PowerShell bootstrap uses a different (console-safe) upload protocol.
                         let block=args.input_chunk*args.input_window;
@@ -696,13 +866,12 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                             input.send(Input::Upload(part.to_vec(),sent)).await?;
                             receipt.await.context("Helper upload sender stopped")?;
                             let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
-                            if !args.benchmark_control {eprintln!("Helper upload: {percent}%");}
+                            progress.update(percent,false);
                         }
                     } else {
                         // A Guacamole input ACK only says that the gateway accepted an input blob.
                         // Wait for the remote shell to confirm it has decoded each block.
                         let block=args.upload_batch_size as usize;
-                        let mut reported=0;
                         for (index,part) in encoded.chunks(block).enumerate() {
                             let (sent,receipt)=oneshot::channel();
                             input.send(Input::Upload(part.to_vec(),sent)).await?;
@@ -712,7 +881,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                                 Duration::from_secs(args.connect_timeout),
                                 boot_rx.recv()
                             ).await.with_context(||format!(
-                                "Remote shell did not acknowledge helper upload block {} ({} / {} encoded bytes sent)",
+                                "Remote shell did not acknowledge helper upload block {} ({} / {} encoded bytes sent); try --upload-batch-size 12288 (or 3072) and --input-window 4 (or 2)",
                                 index+1, ((index+1)*block).min(encoded.len()), encoded.len()
                             ))?.context("Helper bootstrap closed during upload")?;
                             ensure!(
@@ -728,7 +897,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                             }
                             drop(stage);
                             let percent=((index+1)*block).min(encoded.len())*100/encoded.len();
-                            if !args.benchmark_control && (percent>=reported+5 || percent==100) {eprintln!("Helper upload: {percent}% (confirmed by remote shell)");reported=percent;}
+                            progress.update(percent,true);
                         }
                     }
                     let mut stage=phase.lock().unwrap();

@@ -113,7 +113,7 @@ pub fn event(message: &str) {
 #[inline]
 pub fn frame(direction: &str, frame: &Frame) {
     // Hot path: no allocation, mutex, file I/O, payload scanning, or extra wire bytes.
-    if matches!(frame.kind, Kind::Data | Kind::Credit) {
+    if matches!(frame.kind, Kind::Data | Kind::Credit | Kind::InputAck) {
         if ENABLED.load(Ordering::Relaxed) {
             let (frames, bytes) = if direction == "tx" {
                 (&TX_FRAMES, &TX_BYTES)

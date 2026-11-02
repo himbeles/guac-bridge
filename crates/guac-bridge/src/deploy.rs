@@ -48,6 +48,12 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
+    if args.reliable_input {
+        options.push_str(" --reliable-input");
+    }
+    if args.benchmark_control {
+        options.push_str(" --benchmark-control");
+    }
     if let Some(path) = &args.server_debug_log {
         options.push_str(&format!(" --debug-log {}", shell_quote(path)));
     }
@@ -91,6 +97,12 @@ fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
+    if args.reliable_input {
+        options.push_str(" --reliable-input");
+    }
+    if args.benchmark_control {
+        options.push_str(" --benchmark-control");
+    }
     if let Some(path) = &args.server_debug_log {
         options.push_str(&format!(" --debug-log {}", powershell_quote(path)));
     }

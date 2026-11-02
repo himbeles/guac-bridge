@@ -33,13 +33,30 @@ def parse(text):
         yield values
 
 
+class DelayedQueue(asyncio.Queue):
+    def __init__(self, delay=0):
+        super().__init__()
+        self.delay = delay
+    def _put(self, item):
+        super()._put((asyncio.get_running_loop().time() + self.delay, item))
+    async def get(self):
+        due, item = await super().get()
+        await asyncio.sleep(max(0, due - asyncio.get_running_loop().time()))
+        return item
+
+
 class Terminal:
-    def __init__(self, home, drop_upload_after=None):
+    def __init__(self, home, drop_upload_after=None, latency=0):
         self.home = home
         # Fault injection: acknowledge a blob but drop it before the remote PTY.
         self.drop_upload_after = drop_upload_after
         self.dropped_upload_bytes = 0
-        self.output = asyncio.Queue()
+        self.output = DelayedQueue(latency)
+        self.live_faults = []
+        self.applied_faults = []
+        self.drop_live_data = False
+        self.drop_every = 0
+        self.live_large_count = 0
         self.raw = b''
         self.screen = bytearray()
         self.open = False
@@ -55,7 +72,7 @@ class Terminal:
             dest = tools / name
             if not dest.exists():
                 dest.symlink_to(shutil.which(name))
-        env = dict(os.environ, HOME=str(self.home), XDG_CACHE_HOME=str(self.home/'cache'), PATH=str(tools))
+        env = dict(os.environ, HOME=str(self.home), XDG_CACHE_HOME=str(self.home/'cache'), PATH=str(tools), GUAC_BRIDGE_BENCH_CPU_FILE=str(self.home/"helper-cpu.txt"))
         self.proc = await asyncio.create_subprocess_exec('/bin/bash', '--noprofile', '--norc', '-i', stdin=slave, stdout=slave, stderr=slave, env=env)
         os.close(slave)
         os.set_blocking(self.fd, False)
@@ -115,6 +132,20 @@ class Terminal:
                     self.dropped_upload_bytes = len(payload)
                     self.drop_upload_after = None
                     payload = b''
+                if len(payload) > 128:
+                    if self.drop_every:
+                        self.live_large_count += 1
+                        if self.live_large_count % self.drop_every == 0:
+                            self.live_faults.append('drop')
+                    if self.live_faults or self.drop_live_data:
+                        fault = self.live_faults.pop(0) if self.live_faults else 'drop'
+                        self.applied_faults.append(fault)
+                        if fault == 'drop': payload = b''
+                        elif fault == 'corrupt':
+                            damaged = bytearray(payload)
+                            damaged[len(damaged)//2] ^= 0x40
+                            payload = bytes(damaged)
+                        elif fault == 'duplicate': payload = payload + payload
                 while payload:
                     try:
                         count = os.write(self.fd, payload)
@@ -136,6 +167,7 @@ class Gateway:
     def __init__(self, home):
         self.home = home
         self.drop_upload_after = None
+        self.one_way_latency = 0
         self.upload_ack_delay = 0.0
         self.upload_ack_count = 0
         self.hold_input_acks = False
@@ -167,7 +199,7 @@ class Gateway:
         assert request.query['GUAC_ID'] == '1'
         ws = self.ws = web.WebSocketResponse(protocols=('guacamole',))
         await ws.prepare(request)
-        term = Terminal(self.home, self.drop_upload_after)
+        term = Terminal(self.home, self.drop_upload_after, self.one_way_latency)
         self.terminals.append(term)
         await term.start()
         async def write():
@@ -182,14 +214,20 @@ class Gateway:
                     if self.upload_ack_delay:
                         await asyncio.sleep(self.upload_ack_delay)
                 await ws.send_str(message)
+        incoming = DelayedQueue(self.one_way_latency)
+        async def consume():
+            while True:
+                await term.feed(await incoming.get())
+        consumer = asyncio.create_task(consume())
         task = asyncio.create_task(write())
         try:
             async for msg in ws:
                 if msg.type == web.WSMsgType.TEXT:
-                    await term.feed(msg.data)
+                    await incoming.put(msg.data)
         finally:
             task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+            consumer.cancel()
+            await asyncio.gather(task, consumer, return_exceptions=True)
         return ws
 
     async def close(self):

@@ -45,29 +45,82 @@ pub fn input(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
 pub struct InputDecoder {
     binary: Decoder,
     line: Vec<u8>,
+    reliable: Option<crate::reliable::Receiver>,
+    armor_discard: bool,
 }
 impl InputDecoder {
+    pub fn with_reliability(enabled: bool) -> Self {
+        Self {
+            reliable: enabled.then(crate::reliable::Receiver::default),
+            ..Self::default()
+        }
+    }
+    fn binary_feed(&mut self, bytes: &[u8]) -> Result<Vec<Frame>> {
+        if let Some(receiver) = &mut self.reliable {
+            receiver.feed(bytes, &mut self.binary)
+        } else {
+            self.binary.feed(bytes)
+        }
+    }
+    pub fn take_ack(&mut self) -> Option<Frame> {
+        self.reliable
+            .as_mut()?
+            .take_ack()
+            .map(|ack| Frame::payload(crate::Kind::InputAck, 0, ack.encode()))
+    }
     pub fn feed(&mut self, bytes: &[u8], windows: bool) -> Result<Vec<Frame>> {
         if !windows {
-            return self.binary.feed(bytes);
+            return self.binary_feed(bytes);
         }
         let mut frames = Vec::new();
-        for &b in bytes {
-            if b == b'\r' || b == b'\n' {
-                if !self.line.is_empty() {
-                    let decoded = STANDARD.decode(&self.line)?;
-                    self.line.clear();
-                    frames.extend(self.binary.feed(&decoded)?);
-                    ensure!(self.binary.complete(), "Incomplete armored frame");
+        let limit = if self.reliable.is_some() {
+            (crate::reliable::CHUNK + crate::reliable::CHUNK / 254 + 64) * 8 / 3 + 32
+        } else {
+            (MAX_FRAME + 12) * 8 / 3 + 8
+        };
+        for &byte in bytes {
+            if matches!(byte, b'\r' | b'\n') {
+                if self.armor_discard {
+                    self.armor_discard = false;
+                    if let Some(rx) = &mut self.reliable {
+                        rx.reject_armor();
+                    }
+                    continue;
                 }
-            } else {
+                if self.line.is_empty() {
+                    continue;
+                }
+                let decoded = match STANDARD.decode(&self.line) {
+                    Ok(decoded) => decoded,
+                    Err(error) => {
+                        if let Some(rx) = &mut self.reliable {
+                            rx.reject_armor();
+                            self.line.clear();
+                            continue;
+                        }
+                        return Err(error.into());
+                    }
+                };
+                self.line.clear();
+                frames.extend(self.binary_feed(&decoded)?);
                 ensure!(
-                    b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'=',
-                    "Invalid Windows input encoding"
+                    self.reliable.is_some() || self.binary.complete(),
+                    "Incomplete armored frame"
                 );
-                self.line.push(b);
+            } else {
+                if self.armor_discard {
+                    continue;
+                }
+                let valid = byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'/' | b'=');
+                if self.reliable.is_some() && (!valid || self.line.len() >= limit) {
+                    self.line.clear();
+                    self.armor_discard = true;
+                    continue;
+                }
+                ensure!(valid, "Invalid Windows input encoding");
+                self.line.push(byte);
                 ensure!(
-                    self.line.len() <= (MAX_FRAME + 12) * 8 / 3 + 8,
+                    self.line.len() <= limit,
                     "Windows input frame exceeds limit"
                 );
             }
@@ -76,13 +129,20 @@ impl InputDecoder {
     }
     pub fn status(&self) -> String {
         format!(
-            "{} armor_buffered={}",
+            "{} armor_buffered={} {}",
             self.binary.status(),
-            self.line.len()
+            self.line.len(),
+            self.reliable
+                .as_ref()
+                .map(|r| r.status())
+                .unwrap_or_default()
         )
     }
     pub fn complete(&self) -> bool {
-        self.line.is_empty() && self.binary.complete()
+        self.line.is_empty()
+            && !self.armor_discard
+            && self.binary.complete()
+            && self.reliable.as_ref().is_none_or(|r| r.complete())
     }
 }
 #[cfg(test)]
@@ -116,6 +176,33 @@ mod tests {
         }
         assert_eq!(frames, vec![expected]);
         assert!(decoder.complete());
+    }
+    #[test]
+    fn reliable_windows_recovers_armor_and_bounds_maximum_frames() {
+        for byte in [0, 0x1b, 0x1d, 255] {
+            let expected = Frame::payload(Kind::Data, 1, vec![byte; 65536]);
+            let packet =
+                crate::reliable::record(1, &crate::encode_plain(&expected).unwrap()).unwrap();
+            let mut line = STANDARD.encode(packet).into_bytes();
+            line.push(b'\r');
+            let mut decoder = InputDecoder::with_reliability(true);
+            assert!(decoder.feed(b"@\r", true).unwrap().is_empty());
+            let mut truncated = line.clone();
+            truncated.remove(18);
+            assert!(decoder.feed(&truncated, true).unwrap().is_empty());
+            let mut frames = Vec::new();
+            for part in line.chunks(257) {
+                frames.extend(decoder.feed(part, true).unwrap());
+            }
+            assert_eq!(frames, vec![expected]);
+            assert!(decoder.complete());
+            assert!(
+                crate::reliable::Ack::decode(&decoder.take_ack().unwrap().data)
+                    .unwrap()
+                    .rejected
+                    >= 2
+            );
+        }
     }
     #[test]
     fn short_osc_envelopes_fit_legacy_conpty() {

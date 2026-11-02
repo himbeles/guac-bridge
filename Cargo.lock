@@ -407,6 +407,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc32fast"
+version = "1.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f97d3416d5337d15c4b0d78c8c91df922ca143f57ec20e2d1c188333047ef04"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -737,11 +746,13 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "clap",
+ "crc32fast",
  "directories",
  "fs2",
  "futures-util",
  "keyring",
  "libc",
+ "memchr",
  "percent-encoding",
  "reqwest",
  "rpassword",

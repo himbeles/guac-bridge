@@ -21,6 +21,10 @@ struct Args {
     stdio: bool,
     #[arg(long)]
     debug_log: Option<String>,
+    #[arg(long)]
+    reliable_input: bool,
+    #[arg(long, hide = true)]
+    benchmark_control: bool,
     /// Use the printable Windows console carrier.
     #[arg(long)]
     windows_console: bool,
@@ -99,16 +103,22 @@ async fn connection(
     tokio::try_join!(upload, download)?;
     Ok(())
 }
-async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
+async fn read_input(
+    sender: mpsc::Sender<Frame>,
+    output: mpsc::Sender<Frame>,
+    windows: bool,
+    reliable: bool,
+) -> Result<()> {
     #[cfg(windows)]
     if windows {
         // Console handles are character devices, not ordinary files. Read input
         // records directly so ConPTY keyboard events cannot remain in a cooked
         // or redirected stream reader. Keep blocking console I/O off Tokio.
-        return tokio::task::spawn_blocking(move || read_console_input(sender)).await?;
+        return tokio::task::spawn_blocking(move || read_console_input(sender, output, reliable))
+            .await?;
     }
     let mut stdin = tokio::io::stdin();
-    let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
+    let mut decoder = guac_bridge::terminal_wire::InputDecoder::with_reliability(reliable);
     let mut chunk = [0; 16384];
     loop {
         let n = stdin.read(&mut chunk).await?;
@@ -121,10 +131,13 @@ async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
             sender.send(Frame::control(Kind::Shutdown, 0)).await?;
             return Ok(());
         }
-        for frame in decoder
+        let frames = decoder
             .feed(&chunk[..n], windows)
-            .with_context(|| format!("Remote console decode failed: {}", decoder.status()))?
-        {
+            .with_context(|| format!("Remote console decode failed: {}", decoder.status()))?;
+        if let Some(ack) = decoder.take_ack() {
+            output.send(ack).await?;
+        }
+        for frame in frames {
             diagnostics::frame("rx", &frame);
             let stop = frame.kind == Kind::Shutdown;
             sender.send(frame).await?;
@@ -135,7 +148,11 @@ async fn read_input(sender: mpsc::Sender<Frame>, windows: bool) -> Result<()> {
     }
 }
 #[cfg(windows)]
-fn read_console_input(sender: mpsc::Sender<Frame>) -> Result<()> {
+fn read_console_input(
+    sender: mpsc::Sender<Frame>,
+    output: mpsc::Sender<Frame>,
+    reliable: bool,
+) -> Result<()> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::System::Console::{INPUT_RECORD, KEY_EVENT, ReadConsoleInputW};
     let input = std::fs::OpenOptions::new()
@@ -143,7 +160,7 @@ fn read_console_input(sender: mpsc::Sender<Frame>) -> Result<()> {
         .write(true)
         .open("CONIN$")?;
     let mut records = [INPUT_RECORD::default(); 256];
-    let mut decoder = guac_bridge::terminal_wire::InputDecoder::default();
+    let mut decoder = guac_bridge::terminal_wire::InputDecoder::with_reliability(reliable);
     loop {
         let mut count = 0;
         let success = unsafe {
@@ -171,9 +188,13 @@ fn read_console_input(sender: mpsc::Sender<Frame>) -> Result<()> {
             }
             ensure!(character <= 127, "Non-ASCII Windows transport input");
             for _ in 0..key.wRepeatCount {
-                for frame in decoder.feed(&[character as u8], true).with_context(|| {
+                let frames = decoder.feed(&[character as u8], true).with_context(|| {
                     format!("Remote console decode failed: {}", decoder.status())
-                })? {
+                })?;
+                if let Some(ack) = decoder.take_ack() {
+                    output.blocking_send(ack)?;
+                }
+                for frame in frames {
                     diagnostics::frame("rx", &frame);
                     let stop = frame.kind == Kind::Shutdown;
                     sender.blocking_send(frame)?;
@@ -213,7 +234,7 @@ async fn serve(args: Arc<Args>) -> Result<()> {
         stdout.write_all(b"\x1b]482202;2;LLM\x07")?;
     }
     let ready = serde_json::to_vec(
-        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size}),
+        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"reliable_input":args.reliable_input}),
     )?;
     stdout.write_all(&guac_bridge::terminal_wire::output(
         &Frame::payload(Kind::Ready, 0, ready),
@@ -225,8 +246,10 @@ async fn serve(args: Arc<Args>) -> Result<()> {
     // Reader sends a fatal error via a separate channel rather than losing queued frames.
     let (error_tx, mut error_rx) = mpsc::channel(1);
     let windows = args.windows_console;
+    let reliable = args.reliable_input;
+    let input_output = output_tx.clone();
     let stdin_task = tokio::spawn(async move {
-        if let Err(error) = read_input(input_tx, windows).await {
+        if let Err(error) = read_input(input_tx, input_output, windows, reliable).await {
             let _ = error_tx.send(error).await;
         }
     });
@@ -353,6 +376,17 @@ fn main() -> Result<()> {
             && [4096, 8192, 16384, 32768, 65536].contains(&args.frame_size),
         "Invalid transport sizes"
     );
+    #[cfg(unix)]
+    let cpu_start = if args.benchmark_control {
+        Some(cpu_seconds())
+    } else {
+        None
+    };
+    let cpu_path = if args.benchmark_control {
+        std::env::var_os("GUAC_BRIDGE_BENCH_CPU_FILE")
+    } else {
+        None
+    };
     let result = (|| -> Result<()> {
         diagnostics::init(args.debug_log.as_deref())
             .context("Cannot initialize remote debug log")?;
@@ -367,7 +401,26 @@ fn main() -> Result<()> {
         let _ = report_fatal(error);
     }
     diagnostics::shutdown();
+    #[cfg(unix)]
+    if let (Some(start), Some(path)) = (cpu_start, cpu_path) {
+        let _ = std::fs::write(path, format!("{}", cpu_seconds() - start));
+    }
+    #[cfg(not(unix))]
+    let _ = cpu_path;
     result
+}
+
+#[cfg(unix)]
+fn cpu_seconds() -> f64 {
+    let mut usage = std::mem::MaybeUninit::<libc::rusage>::uninit();
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, usage.as_mut_ptr()) } != 0 {
+        return 0.0;
+    }
+    let usage = unsafe { usage.assume_init() };
+    usage.ru_utime.tv_sec as f64
+        + usage.ru_utime.tv_usec as f64 / 1e6
+        + usage.ru_stime.tv_sec as f64
+        + usage.ru_stime.tv_usec as f64 / 1e6
 }
 
 #[cfg(windows)]

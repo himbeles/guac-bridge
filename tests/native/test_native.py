@@ -95,7 +95,66 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         child.stdin.write(b'quit\n')
         await child.stdin.drain()
         await asyncio.wait_for(child.wait(), 5)
-        self.assertEqual(child.returncode, 0, (await child.stderr.read()).decode())
+        error = (await child.stderr.read()).decode()
+        self.assertEqual(child.returncode, 0, error)
+        return error
+
+    async def test_reliable_recovers_loss_corruption_and_duplicates_for_both_clients(self):
+        target = await self.target(self.echo)
+        for mode in ('ssh', 'llm'):
+            with self.subTest(mode=mode):
+                child, port = await self.bridge(target, mode, '--reliable-input')
+                term = self.gateway.terminals[-1]
+                term.live_faults = ['drop', 'corrupt', 'duplicate']
+                await asyncio.wait_for(asyncio.gather(
+                    self.roundtrip(port, bytes(range(256))*8192),
+                    self.roundtrip(port, b'second-stream'*120000)), 30)
+                error = await self.finish(child)
+                self.assertEqual(term.applied_faults, ['drop', 'corrupt', 'duplicate'])
+                self.assertIn('reliable input recovery', error)
+                self.assertIn('--input-window', error)
+
+    async def test_reliable_permanent_loss_has_bounded_actionable_error(self):
+        child, port = await self.bridge(await self.target(self.echo), 'ssh',
+                                        '--reliable-input', '--connect-timeout', '2')
+        self.gateway.terminals[-1].drop_live_data = True
+        reader, writer = await asyncio.open_connection('127.0.0.1', port)
+        writer.write(bytes(range(256))*2048)
+        with contextlib.suppress(ConnectionResetError):
+            await writer.drain()
+        await asyncio.wait_for(child.wait(), 10)
+        error = (await child.stderr.read()).decode()
+        self.assertNotEqual(child.returncode, 0, error)
+        self.assertIn('--input-window', error)
+        writer.close()
+        with contextlib.suppress(ConnectionResetError):
+            await writer.wait_closed()
+
+    async def test_terminal_upload_uses_one_progress_row(self):
+        import pty
+        master, slave = pty.openpty()
+        child = await asyncio.create_subprocess_exec(str(BINARY), 'ssh', '--url', self.url,
+            '--username', 'test', '--no-keyring', '--startup-delay', '0', '--port', '0',
+            '--target-port', str(await self.target(self.echo)), stderr=slave,
+            stdout=asyncio.subprocess.DEVNULL, env=self.env())
+        self.children.append(child)
+        os.close(slave)
+        os.set_blocking(master, False)
+        output = bytearray()
+        try:
+            async def ready():
+                while b'Bridge ready on' not in output:
+                    with contextlib.suppress(BlockingIOError):
+                        output.extend(os.read(master, 65536))
+                    await asyncio.sleep(.01)
+            await asyncio.wait_for(ready(), 15)
+            self.assertEqual(sum(b'Helper upload:' in row for row in output.split(b'\n')), 1)
+            self.assertIn(b'100% [========================]', output)
+            child.send_signal(signal.SIGINT)
+            await asyncio.wait_for(child.wait(), 5)
+            self.assertEqual(child.returncode, 0)
+        finally:
+            os.close(master)
 
     async def test_debug_logs_exclude_payload_and_preserve_transfer(self):
         target = await self.target(self.echo)
@@ -406,7 +465,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             await process.wait()
             self.assertEqual(process.returncode,0,output.decode(errors='replace'))
             self.assertIn(b'Checking server helper',output)
-            self.assertIn(b'Helper upload: 100%',output)
+            self.assertIn(b'100%',output)
             self.assertIn(b'Bridge ready on',output)
         finally:
             stop = await self.child('--stop','--port',port)
@@ -425,7 +484,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         binary = BINARY.with_name('guac-ssh-client')
         async def command(*flags, input_window=3, expected=0):
             child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',
-                                     '--input-window',input_window,*flags,binary=binary)
+                                     '--input-window',input_window,'--reliable-input',*flags,binary=binary)
             await asyncio.wait_for(child.wait(),25)
             error = (await child.stderr.read()).decode()
             self.assertEqual(child.returncode,expected,error)

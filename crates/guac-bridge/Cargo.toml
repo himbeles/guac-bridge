@@ -37,6 +37,8 @@ path = "src/agent.rs"
 [dependencies]
 anyhow = "1"
 base64 = "0.22"
+crc32fast = "1.5"
+memchr = "2"
 clap = { version = "4", features = ["derive"] }
 futures-util = "0.3"
 libc = "0.2"
