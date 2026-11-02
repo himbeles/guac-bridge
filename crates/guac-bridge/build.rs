@@ -45,6 +45,35 @@ fn build_agent(manifest: &Path, out: &Path) -> PathBuf {
     );
     target.join("x86_64-unknown-linux-musl/release/guac-bridge-agent")
 }
+fn build_windows_agent(manifest: &Path, out: &Path) -> PathBuf {
+    let target = out.join("windows-agent-build");
+    let status = Command::new(env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+        .args([
+            "build",
+            "--locked",
+            "--release",
+            "--no-default-features",
+            "--bin",
+            "guac-bridge-agent",
+            "--target",
+            "x86_64-pc-windows-msvc",
+            "--manifest-path",
+        ])
+        .arg(manifest.join("Cargo.toml"))
+        .arg("--target-dir")
+        .arg(&target)
+        .env_remove("CARGO_FEATURE_CLIENT")
+        .env_remove("CARGO_FEATURE_DEFAULT")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .env("RUSTFLAGS", "-C target-feature=+crt-static")
+        .status()
+        .expect("Cannot compile Windows helper");
+    assert!(
+        status.success(),
+        "Windows helper source build failed; set GUAC_BRIDGE_WINDOWS_AGENT to a prepared x86-64 helper"
+    );
+    target.join("x86_64-pc-windows-msvc/release/guac-bridge-agent.exe")
+}
 fn main() {
     println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_AGENT");
     println!("cargo:rerun-if-env-changed=GUAC_BRIDGE_WINDOWS_AGENT");
@@ -75,9 +104,12 @@ fn main() {
         "Bundled agent must be Linux x86-64 ELF"
     );
     fs::write(out.join("agent"), bytes).unwrap();
-    let windows = env::var_os("GUAC_BRIDGE_WINDOWS_AGENT")
+    let mut windows = env::var_os("GUAC_BRIDGE_WINDOWS_AGENT")
         .map(PathBuf::from)
         .unwrap_or_else(|| manifest.join("assets/guac-bridge-agent-windows-x86_64.exe"));
+    if !windows.exists() && cfg!(windows) {
+        windows = build_windows_agent(&manifest, &out);
+    }
     println!("cargo:rerun-if-changed={}", windows.display());
     let bytes = if windows.exists() {
         fs::read(windows).unwrap()

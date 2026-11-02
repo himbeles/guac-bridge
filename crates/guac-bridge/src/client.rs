@@ -571,19 +571,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     match message {
                         Message::Ping(bytes)=>{read_out.send(Message::Pong(bytes)).await?;continue;},
                         Message::Close(_)=>bail!("Guacamole tunnel closed"),
-                        Message::Text(text)=>for mut values in parser.feed(&text)?{
-                            // ConPTY preserves short OSC envelopes, but transforms raw output.
-                            // Windows carries bytes in the Guacamole pipe name itself.
-                            if values.first().map(String::as_str)==Some("pipe") && values.len()>=4 {
-                                let name=values[3].clone();
-                                if let Some(data)=name.strip_prefix(crate::terminal_wire::OSC_PREFIX) {
-                                    output_stream=Some(values[1].clone());
-                                    values=vec!["blob".into(), values[1].clone(), data.into()];
-                                } else if let Some(data)=name.strip_prefix(crate::terminal_wire::BOOT_PREFIX) {
-                                    boot_stream=Some(values[1].clone());
-                                    values=vec!["blob".into(), values[1].clone(), data.into()];
-                                }
-                            }
+                        Message::Text(text)=>for values in parser.feed(&text)?{
                             let op=values.first().map(String::as_str).unwrap_or("");
                             match op {
                                 "sync"=>{ensure!(values.len()>=2,"Invalid sync");ws_send(&read_out,&["sync",&values[1]]).await?;read_synced.notify_one();},
@@ -650,14 +638,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
             acks.pending.lock().unwrap().push_back(Instant::now());
             ws_send(&out,&["pipe","0","text/plain","STDIN"]).await?;
             drain(&acks,Duration::from_secs(args.connect_timeout)).await?;
-            let is_windows=if args.server_os=="windows" {true} else if args.server_os=="linux" {false} else {
-                input.send(Input::Raw(crate::deploy::probe(&nonce))).await?;
-                match tokio::time::timeout(Duration::from_secs(2),boot_rx.recv()).await {
-                    Ok(Some(response))=>{ensure!(response==format!("{nonce}:LINUX"),"Unexpected OS probe response");false},
-                    Ok(None)=>bail!("OS probe channel closed"),
-                    Err(_)=>true,
-                }
-            };
+            let is_windows=args.server_os=="windows";
             windows.store(is_windows,Ordering::Relaxed);
             let mut deploy_args=(*args).clone();
             deploy_args.server_os=if is_windows {"windows"}else{"linux"}.into();

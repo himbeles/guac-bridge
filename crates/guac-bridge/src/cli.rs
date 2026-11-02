@@ -80,8 +80,8 @@ pub(crate) struct Args {
     /// Use a manually installed helper instead of deploying the bundled agent.
     #[arg(long)]
     pub server_command: Option<String>,
-    /// Remote SSH server OS. Auto probes Linux first, then Windows PowerShell.
-    #[arg(long, default_value = "auto", value_parser = ["auto", "linux", "windows"])]
+    /// Remote server OS. Windows requires an SSH terminal and PowerShell 5.1+.
+    #[arg(long, default_value = "linux", value_parser = ["linux", "windows"])]
     pub server_os: String,
     #[arg(long, hide = true)]
     pub benchmark_control: bool,

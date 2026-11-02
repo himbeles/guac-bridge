@@ -67,20 +67,6 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
     );
     Ok(command.into_bytes())
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn bundled_agent_is_linux_x64() {
-        assert_eq!(&AGENT[..4], b"\x7fELF");
-        assert_eq!(&AGENT[18..20], &[62, 0]);
-        assert_eq!(digest().len(), 64);
-    }
-}
-
-pub(crate) fn probe(nonce: &str) -> Vec<u8> {
-    format!("printf '\\033]482202;2;BOOT\\007{nonce}:LINUX\\n\\033]482203;\\007'\n").into_bytes()
-}
 
 fn powershell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "''"))
@@ -121,4 +107,15 @@ fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
         "Windows bootstrap exceeds the command line limit"
     );
     Ok(command.into_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn bundled_agent_is_linux_x64() {
+        assert_eq!(&AGENT[..4], b"\x7fELF");
+        assert_eq!(&AGENT[18..20], &[62, 0]);
+        assert_eq!(digest().len(), 64);
+    }
 }
