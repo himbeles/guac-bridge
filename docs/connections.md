@@ -27,7 +27,9 @@ flowchart TD
 
 The cache is `$XDG_CACHE_HOME/guac-bridge/helpers`, or `~/.cache/guac-bridge/helpers`. Executables are named by SHA-256, allowing client versions to coexist. The client selects the remote architecture independently of its own platform. Only Linux x86-64 servers are supported in this build. The cache must permit execution. Shell tools required are `uname`, `stty`, `head`, `base64`, `sha256sum`, `cut`, `mktemp`, `chmod`, `mv`, `mkdir` and `rm`.
 
-Upload uses text-safe Base64 only during bootstrap. Active data frames carry raw bytes with ESC/GS escaping and Guacamole’s required outer blob encoding. The helper is executed in place of the terminal shell. Closing the Guacamole session ends it; no service, cron job, shell profile change, PATH edit or server package manager is involved.
+On Linux, the bootstrap uploads Base64 in 3,072-character blocks (2,304 decoded bytes). It splits each block into Guacamole input blobs of at most 1,024 bytes, then waits for a nonce-scoped `CHUNK:<index>` response from the remote shell **after `head` has consumed and Base64-decoded the entire block**. Guacamole input ACKs alone do not establish that the PTY and shell actually received the bytes. A missing block acknowledgment fails with its index and the attempted byte count instead of incorrectly reporting 100% completion. The Windows PowerShell upload bootstrap is unchanged.
+
+This block acknowledgment applies **only to first-time Linux helper deployment**. Active data frames continue carrying raw bytes with ESC/GS escaping and Guacamole’s required outer blob encoding; the TCP forwarding, multiplexing, flow-control, wire protocol, and agent implementation are unchanged. The helper is executed in place of the terminal shell. Closing the Guacamole session ends it; no service, cron job, shell profile change, PATH edit or server package manager is involved.
 
 ## Authentication and lifetime
 
