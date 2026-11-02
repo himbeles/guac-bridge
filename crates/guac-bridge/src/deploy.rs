@@ -96,6 +96,10 @@ fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
                 .unwrap_or_else(|| "$null".into()),
         )
         .replace("@OPTIONS@", &options);
+    powershell_command(&script)
+}
+
+fn powershell_command(script: &str) -> Result<Vec<u8>> {
     let script: String = script.lines().map(str::trim).collect::<Vec<_>>().join("\n");
     let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let command = format!(
@@ -132,18 +136,11 @@ mod tests {
             .replace("@NONCE@", &"a".repeat(32)).replace("@HASH@", &"b".repeat(64))
             .replace("@COUNT@", "99999999").replace("@MANUAL@", "$null")
             .replace("@OPTIONS@", "--target-host '127.0.0.1' --target-port 22 --connect-timeout 30 --max-connections 8 --window 32 --frame-size 65536");
-        assert!(
-            STANDARD
-                .encode(
-                    script
-                        .encode_utf16()
-                        .flat_map(u16::to_le_bytes)
-                        .collect::<Vec<_>>()
-                )
-                .len()
-                + 80
-                < 8000
-        );
+        let lf = script.replace("\r\n", "\n");
+        let crlf = lf.replace('\n', "\r\n");
+        let command = powershell_command(&lf).unwrap();
+        assert!(command.len() < 8000);
+        assert_eq!(command, powershell_command(&crlf).unwrap());
         assert_eq!(args.args.server_os, "windows");
         assert_eq!(powershell_quote("a'b"), "'a''b'");
     }
