@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 $e=[char]27;$b=[char]7
 function S($m){$d=[Text.Encoding]::UTF8.GetBytes('@NONCE@:'+$m+"`n");for($j=0;$j -lt $d.Length;$j+=120){[Console]::Write("$e]482202;2;GBWB:"+[Convert]::ToBase64String($d,$j,[Math]::Min(120,$d.Length-$j))+"$b$e]482203;$b")}}
-function H($p){([BitConverter]::ToString($s.ComputeHash([IO.File]::ReadAllBytes($p)))).Replace('-','').ToLowerInvariant()}
+function GBHash($p){([BitConverter]::ToString($s.ComputeHash([IO.File]::ReadAllBytes($p)))).Replace('-','').ToLowerInvariant()}
 $s=[Security.Cryptography.SHA256]::Create()
 $t=$null;$i=$o=[IntPtr]::Zero;[uint32]$im=0;[uint32]$om=0
 try {
@@ -17,12 +17,12 @@ $h='@HASH@';$a=@MANUAL@
 if(!$a){
 $c=Join-Path $env:LOCALAPPDATA 'guac-bridge\helpers';[void][IO.Directory]::CreateDirectory($c);S ('LOCATION:'+$c)
 $a=Join-Path $c ($h+'.exe')
-if(([IO.File]::Exists($a)) -and (H $a) -eq $h){S 'CACHED'}else{
+if(([IO.File]::Exists($a)) -and (GBHash $a) -eq $h){S 'CACHED'}else{
 $t=Join-Path $c ('.upload.'+[Guid]::NewGuid().ToString('N'));S 'UPLOAD'
 $d=New-Object byte[] @COUNT@;$f=[Console]::OpenStandardInput();$j=0
 while($j -lt $d.Length){$n=$f.Read($d,$j,$d.Length-$j);if($n -eq 0){throw 'Upload ended early'};$j+=$n}
 [IO.File]::WriteAllBytes($t,[Convert]::FromBase64String([Text.Encoding]::ASCII.GetString($d)));S 'VERIFY'
-if((H $t) -ne $h){throw 'Helper checksum mismatch'}
+if((GBHash $t) -ne $h){throw 'Helper checksum mismatch'}
 if([IO.File]::Exists($a)){[IO.File]::Replace($t,$a,$null)}else{[IO.File]::Move($t,$a)};$t=$null
 }}
 S 'STARTING'
