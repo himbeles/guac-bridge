@@ -1,6 +1,7 @@
 $ErrorActionPreference='Stop'
 $e=[char]27;$b=[char]7
-function S($m){$d=[Text.Encoding]::UTF8.GetBytes('@NONCE@:'+$m+"`n");for($j=0;$j -lt $d.Length;$j+=120){$n=[Math]::Min(120,$d.Length-$j);$v=New-Object byte[] $n;[Array]::Copy($d,$j,$v,0,$n);[Console]::Write("$e]482202;2;GBWB:"+[Convert]::ToBase64String($v)+"$b$e]482203;$b")}}
+function S($m){$d=[Text.Encoding]::UTF8.GetBytes('@NONCE@:'+$m+"`n");for($j=0;$j -lt $d.Length;$j+=120){[Console]::Write("$e]482202;2;GBWB:"+[Convert]::ToBase64String($d,$j,[Math]::Min(120,$d.Length-$j))+"$b$e]482203;$b")}}
+function H($p){$s=[Security.Cryptography.SHA256]::Create();try{([BitConverter]::ToString($s.ComputeHash([IO.File]::ReadAllBytes($p)))).Replace('-','').ToLowerInvariant()}finally{$s.Dispose()}}
 $t=$null;$i=[IntPtr]::Zero;$o=[IntPtr]::Zero;[uint32]$im=0;[uint32]$om=0
 try {
 Add-Type 'using System;using System.Runtime.InteropServices;public class GBW{[DllImport("kernel32.dll",CharSet=CharSet.Unicode)]public static extern IntPtr CreateFile(string p,uint a,uint s,IntPtr z,uint c,uint f,IntPtr h);[DllImport("kernel32.dll")]public static extern bool GetConsoleMode(IntPtr h,out uint m);[DllImport("kernel32.dll")]public static extern bool SetConsoleMode(IntPtr h,uint m);[DllImport("kernel32.dll")]public static extern bool SetStdHandle(int n,IntPtr h);}'
@@ -15,13 +16,13 @@ $h='@HASH@';$a=@MANUAL@
 if(!$a){
 $c=Join-Path $env:LOCALAPPDATA 'guac-bridge\helpers';[void][IO.Directory]::CreateDirectory($c);S ('LOCATION:'+$c)
 $a=Join-Path $c ($h+'.exe')
-if((Test-Path -LiteralPath $a) -and (Get-FileHash -LiteralPath $a -Algorithm SHA256).Hash.ToLowerInvariant() -eq $h){S 'CACHED'}else{
+if(([IO.File]::Exists($a)) -and (H $a) -eq $h){S 'CACHED'}else{
 $t=Join-Path $c ('.upload.'+[Guid]::NewGuid().ToString('N'));S 'UPLOAD'
 $d=New-Object byte[] @COUNT@;$f=[Console]::OpenStandardInput();$j=0
 while($j -lt $d.Length){$n=$f.Read($d,$j,[Math]::Min(8192,$d.Length-$j));if($n -eq 0){throw 'Upload ended early'};$j+=$n}
 [IO.File]::WriteAllBytes($t,[Convert]::FromBase64String([Text.Encoding]::ASCII.GetString($d)));S 'VERIFY'
-if((Get-FileHash -LiteralPath $t -Algorithm SHA256).Hash.ToLowerInvariant() -ne $h){throw 'Helper checksum mismatch'}
-Move-Item -LiteralPath $t -Destination $a -Force;$t=$null
+if((H $t) -ne $h){throw 'Helper checksum mismatch'}
+if([IO.File]::Exists($a)){[IO.File]::Replace($t,$a,$null)}else{[IO.File]::Move($t,$a)};$t=$null
 }}
 S 'STARTING'
 & $a --stdio --windows-console @OPTIONS@
