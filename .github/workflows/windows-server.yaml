@@ -2,8 +2,12 @@ name: Windows server helper
 on:
   pull_request:
   push:
-    branches: [feat/windows-server]
+    branches: [main, feat/windows-server]
+    tags: ["v*"]
   workflow_dispatch:
+concurrency:
+  group: windows-server-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
