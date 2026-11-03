@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.0
+
+- Add a native Windows tray manager for foreground and background bridges, with SSH/LLM tags, authenticated stop controls, executable/version details and unresponsive registration visibility.
+- Show live upload/download rates, cumulative payload totals since bridge startup, active/total connections and last activity. Keep polling off the UI thread and outside the transport path.
+- Automatically stop bridges and the tray before Windows installer updates; wait for process exit before replacing executables. Add a Start menu shortcut to the manager.
+- Add `guac-bridge update` for uv tool installations, using a separate Windows updater to release installed executables before upgrading. Direct `uv tool upgrade` is not intercepted; `prepare-update` supports external updates. Active sessions disconnect and bridges must be restarted afterwards.
+- Add authenticated control, usage, update exclusion, native Windows UI and installer upgrade tests.
+
 ## 2.0.0
 
 - Use reliable input for all SSH and LLM bridges, including managed bridges: bounded checksummed records, resynchronization, selective acknowledgements, duplicate suppression and retries. This is the only input transport, with no selection flags or raw fallback. The reliable record window is fixed at 64; existing gateway and TCP flow-control settings remain available.
