@@ -135,11 +135,15 @@ class TrayTests(unittest.TestCase):
             subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
             wait_for(lambda: user32.IsWindowVisible(hwnd))
             self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
-            user32.PostMessageW(hwnd, 0x10, 0, 0)  # WM_CLOSE hides only
-            wait_for(lambda: not user32.IsWindowVisible(hwnd))
-            self.assertIsNone(child.poll())
-            subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
-            wait_for(lambda: user32.IsWindowVisible(hwnd))
+            # Exercise direct close and the system command used by X / Alt+F4.
+            for message, command in ((0x10, 0), (0x112, 0xF060)):
+                user32.PostMessageW(hwnd, message, command, 0)
+                wait_for(lambda: not user32.IsWindowVisible(hwnd))
+                self.assertIsNone(child.poll(), 'Closing the manager must preserve the tray process')
+                self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
+                self.assertNotIn('stop', commands)
+                subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
+                wait_for(lambda: user32.IsWindowVisible(hwnd))
             user32.PostMessageW(hwnd, 0x111, 105, 0)  # Exit tray, keeping bridges
             self.assertEqual(child.wait(timeout=10), 0)
             self.assertTrue(registration.exists())

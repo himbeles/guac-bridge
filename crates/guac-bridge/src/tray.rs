@@ -209,6 +209,13 @@ mod windows {
     }
     unsafe extern "system" fn window(hwnd: HWND, msg: u32, wp: usize, lp: isize) -> isize {
         unsafe {
+            // DefWindowProc handles SC_CLOSE by sending WM_CLOSE synchronously.
+            // Handle it before the reentrancy guard so X and Alt+F4 hide the
+            // window rather than falling through to default destruction.
+            if msg == WM_CLOSE {
+                ShowWindow(hwnd, SW_HIDE);
+                return 0;
+            }
             if msg == WM_DESTROY {
                 KillTimer(hwnd, 1);
                 icon(hwnd, NIM_DELETE);
@@ -237,9 +244,6 @@ mod windows {
                     let limits = &mut *(lp as *mut MINMAXINFO);
                     limits.ptMinTrackSize.x = 780;
                     limits.ptMinTrackSize.y = 420;
-                }
-                WM_CLOSE => {
-                    ShowWindow(hwnd, SW_HIDE);
                 }
                 WM_TIMER => {
                     while let Ok(update) = ui.update.try_recv() {
