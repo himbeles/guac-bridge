@@ -22,7 +22,8 @@ function Test-InstalledManager {
             Start-Sleep -Milliseconds 100
         } while ((Get-Date) -lt $deadline)
         if ($window -eq [IntPtr]::Zero) {
-            Get-Content "$env:LOCALAPPDATA/guac-bridge/data/manager.log" -ErrorAction SilentlyContinue
+            Get-Process guac* -ErrorAction SilentlyContinue |
+                Select-Object Id, ProcessName, MainWindowTitle, Path | Format-List
             throw 'Installed manager did not open without the shared runtime'
         }
         [uint32]$managerProcess = 0
@@ -35,6 +36,11 @@ function Test-InstalledManager {
     } finally {
         & "$dest/guac-bridge.exe" prepare-update
         if ($LASTEXITCODE -ne 0 -or !$tray.WaitForExit(20000)) { throw 'Cannot close installed manager and tray' }
+        Get-ChildItem "$env:LOCALAPPDATA/guac-bridge" -Recurse -Filter manager.log -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "Manager log: $($_.FullName)"; Get-Content $_.FullName }
+        Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-3)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in 'Application Error', 'Windows Error Reporting', 'SideBySide' } |
+            Select-Object TimeCreated, Id, ProviderName, Message | Format-List
     }
 }
 

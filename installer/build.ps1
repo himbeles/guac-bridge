@@ -30,6 +30,37 @@ try {
         'Microsoft.UI.Windowing.dll', 'Microsoft.Web.WebView2.Core.dll', 'resources.pri')) {
         if (!(Test-Path "$payload/$name")) { throw "Missing bundled UI runtime file: $name" }
     }
+    Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class GuacBuildManifest {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr LoadLibraryEx(string path, IntPtr reserved, uint flags);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindResource(IntPtr module, IntPtr name, IntPtr type);
+    [DllImport("kernel32.dll")] public static extern IntPtr LoadResource(IntPtr module, IntPtr resource);
+    [DllImport("kernel32.dll")] public static extern IntPtr LockResource(IntPtr resource);
+    [DllImport("kernel32.dll")] public static extern uint SizeofResource(IntPtr module, IntPtr resource);
+    [DllImport("kernel32.dll")] public static extern bool FreeLibrary(IntPtr module);
+}
+'@
+    $module = [GuacBuildManifest]::LoadLibraryEx((Resolve-Path "$payload/guac-bridge.exe"), [IntPtr]::Zero, 2)
+    if ($module -eq [IntPtr]::Zero) { throw 'Cannot inspect executable manifest' }
+    try {
+        $resource = [GuacBuildManifest]::FindResource($module, [IntPtr]1, [IntPtr]24)
+        if ($resource -eq [IntPtr]::Zero) { throw 'Missing embedded application manifest' }
+        $size = [GuacBuildManifest]::SizeofResource($module, $resource)
+        $data = [GuacBuildManifest]::LockResource([GuacBuildManifest]::LoadResource($module, $resource))
+        $bytes = New-Object byte[] $size
+        [Runtime.InteropServices.Marshal]::Copy($data, $bytes, 0, $bytes.Length)
+        $xml = [Text.Encoding]::UTF8.GetString($bytes).TrimEnd([char]0)
+        $xml | Set-Content target/installer-manifest.xml
+        [xml]$document = $xml
+        $description = $document.SelectSingleNode("//*[local-name()='description']")
+        $classes = $document.SelectNodes("//*[local-name()='activatableClass']").Count
+        Write-Host "Embedded runtime marker: $($description.InnerText); activation classes: $classes"
+        if ($description.InnerText -ne 'windows-reactor-self-contained' -or $classes -eq 0) {
+            throw 'The executable lost its private WinUI activation manifest'
+        }
+    } finally { [void][GuacBuildManifest]::FreeLibrary($module) }
     # Include the original Microsoft redistribution licenses with the installed files.
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $cache = Join-Path $env:LOCALAPPDATA 'windows-reactor-setup/temp'
