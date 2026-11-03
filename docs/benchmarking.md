@@ -3,7 +3,7 @@
 Build release binaries first; debug builds are not representative. On Linux, install the test-only `aiohttp` dependency and run:
 
 ```shell
-python scripts/build-native.py
+cargo xtask build
 python scripts/benchmark.py --mib 32 --repeats 3 --output results.json
 ```
 

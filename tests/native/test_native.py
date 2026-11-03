@@ -15,7 +15,7 @@ from gateway import Gateway
 
 ROOT = Path(__file__).resolve().parents[2]
 BINARY = ROOT / 'target/release/guac-bridge'
-VERSION = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
+VERSION = tomllib.loads((ROOT / 'Cargo.toml').read_text())['workspace']['package']['version']
 AGENT = ROOT / 'crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64'
 
 
@@ -63,15 +63,15 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def child(self, *extra, mode='ssh', foreground=True):
         command = [str(BINARY), mode]
-        if foreground and not any(flag in extra for flag in ('--ensure-running', '--stop', '--status')):
+        if foreground and not any(flag in extra for flag in ('--stop', '--status')):
             command += ['--foreground']
-        command += ['--url', self.url, '--username', 'test', '--no-keyring', '--startup-delay', '0', *map(str, extra)]
+        command += [self.url, '--user', 'test', '--no-keyring', '--startup-delay', '0', *map(str, extra)]
         child = await asyncio.create_subprocess_exec(*command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
         self.children.append(child)
         return child
 
     async def bridge(self, target, mode='ssh', *extra):
-        child = await self.child('--port', '0', '--target-port', str(target), '--benchmark-control', *extra, mode=mode)
+        child = await self.child('--port', '0', '--remote-port', str(target), '--benchmark-control', *extra, mode=mode)
         line = await asyncio.wait_for(child.stdout.readline(), 20)
         if not line:
             self.fail((await child.stderr.read()).decode())
@@ -101,7 +101,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child.returncode, 0, error)
         return error
 
-    async def test_list_empty_and_legacy_unresponsive(self):
+    async def test_list_empty_and_unresponsive(self):
         async def listing():
             child = await asyncio.create_subprocess_exec(str(BINARY), 'list',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
@@ -111,17 +111,19 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('No registered bridges', await listing())
         directory = self.home/'data'/'guac-bridge'
         directory.mkdir(parents=True, exist_ok=True)
-        # Closed socket: an old registration cannot establish a live bridge.
+        # A current registration with a closed control socket stays visible as unresponsive.
         import socket
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
         (directory/'ssh-2222.json').write_text(json.dumps(dict(
-            pid=1, control=port, token='private-control-token', identity='old', username='old-user')))
+            pid=1, control=port, token='private-control-token', identity='offline', username='test-user',
+            mode='ssh', port=2222, target='127.0.0.1:22', jump_url='https://guac.example/',
+            instance='offline-instance', version=VERSION, executable=str(BINARY), log=None)))
         text = await listing()
         self.assertIn('Unresponsive', text)
-        self.assertIn('restart bridge', text)
-        self.assertIn('old-user', text)
+        self.assertIn('https://guac.example/', text)
+        self.assertIn('test-user', text)
         self.assertIn('ssh://127.0.0.1:2222', text)
         self.assertNotIn('private-control-token', text)
         self.assertTrue((directory/'ssh-2222.json').exists())
@@ -129,7 +131,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_prepare_update_stops_all_foreground_bridges(self):
         target = await self.target(self.echo)
         for mode in ('ssh', 'llm'):
-            child = await self.child('--port', '0', '--target-port', target, mode=mode)
+            child = await self.child('--port', '0', '--remote-port', target, mode=mode)
             while b'Bridge ready on ' not in await asyncio.wait_for(child.stderr.readline(), 20):
                 self.assertIsNone(child.returncode)
         command = await asyncio.create_subprocess_exec(str(BINARY), 'prepare-update',
@@ -148,7 +150,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         directory.mkdir(parents=True)
         with (directory/'update.lock').open('w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            child = await self.child('--port', '0', '--target-port', 22)
+            child = await self.child('--port', '0', '--remote-port', 22)
             await asyncio.wait_for(child.wait(), 5)
             self.assertNotEqual(child.returncode, 0)
             self.assertIn('update is in progress', (await child.stderr.read()).decode())
@@ -158,7 +160,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         target = await self.target(self.echo)
         for mode in ('ssh', 'llm'):
             with self.subTest(mode=mode):
-                child = await self.child('--port', '0', '--target-port', target, mode=mode)
+                child = await self.child('--port', '0', '--remote-port', target, mode=mode)
                 while True:
                     line = await asyncio.wait_for(child.stderr.readline(), 20)
                     self.assertTrue(line, 'Bridge exited before ready')
@@ -251,9 +253,9 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_terminal_upload_uses_one_progress_row(self):
         import pty
         master, slave = pty.openpty()
-        child = await asyncio.create_subprocess_exec(str(BINARY), 'ssh', '--foreground', '--url', self.url,
-            '--username', 'test', '--no-keyring', '--startup-delay', '0', '--port', '0',
-            '--target-port', str(await self.target(self.echo)), stderr=slave,
+        child = await asyncio.create_subprocess_exec(str(BINARY), 'ssh', '--foreground', self.url,
+            '--user', 'test', '--no-keyring', '--startup-delay', '0', '--port', '0',
+            '--remote-port', str(await self.target(self.echo)), stderr=slave,
             stdout=asyncio.subprocess.DEVNULL, env=self.env())
         self.children.append(child)
         os.close(slave)
@@ -439,7 +441,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         uname = tools/'uname'
         uname.write_text('#!/bin/sh\ncase "$1" in -s) echo Linux;; -m) echo aarch64;; esac\n')
         uname.chmod(0o755)
-        child = await self.child('--port','0','--target-port',22,'--benchmark-control')
+        child = await self.child('--port','0','--remote-port',22,'--benchmark-control')
         await asyncio.wait_for(child.wait(),5)
         self.assertNotEqual(child.returncode,0)
         error = (await child.stderr.read()).decode()
@@ -452,7 +454,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         decoder = tools/'base64'
         decoder.write_text('#!/bin/sh\n/bin/cat >/dev/null\n')
         decoder.chmod(0o755)
-        child = await self.child('--port','0','--target-port',22,'--benchmark-control')
+        child = await self.child('--port','0','--remote-port',22,'--benchmark-control')
         await asyncio.wait_for(child.wait(),8)
         self.assertNotEqual(child.returncode,0)
         error = (await child.stderr.read()).decode()
@@ -473,7 +475,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         chmod = tools/'chmod'
         chmod.write_text('#!/bin/sh\ncase "$2" in */.upload.*) /bin/chmod 600 "$2";; *) /bin/chmod "$@";; esac\n')
         chmod.chmod(0o755)
-        child = await self.child('--port','0','--target-port',22,'--benchmark-control')
+        child = await self.child('--port','0','--remote-port',22,'--benchmark-control')
         await asyncio.wait_for(child.wait(),8)
         self.assertNotEqual(child.returncode,0)
         error = (await child.stderr.read()).decode()
@@ -481,7 +483,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Permission denied',error)
 
     async def test_upload_progress_and_clean_cli_wording(self):
-        child = await self.child('--port','0','--target-port',await self.target(self.echo))
+        child = await self.child('--port','0','--remote-port',await self.target(self.echo))
         lines = []
         async def ready():
             while True:
@@ -505,7 +507,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         # Gateway accepts/ACKs one input blob, but never writes it to the PTY.
         # The client must not claim 100% or wait indefinitely for helper readiness.
         self.gateway.drop_upload_after = 12000
-        child = await self.child('--port', '0', '--target-port', 22,
+        child = await self.child('--port', '0', '--remote-port', 22,
                                  '--connect-timeout', '2', '--benchmark-control')
         await asyncio.wait_for(child.wait(), 10)
         self.assertNotEqual(child.returncode, 0)
@@ -519,7 +521,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         decoder = tools/'base64'
         decoder.write_text('#!/bin/sh\necho synthetic-decoder-failure >&2\nexit 2\n')
         decoder.chmod(0o755)
-        child = await self.child('--port','0','--target-port',22,'--connect-timeout','3','--benchmark-control')
+        child = await self.child('--port','0','--remote-port',22,'--connect-timeout','3','--benchmark-control')
         await asyncio.wait_for(child.wait(),10)
         self.assertNotEqual(child.returncode,0)
         error=(await child.stderr.read()).decode()
@@ -532,7 +534,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         head = tools/'head'
         head.write_text('#!/bin/sh\nexec /bin/cat >/dev/null\n')
         head.chmod(0o755)
-        child = await self.child('--port','0','--target-port',22,'--connect-timeout','2','--benchmark-control')
+        child = await self.child('--port','0','--remote-port',22,'--connect-timeout','2','--benchmark-control')
         await asyncio.wait_for(child.wait(),8)
         self.assertNotEqual(child.returncode,0)
         self.assertIn('waiting for remote upload block acknowledgement',(await child.stderr.read()).decode())
@@ -554,7 +556,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         dummy.close()
         await dummy.wait_closed()
         config = self.home/'ssh-config'
-        hook = f'{BINARY} ssh --ensure-running --url {self.url} --username test --no-keyring --startup-delay 0 --port {port} --target-port {target}'
+        hook = f'{BINARY} ssh {self.url} --user test --no-keyring --startup-delay 0 --port {port} --remote-port {target}'
         config.write_text(f'Host hook-test\n    HostName 127.0.0.1\n    Port {port}\nMatch originalhost hook-test exec "{hook}"\nMatch all\n')
         master, slave = pty.openpty()
         def session():
@@ -602,7 +604,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         dummy.close()
         await dummy.wait_closed()
         async def command(*flags, input_window=3, expected=0):
-            child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',
+            child = await self.child('--port',port,'--remote-port',target,'--upload-batch-size','12288',
                                      '--input-window',input_window,*flags, foreground=False, mode=mode)
             await asyncio.wait_for(child.wait(),25)
             error = (await child.stderr.read()).decode()
@@ -617,7 +619,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.gateway.upload_ack_count,(encoded_size+12287)//12288)
             await self.roundtrip(port,b'managed')
             self.assertIn('already running',await command())
-            self.assertIn('different settings',await command('--ensure-running',input_window=4,expected=1))
+            self.assertIn('different settings',await command(input_window=4,expected=1))
             self.assertIn('Bridge running',await command('--status'))
         finally:
             await command('--stop')

@@ -6,7 +6,7 @@ Run the bridge in a PowerShell terminal while reproducing the problem:
 
 ```powershell
 guac-bridge ssh --port 2223 --stop
-guac-bridge ssh --foreground --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223 `
+guac-bridge ssh --foreground 'YOUR_GUACAMOLE_URL' --user 'YOUR_USERNAME' --port 2223 `
   --debug-log "$env:TEMP\guac-ssh-debug.log" `
   --server-debug-log '/home/YOUR_REMOTE_USER/.cache/guac-bridge/helpers/ssh-debug.log'
 ```
@@ -20,7 +20,7 @@ is limited to approximately 2 MiB. Unix log files are mode 600; on Windows keep 
 in your private user directory. A custom `--server-command` helper must support the
 new `--debug-log` option.
 
-Both options are optional and also work with the default background startup (`--ensure-running`). Adding them changes
+Both options are optional and also work with the default background startup . Adding them changes
 the managed bridge configuration; stop the existing bridge before restarting it.
 
 ## What to collect
@@ -72,8 +72,8 @@ corruption.
 Run local validation without GitHub Actions:
 
 ```sh
-make check
-make integration
+cargo xtask check
+cargo xtask integration --prepared
 ```
 
 The integration tests inject invalid bytes into the actual helper's Bash PTY with
@@ -81,36 +81,3 @@ two channels open and assert that recovery preserves both connections. They also
 check payload exclusion, private Unix log permissions, and exact binary transfer
 with both logs enabled.
 
-## Local throughput check
-
-Five trials per case transferred 32 MiB in each direction through the Guacamole
-simulator and a real Bash PTY. Every transfer was checked for exact equality.
-The comparison uses independently built baseline and instrumented binaries. Order alternated
-between trials; startup/upload time was excluded.
-
-| Build | Median seconds | Combined transfer MiB/s |
-| --- | ---: | ---: |
-| baseline | 2.814 | 22.74 |
-| debug_off | 2.683 | 23.85 |
-| debug_on | 2.654 | 24.12 |
-
-These results show no measurable regression in this local test. The differences
-are smaller than trial variation; they are not proof of zero overhead on every
-Windows host or corporate gateway. Enabled logging performs a small amount of
-counter work even though disk I/O is isolated from forwarding.
-
-Raw times and binary hashes are in [diagnostics-benchmark.json](diagnostics-benchmark.json).
-To repeat with independently built baseline and modified binaries:
-
-```sh
-python scripts/benchmark-diagnostics.py \
-  --baseline /path/to/baseline/guac-bridge \
-  --modified target/release/guac-bridge --trials 5 --mib 32
-```
-
-The follow-up [SSH disconnect investigation](ssh-disconnect-root-cause.md) contains
-a reproducible libssh2 write-loss experiment and deployment confirmation steps.
-
-For checksummed input transport and recovery counters, see
-[reliable input transport](reliable-input.md). Counters describe transport records,
-not IP packet loss.

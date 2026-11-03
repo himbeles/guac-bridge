@@ -2,7 +2,7 @@ name: Native build and publish
 
 on:
   push:
-    branches: [main, feat/native-core, fix/helper-bootstrap, feat/windows-server]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -23,10 +23,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {targets: x86_64-unknown-linux-musl}
       - name: Build static helper without client dependencies
-        run: >-
-          cargo build  --release -p guac-bridge --no-default-features --features agent
-          --bin guac-bridge-agent --target x86_64-unknown-linux-musl
-          --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+        run: cargo xtask helper linux
       - name: Check standalone executable
         run: |
           target/x86_64-unknown-linux-musl/release/guac-bridge-agent --version
@@ -47,8 +44,7 @@ jobs:
       - name: Build helper with static CRT
         shell: pwsh
         run: |
-          $env:RUSTFLAGS = '-C target-feature=+crt-static'
-          cargo build  --release --no-default-features --features agent --bin guac-bridge-agent
+          cargo xtask helper windows
           New-Item -ItemType Directory -Force agent
           Copy-Item target/release/guac-bridge-agent.exe agent/guac-bridge-agent-windows-x86_64.exe
       - uses: actions/upload-artifact@v7
@@ -70,11 +66,8 @@ jobs:
       - uses: actions/setup-python@v7
         with: {python-version: "3.12"}
       - run: python -m pip install aiohttp
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy  -p guac-bridge --all-targets -- -D warnings
-      - run: cargo test  -p guac-bridge
-      - run: cargo build  --release -p guac-bridge --bins
-      - run: python -m unittest discover -s tests/native -p test_native.py -v
+      - run: cargo xtask check --prepared
+      - run: cargo xtask integration --prepared --suite native
       - run: python scripts/benchmark.py --mib 2 --repeats 1 --output benchmark-smoke.json
       - name: Validate Cargo source package includes its helper
         run: |
@@ -104,7 +97,7 @@ jobs:
       - uses: actions/checkout@v7
         with: {persist-credentials: false}
       - uses: dtolnay/rust-toolchain@stable
-        with: {components: clippy}
+        with: {components: rustfmt, clippy}
       - uses: Swatinem/rust-cache@v2
       - uses: actions/download-artifact@v8
         with: {name: linux-agent, path: crates/guac-bridge/assets}
@@ -113,14 +106,10 @@ jobs:
       - uses: actions/setup-python@v7
         with: {python-version: "3.12"}
       - run: python -m pip install maturin uv aiohttp
-      - run: cargo clippy  -p guac-bridge --all-targets -- -D warnings
-      - name: Test native credential store
+      - name: Check workspace and native credential store
         env: {GUAC_TEST_NATIVE_KEYRING: "1"}
-        run: cargo test  -p guac-bridge
-      - run: |
-          cargo build --locked --release -p guac-bridge --bins --examples
-          Copy-Item crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe target/release/guac-bridge-agent.exe
-      - run: python -m unittest discover -s tests/native -p test_windows.py -v
+        run: cargo xtask check --prepared
+      - run: cargo xtask integration --prepared --suite native
       - name: Install shared UI runtime for Windows tests
         run: ./scripts/install-ui-runtime.ps1
       - run: python tests/windows/probe.py
@@ -131,7 +120,7 @@ jobs:
       - name: Test Windows server from cmd shell
         env: {GUAC_TEST_SHELL: cmd.exe}
         run: python -m unittest discover -s tests/windows -p test_bootstrap.py -v
-      - run: python -m maturin build --release  --out dist
+      - run: cargo xtask python --prepared
       - name: Install and test the uv CLI
         shell: pwsh
         run: |
@@ -142,12 +131,11 @@ jobs:
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" ssh --help
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" llm --help
-          foreach ($legacy in @('guac-ssh-client.exe', 'guac-llm-client.exe')) {
-            if (Test-Path "$env:UV_TOOL_BIN_DIR/$legacy") { throw "Unexpected CLI alias: $legacy" }
-          }
+          $commands = @(Get-ChildItem "$env:UV_TOOL_BIN_DIR/guac*")
+          if ($commands.Count -ne 1 -or $commands[0].Name -ne 'guac-bridge.exe') { throw 'Expected one guac-bridge CLI entry point' }
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python scripts/package-native.py $wheel
+          cargo xtask portable --wheel $wheel
       - uses: actions/upload-artifact@v7
         with: {name: windows-distributions, path: dist/, if-no-files-found: error}
 
@@ -165,11 +153,9 @@ jobs:
         with: {name: linux-agent, path: crates/guac-bridge/assets}
       - uses: actions/download-artifact@v8
         with: {name: windows-agent, path: crates/guac-bridge/assets}
-      - uses: actions/setup-python@v7
-        with: {python-version: "3.12"}
       - name: Build Windows installer and measure its size
         shell: pwsh
-        run: ./installer/build.ps1
+        run: cargo xtask installer --prepared
       - name: Test installed private runtime without a shared framework
         shell: pwsh
         run: ./installer/test-install.ps1 -WithoutSharedRuntime
@@ -193,10 +179,11 @@ jobs:
           target: x86_64
           manylinux: "2_28"
           args: --release  --out dist
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v7
         with: {python-version: "3.12"}
       - run: python -m pip install maturin uv
-      - run: python -m maturin sdist --out dist
+      - run: cargo xtask python --prepared --sdist
       - name: Test uv package and optional Python module
         run: |
           export UV_TOOL_DIR="$RUNNER_TEMP/guac-tools"
@@ -205,10 +192,8 @@ jobs:
           "$UV_TOOL_BIN_DIR/guac-bridge" --version
           "$UV_TOOL_BIN_DIR/guac-bridge" ssh --help
           "$UV_TOOL_BIN_DIR/guac-bridge" llm --help
-          test ! -e "$UV_TOOL_BIN_DIR/guac-ssh-client"
-          test ! -e "$UV_TOOL_BIN_DIR/guac-llm-client"
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
-          python scripts/package-native.py dist/*.whl
+          cargo xtask portable --wheel dist/*.whl
       - name: Check source distribution contains the helper
         run: |
           tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
@@ -229,20 +214,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
       - name: Verify tag and manifest versions
         env: {RELEASE_TAG: "${{ github.ref_name }}"}
-        run: |
-          python - <<'PY'
-          import os, tomllib
-          py = tomllib.load(open('pyproject.toml','rb'))['project']['version']
-          rs = tomllib.load(open('Cargo.toml','rb'))['workspace']['package']['version']
-          expected = 'v'+py
-          assert py == rs
-          if os.environ['RELEASE_TAG'] == 'main':
-              assert os.environ['GITHUB_EVENT_NAME'] == 'push'
-          else:
-              assert os.environ['RELEASE_TAG'] == expected
-          PY
+        run: cargo xtask verify-release --tag "$RELEASE_TAG"
       - uses: actions/download-artifact@v8
         with: {pattern: "*-distributions", path: artifacts, merge-multiple: true}
       - name: Collect Python distributions
@@ -261,26 +236,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/download-artifact@v8
         with: {pattern: "*-distributions", path: dist, merge-multiple: true}
       - name: Build checksums and release notes
         env: {RELEASE_TAG: "${{ github.ref_name }}"}
-        run: |
-          sha256sum dist/* > SHA256SUMS
-          mv SHA256SUMS dist/
-          python - <<'PY'
-          import os, pathlib
-          import tomllib
-          version=tomllib.load(open('pyproject.toml','rb'))['project']['version']
-          tag='v'+version
-          if os.environ['RELEASE_TAG'] != 'main':
-              assert os.environ['RELEASE_TAG'] == tag
-          with open(os.environ['GITHUB_ENV'],'a') as env:
-              env.write('RELEASE_TAG='+tag+'\n')
-          text=pathlib.Path('CHANGELOG.md').read_text()
-          section=text.split('## '+version+'\n',1)[1].split('\n## ',1)[0].strip()
-          pathlib.Path('release-notes.md').write_text(section+'\n')
-          PY
+        run: cargo xtask release-notes
       - name: Publish release artifacts
         env: {GH_TOKEN: "${{ github.token }}"}
         run: gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md

@@ -116,24 +116,12 @@ impl Manager {
             ));
         } else {
             sections.push((
-                "legacy",
+                "unresponsive",
                 InfoBar::new()
                     .is_open(true)
-                    .severity(if bridge.online {
-                        InfoBarSeverity::Informational
-                    } else {
-                        InfoBarSeverity::Warning
-                    })
-                    .title(if bridge.online {
-                        "Older bridge"
-                    } else {
-                        "Bridge not responding"
-                    })
-                    .message(if bridge.online {
-                        "Restart this bridge with the current version to see live usage."
-                    } else {
-                        "Its registration is retained. No process has been terminated."
-                    })
+                    .severity(InfoBarSeverity::Warning)
+                    .title("Bridge not responding")
+                    .message("Its registration is retained. No process has been terminated.")
                     .into(),
             ));
         }
@@ -355,8 +343,6 @@ fn activity(bridge: &Bridge) -> &'static str {
         } else {
             "Listening, idle"
         }
-    } else if bridge.online {
-        "Running · usage unavailable"
     } else {
         "Unresponsive"
     }

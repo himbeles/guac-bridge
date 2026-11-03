@@ -1,10 +1,10 @@
 [workspace]
-members = ["crates/guac-bridge"]
+members = ["crates/guac-bridge", "xtask"]
 default-members = ["crates/guac-bridge"]
 resolver = "2"
 
 [workspace.package]
-version = "3.1.0"
+version = "4.0.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/himbeles/guac-bridge"

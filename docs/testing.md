@@ -10,10 +10,9 @@ flowchart TD
 ```
 
 ```shell
-python scripts/build-native.py
-cargo test -p guac-bridge
+cargo xtask check
 python -m pip install aiohttp
-python -m unittest discover -s tests/native -v
+cargo xtask integration --prepared
 ```
 
 Rust tests cover binary framing, arbitrary bytes and chunk boundaries, malformed inputs, Unicode Guacamole instructions, bundled executable identity and proxy exclusions. Windows CI also checks the native credential store with a disposable synthetic credential.

@@ -71,9 +71,9 @@ class TrayTests(unittest.TestCase):
         server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), PendingLogin)
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        child = subprocess.Popen([str(BINARY), 'ssh', '--url', f'http://127.0.0.1:{server.server_address[1]}',
+        child = subprocess.Popen([str(BINARY), 'ssh', f'http://127.0.0.1:{server.server_address[1]}',
             '--connection-id', 'test', '--data-source', 'mysql',
-            '--username', 'test', '--no-keyring', '--foreground', '--port', '0'],
+            '--user', 'test', '--no-keyring', '--foreground', '--port', '0'],
             env={**os.environ, 'GUAC_BRIDGE_PASSWORD': 'test', 'NO_PROXY': '127.0.0.1'})
         try:
             hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
@@ -140,7 +140,7 @@ class TrayTests(unittest.TestCase):
         self.assertFalse(registration.exists(), 'Refusing to replace an existing registration')
         registration.write_text(json.dumps(dict(pid=os.getpid(), control=server.server_address[1],
             token=token, identity='tray-smoke-test', username='frog-user', jump_url='https://guac.example/guacamole/#/client/MQBjAG15c3Fs?token=never-display', mode='llm', port=65534,
-            target='smoke-test:8000', version='test', executable=str(BINARY), instance=str(uuid.uuid4()))))
+            target='smoke-test:8000', version='test', executable=str(BINARY), instance=str(uuid.uuid4()), log=None)))
         child = None
         try:
             child = subprocess.Popen([str(BINARY), 'tray', '--background'])

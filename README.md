@@ -24,7 +24,7 @@ Open the desired Guacamole terminal in your browser and copy its full URL. Use i
 ### Connect
 
 ```shell
-guac-bridge ssh --url CONNECTION_URL
+guac-bridge ssh CONNECTION_URL
 ```
 
 For a Windows server, add `--server-os windows` to either bridge command or the SSH Match hook. The default is Linux. RDP connections are not supported.
@@ -47,7 +47,7 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-bridge ssh --save-password --url CONNECTION_URL --username GUACAMOLE_USERNAME --port %p"
+Match originalhost guac-server exec "guac-bridge ssh CONNECTION_URL --save-password --user GUACAMOLE_USERNAME --port %p"
 Match all
 ```
 
@@ -60,15 +60,15 @@ guac-bridge ssh --status --port 2222
 guac-bridge ssh --stop --port 2222
 ```
 
-Use a dedicated local port for each destination. Windows users can add `--show-console` to see the background bridge in a separate console.
+Use a dedicated local port for each destination.
 
 ## LLM bridge
 
 ```shell
-guac-bridge llm --url CONNECTION_URL
+guac-bridge llm CONNECTION_URL
 ```
 
-Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--target-port` for a different server port and `--port` for a different local port.
+Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--remote-port` for a different server port and `--port` for a different local port.
 
 The bridge runs in the background by default. Stop it with `guac-bridge llm --stop`. Use `--foreground` to keep it attached to this terminal until **Ctrl+C**.
 
@@ -83,16 +83,18 @@ guac-bridge list
 Lists registered SSH and LLM bridges with status, Guacamole username and the route
 **local URL → Guacamole jump-host URL → service on the remote server**.
 The server endpoint is loopback on the remote machine. Unresponsive registrations
-are marked explicitly. Older bridges need restarting to show their jump-host URL.
-URL credentials and authentication queries are omitted.
+are marked explicitly. URL credentials and authentication queries are omitted.
 
-`ssh` and `llm` start or reuse a managed background bridge by default. The existing
-`--ensure-running` flag remains supported. Use `--foreground` for an attached
-process, including when using `--port 0` for an automatically assigned local port.
+`ssh` and `llm` start or reuse a managed background bridge by default. Use
+`--foreground` for an attached process, including `--port 0` for an
+automatically assigned local port.
 
 ## Contribution
 
-The native CLI, helper and shared transport live in one [Cargo package](crates/guac-bridge). The uv package installs the same native executables.
+The application and helper live in [crates/guac-bridge](crates/guac-bridge).
+Build and check them on either platform with `cargo xtask build` and `cargo xtask check`.
+[Architecture](docs/architecture.md) describes module ownership and behavior to preserve.
+The uv package installs the same native client.
 
 See [Building](docs/building.md), [Testing](docs/testing.md), [Transport debugging](docs/transport-debugging.md) and [Benchmarking](docs/benchmarking.md). Submit issues and pull requests on [GitHub](https://github.com/himbeles/guac-bridge).
 
