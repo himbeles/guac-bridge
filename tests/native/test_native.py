@@ -99,6 +99,85 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child.returncode, 0, error)
         return error
 
+    async def test_prepare_update_stops_all_foreground_bridges(self):
+        target = await self.target(self.echo)
+        for mode in ('ssh', 'llm'):
+            child = await self.child('--port', '0', '--target-port', target, mode=mode)
+            while b'Bridge ready on ' not in await asyncio.wait_for(child.stderr.readline(), 20):
+                self.assertIsNone(child.returncode)
+        command = await asyncio.create_subprocess_exec(str(BINARY), 'prepare-update',
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
+        output, error = await asyncio.wait_for(command.communicate(), 25)
+        self.assertEqual(command.returncode, 0, (output+error).decode())
+        self.assertIn(b'Bridges and tray stopped', output+error)
+        for child in self.children:
+            await asyncio.wait_for(child.wait(), 5)
+            self.assertEqual(child.returncode, 0)
+        self.assertEqual(list((self.home/'data'/'guac-bridge').glob('*.json')), [])
+
+    async def test_update_gate_blocks_new_bridge_start(self):
+        import fcntl
+        directory = self.home/'data'/'guac-bridge'
+        directory.mkdir(parents=True)
+        with (directory/'update.lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            child = await self.child('--port', '0', '--target-port', 22)
+            await asyncio.wait_for(child.wait(), 5)
+            self.assertNotEqual(child.returncode, 0)
+            self.assertIn('update is in progress', (await child.stderr.read()).decode())
+
+    async def test_tray_registration_usage_and_authenticated_stop(self):
+        import re
+        target = await self.target(self.echo)
+        for mode in ('ssh', 'llm'):
+            with self.subTest(mode=mode):
+                child = await self.child('--port', '0', '--target-port', target, mode=mode)
+                while True:
+                    line = await asyncio.wait_for(child.stderr.readline(), 20)
+                    self.assertTrue(line, 'Bridge exited before ready')
+                    match = re.search(rb'Bridge ready on 127.0.0.1:(\d+)', line)
+                    if match:
+                        port = int(match[1])
+                        break
+                registration = self.home/'data'/'guac-bridge'/f'{mode}-{port}.json'
+                state = json.loads(registration.read_text())
+                self.assertEqual(state['mode'], mode)
+                self.assertEqual(state['port'], port)
+                self.assertEqual(state['pid'], child.pid)
+                self.assertTrue(state['instance'])
+
+                async def control(command, token=state['token']):
+                    reader, writer = await asyncio.open_connection('127.0.0.1', state['control'])
+                    writer.write((json.dumps(dict(command=command, token=token))+'\n').encode())
+                    await writer.drain()
+                    response = await asyncio.wait_for(reader.readline(), 3)
+                    writer.close()
+                    await writer.wait_closed()
+                    return response
+
+                self.assertEqual(await control('stop', 'incorrect'), b'')
+                self.assertIsNone(child.returncode)
+                self.assertEqual(await control('status'), b'OK\n')
+                initial = json.loads(await control('inspect'))
+                self.assertEqual(initial['uploaded'], 0)
+                payload = bytes(range(256))*512
+                await self.roundtrip(port, payload)
+                for _ in range(100):
+                    final = json.loads(await control('inspect'))
+                    if final['connections'] == 0:
+                        break
+                    await asyncio.sleep(.02)
+                self.assertEqual(final['uploaded'], len(payload))
+                self.assertEqual(final['downloaded'], len(payload))
+                self.assertEqual(final['connections'], 0)
+                self.assertEqual(final['total_connections'], 1)
+                self.assertIsNotNone(final['idle_ms'])
+                self.assertNotIn('token', final)
+                self.assertEqual(await control('stop'), b'OK\n')
+                await asyncio.wait_for(child.wait(), 5)
+                self.assertEqual(child.returncode, 0, (await child.stderr.read()).decode())
+                self.assertFalse(registration.exists())
+
     async def test_reliable_recovers_loss_corruption_and_duplicates_for_both_clients(self):
         target = await self.target(self.echo)
         for mode in ('ssh', 'llm'):

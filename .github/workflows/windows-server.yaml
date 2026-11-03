@@ -46,6 +46,7 @@ jobs:
           Copy-Item target/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe
           Remove-Item Env:RUSTFLAGS
           cargo build  --release --bins --examples
+      - run: cargo test --locked --lib
       - run: python -m pip install aiohttp
       - run: python tests/windows/probe.py
       - run: python -m unittest discover -s tests/windows -p 'test_*.py' -v

@@ -365,3 +365,11 @@ mod console;
 pub mod diagnostics;
 pub mod reliable;
 pub mod terminal_wire;
+
+#[cfg(feature = "client")]
+mod tray;
+#[cfg(feature = "client")]
+mod usage;
+
+#[cfg(feature = "client")]
+mod update;

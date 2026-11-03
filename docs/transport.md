@@ -23,8 +23,9 @@ confirm acceptance into Guacamole; reliable acknowledgements confirm decoding at
 the remote helper. Reduce `--input-window` to 4 or 2 if recovery warnings repeat,
 then try `--window 2`. See [Benchmarking](benchmarking.md) for controlled tuning.
 
-Stop and restart a managed bridge after changing its settings or installing an
-update. The running process retains its original executable and settings.
+Restart a managed bridge after changing its settings. The Windows installer and
+`guac-bridge update` stop bridges before upgrading; start them again afterwards.
+The running process retains its original executable and settings.
 
 See [Connections](connections.md) for interfaces and helper deployment, and
 [Transport debugging](transport-debugging.md) for collecting client and server logs.
