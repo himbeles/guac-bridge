@@ -741,7 +741,7 @@ dependencies = [
 
 [[package]]
 name = "guac-bridge"
-version = "2.2.0"
+version = "2.2.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -768,6 +768,7 @@ dependencies = [
  "url",
  "uuid",
  "windows-reactor",
+ "windows-reactor-setup",
  "windows-sys 0.61.2",
  "winresource",
 ]
@@ -2581,6 +2582,12 @@ dependencies = [
  "windows-core",
  "windows-time",
 ]
+
+[[package]]
+name = "windows-reactor-setup"
+version = "0.100.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b58ab97379ff5d211ca221d92e7e64ef50c6384c11a40ae68a8d89c19bd1ba6a"
 
 [[package]]
 name = "windows-result"

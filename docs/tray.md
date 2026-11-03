@@ -14,18 +14,22 @@ guac-bridge tray
 The installer also adds **Guac Bridge Manager** to the Start menu. The portable
 and Python installations use the same command.
 
-## Shared Windows UI runtime
+## Windows UI runtime
 
 The manager is written in Rust with `windows-reactor` and renders native WinUI 3
-controls. Install **Microsoft Windows App Runtime 2.4 or newer, x64**, separately
-from [Microsoft's downloads page](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
-It is shared with other applications. Guac Bridge does not bundle, extract or
-automatically install the runtime, and does not require .NET or a web view.
+controls. The **Windows installer bundles a private x64 Windows App Runtime**.
+Setup copies its DLLs, resources and licenses into the Guac Bridge directory;
+it needs no separate runtime download or system-wide runtime registration.
+Updates replace these files together with Guac Bridge, and uninstall removes them.
+A missing or damaged private runtime requires repairing or reinstalling Guac Bridge.
 
-If the runtime is missing, opening the manager displays Reactor's prerequisite
-message and a link to Microsoft. The command-line bridges and small native tray
-host continue to work. Manager startup errors are saved to `manager.log` in the
-per-user data directory. Install the runtime and reopen the manager.
+The **uv and portable packages** use the shared **Microsoft Windows App Runtime
+2.4 or newer, x64**, installed from
+[Microsoft's downloads page](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
+If it is missing, opening the manager displays Reactor's prerequisite message.
+The command-line bridges and small native tray host continue to work.
+Manager startup errors are saved to `manager.log` in the per-user data directory.
+The UI is native Rust/WinUI; it does not require .NET or a browser runtime.
 
 The tray host and the WinUI manager are separate processes. Closing the manager
 window keeps the tray and bridges running. Clicking the tray reopens the manager;

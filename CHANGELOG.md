@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.1
+
+- Bundle a private x64 Windows App Runtime with the Windows installer using Microsoft's `windows-reactor-setup`. The manager starts without a separately installed shared runtime; setup works offline and uninstall removes the private runtime.
+- Retain the existing framework-dependent uv and portable packages. Installer builds stage the private runtime separately, retain frog icons and version metadata, and include Microsoft's redistribution licenses.
+- Test the installed manager with the shared runtime removed, verify installer updates release the manager and tray, and report the actual compressed installer size against v2.2.0.
+
 ## 2.2.0
 
 - Replace the Windows manager with native WinUI 3 controls using Microsoft's Rust `windows-reactor` library. Organize the resizable view into a bridge sidebar, activity summary, live rate and cumulative traffic cards, and expandable technical details. Follow Windows light/dark appearance and retain the frog icon.

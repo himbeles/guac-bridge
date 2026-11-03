@@ -221,3 +221,21 @@ The client waits for a remote-shell acknowledgement every 24 KiB of Base64 uploa
 Use `--upload-batch-size 3072` for a smaller conservative setting, or `--upload-batch-size 49152` to test a larger batch. Values must be multiples of four from 3072 to 49152 bytes. The setting is forwarded to managed background bridges. Already cached helpers skip the upload.
 
 Run `python scripts/benchmark-upload.py` after a native build to reproduce a fresh-upload comparison with a real Bash PTY, simulated remote acknowledgement latency, installed-file integrity checks and deliberately dropped upload input. This simulation does not establish the buffering limits of a particular deployed jump host.
+
+## Windows installer with bundled UI runtime
+
+Run `./build.ps1 -Installer` to build both helpers, the clients and the installer.
+With matching helpers already prepared, `./installer/build.ps1` builds just the
+installer payload. Both paths require the Windows MSVC toolchain and Inno Setup 6.
+
+The installer build enables `bundled-ui` and uses the pinned
+`windows-reactor-setup` build dependency to stage a private x64 Windows App Runtime.
+Its first build downloads the pinned Microsoft runtime and projection packages
+from NuGet. Copy only the staged installer payload when packaging; the builder
+keeps Cargo intermediates and server helper binaries out of it and includes
+Microsoft's redistribution licenses. Shared-runtime builds remain the default
+for Cargo, uv and portable archives.
+
+`dist/installer-size.json` records the compressed installer size, its increase
+over v2.2.0, and the installed payload size. CI verifies the installed manager
+with the shared Windows App Runtime removed from the test user.

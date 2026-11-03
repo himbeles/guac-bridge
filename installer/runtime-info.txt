@@ -1,13 +1,11 @@
-Guac Bridge manager uses native WinUI 3 controls.
+Guac Bridge includes a private Windows App Runtime for its native WinUI manager.
 
-To open the manager, install Microsoft Windows App Runtime 2.4 or newer for x64:
-https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads
-
-The Windows App Runtime is installed separately and shared with other apps.
-It is not bundled with Guac Bridge, and this installer does not download it.
-The command-line SSH and LLM bridges and the tray icon continue to work without it.
+Setup installs the UI runtime files with Guac Bridge. No separate runtime download,
+registration, or system-wide runtime installation is needed. The private runtime
+is removed when Guac Bridge is uninstalled.
 
 Closing the manager window keeps the tray and bridges running. Use the tray icon
 or Start menu to reopen it. Use Exit tray to quit the tray, keeping bridges running.
 
-The manager requires Windows 11 / Windows Server 2025 or newer. Bridges and the tray host remain available on earlier Windows versions.
+The manager requires Windows 11 / Windows Server 2025 or newer. Bridges and the
+tray host remain available on earlier Windows versions.

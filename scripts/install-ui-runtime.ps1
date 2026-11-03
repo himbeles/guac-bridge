@@ -1,4 +1,4 @@
-# CI prerequisite only. The runtime is never copied to a wheel, portable archive or installer.
+# CI prerequisite for shared-runtime builds. The installer stages its own private runtime.
 $ErrorActionPreference = 'Stop'
 $runtime = Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 |
     Where-Object { [version]$_.Version -ge [version]'2.4.0.0' }

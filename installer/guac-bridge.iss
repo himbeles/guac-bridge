@@ -1,5 +1,5 @@
 #ifndef Version
-  #define Version "2.2.0"
+  #define Version "2.2.1"
 #endif
 [Setup]
 AppId={{66D9F158-5DF1-4B18-86C8-D10FE58B312E}
@@ -34,9 +34,7 @@ Name: "addtopath"; Description: "Add Guac Bridge to my user PATH"; Flags: checke
 
 [Files]
 Source: "..\\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\guac-bridge.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\guac-ssh-client.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\release\guac-llm-client.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\target\installer-payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\Guac Bridge Manager"; Filename: "{app}\guac-bridge.exe"; Parameters: "tray"

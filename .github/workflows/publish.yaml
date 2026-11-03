@@ -143,17 +143,34 @@ jobs:
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/package-native.py $wheel
-      - name: Build Windows installer
-        shell: pwsh
-        run: |
-          $releaseVersion = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
-          & "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe" "/DVersion=$releaseVersion" installer/guac-bridge.iss
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Exercise installer PATH opt-in and uninstall
-        shell: pwsh
-        run: ./installer/test-install.ps1
       - uses: actions/upload-artifact@v7
         with: {name: windows-distributions, path: dist/, if-no-files-found: error}
+
+  bundled-installer:
+    name: Windows installer with private WinUI runtime
+    needs: [agent, windows-agent]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with: {key: bundled-installer}
+      - uses: actions/download-artifact@v8
+        with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/download-artifact@v8
+        with: {name: windows-agent, path: crates/guac-bridge/assets}
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - name: Build Windows installer and measure its size
+        shell: pwsh
+        run: ./installer/build.ps1
+      - name: Test installed private runtime without a shared framework
+        shell: pwsh
+        run: ./installer/test-install.ps1 -WithoutSharedRuntime
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: {name: windows-installer-distributions, path: dist/, if-no-files-found: error}
 
   linux-distribution:
     name: Linux x86-64 portable and Python packages
@@ -195,7 +212,7 @@ jobs:
   publish:
     name: Publish to PyPI
     if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v'))
-    needs: [test-linux, windows, cargo-windows, linux-distribution]
+    needs: [test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -231,7 +248,7 @@ jobs:
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v'))
-    needs: [test-linux, windows, cargo-windows, linux-distribution]
+    needs: [test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
     runs-on: ubuntu-latest
     permissions: {contents: write}
     steps:
