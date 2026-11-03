@@ -10,6 +10,7 @@ include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 
 [features]
 default = ["client"]
+agent = []
 bundled-ui = ["client", "dep:windows-reactor-setup"]
 client = ["dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:fs2", "dep:windows-reactor"]
 
@@ -22,18 +23,9 @@ path = "src/main.rs"
 required-features = ["client"]
 
 [[bin]]
-name = "guac-ssh-client"
-path = "src/ssh_main.rs"
-required-features = ["client"]
-
-[[bin]]
-name = "guac-llm-client"
-path = "src/llm_main.rs"
-required-features = ["client"]
-
-[[bin]]
 name = "guac-bridge-agent"
 path = "src/agent.rs"
+required-features = ["agent"]
 
 [dependencies]
 anyhow = "1"

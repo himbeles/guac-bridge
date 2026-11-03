@@ -582,7 +582,7 @@ async fn benchmark_control(port: u16) -> Result<()> {
 }
 
 pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
-    let startup_guard = crate::update::startup_guard()?;
+    let startup_guard = crate::maintenance::startup_guard()?;
     let (base, connection, kind, source) = parse_url(&args)?;
     #[cfg(unix)]
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;

@@ -59,16 +59,16 @@ For a reproducible build, check out the desired tag or commit instead of a movin
 
 ```powershell
 $env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = 'rust-lld'
-cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl
+cargo build  --release -p guac-bridge --no-default-features --features agent --bin guac-bridge-agent --target x86_64-unknown-linux-musl
 Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64 -Force
 ```
 
-`--no-default-features` leaves out client networking and keychain dependencies. The musl helper is a Linux x86-64 executable; it is bundled by the Windows clients but runs only on the remote Linux server.
+`--no-default-features --features agent` builds the internal helper without client networking or keychain dependencies. The helper target is excluded from ordinary Cargo installations. The musl helper is a Linux x86-64 executable; it is bundled by the Windows clients but runs only on the remote Linux server.
 
 ### 3. Build and stage the Windows helper
 
 ```powershell
-cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-pc-windows-msvc
+cargo build  --release -p guac-bridge --no-default-features --features agent --bin guac-bridge-agent --target x86_64-pc-windows-msvc
 Copy-Item target/x86_64-pc-windows-msvc/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe -Force
 ```
 
@@ -83,16 +83,16 @@ cargo test  -p guac-bridge
 cargo clippy  -p guac-bridge --all-targets -- -D warnings
 
 & ./target/release/guac-bridge.exe --version
-& ./target/release/guac-ssh-client.exe --help
-& ./target/release/guac-llm-client.exe --help
+& ./target/release/guac-bridge.exe ssh --help
+& ./target/release/guac-bridge.exe llm --help
 ```
 
-The three clients in `target/release` embed both staged helpers. `GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT=1` makes a missing Windows asset a build error rather than silently producing a Linux-server-only client. A missing or invalid Linux asset also prevents a complete client build.
+The `guac-bridge` client in `target/release` embeds both staged helpers. `GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT=1` makes a missing Windows asset a build error rather than silently producing a Linux-server-only client. A missing or invalid Linux asset also prevents a complete client build.
 
-For a local Cargo installation of those entry points:
+For a local Cargo installation of the CLI:
 
 ```powershell
-cargo install  --path crates/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client --force
+cargo install  --path crates/guac-bridge --bin guac-bridge --force
 ```
 
 This installs into Cargo's binary directory, usually `%USERPROFILE%\.cargo\bin`. The installer below is the alternative for distributing to machines without Rust.
@@ -104,16 +104,14 @@ Use the version in the checkout's manifests. The commands read it from `Cargo.to
 ```powershell
 $version = ((Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value)
 if (-not $version) { throw 'Cannot read workspace version' }
-$inno = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
-& $inno "/DVersion=$version" installer/guac-bridge.iss
-if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+& ./installer/build.ps1
 
 New-Item -ItemType Directory -Force dist | Out-Null
-Compress-Archive -Path target/release/guac-bridge.exe,target/release/guac-ssh-client.exe,target/release/guac-llm-client.exe,LICENSE,README.md -DestinationPath "dist/guac-bridge-$version-windows-x86_64.zip" -Force
+Compress-Archive -Path target/release/guac-bridge.exe,LICENSE,README.md -DestinationPath "dist/guac-bridge-$version-windows-x86_64.zip" -Force
 Get-FileHash dist/* -Algorithm SHA256
 ```
 
-If Inno Setup is installed elsewhere, change `$inno`. The installer is written to `dist/guac-bridge-<version>-windows-x86_64-setup.exe`. It installs per user, requires no administrator privileges, and offers **Add Guac Bridge to my user PATH**. Both the installer and portable archive contain clients with their helpers embedded; separate helper files are unnecessary on end-user machines.
+The installer is written to `dist/guac-bridge-<version>-windows-x86_64-setup.exe`. It installs per user, requires no administrator privileges, and offers **Add Guac Bridge to my user PATH**. Both the installer and portable archive contain clients with their helpers embedded; separate helper files are unnecessary on end-user machines.
 
 ## Build Linux clients with Cargo
 
@@ -122,7 +120,7 @@ Run these commands on the Linux x86-64 client build machine, from the same sourc
 ```sh
 rustup target add x86_64-unknown-linux-musl
 mkdir -p crates/guac-bridge/assets
-cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+cargo build  --release -p guac-bridge --no-default-features --features agent --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
 cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
 ```
 
@@ -135,10 +133,10 @@ export GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT=1
 cargo build  --release -p guac-bridge --bins
 cargo test  -p guac-bridge
 cargo clippy  -p guac-bridge --all-targets -- -D warnings
-cargo install  --path crates/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client --force
+cargo install  --path crates/guac-bridge --bin guac-bridge --force
 
 mkdir -p dist
-tar -czf dist/guac-bridge-linux-x86_64.tar.gz LICENSE README.md -C target/release guac-bridge guac-ssh-client guac-llm-client
+tar -czf dist/guac-bridge-linux-x86_64.tar.gz LICENSE README.md -C target/release guac-bridge
 sha256sum dist/guac-bridge-linux-x86_64.tar.gz
 ```
 
@@ -199,14 +197,14 @@ maturin build --release  --out dist
 maturin sdist --out dist
 ```
 
-This optional step requires a Python interpreter. Maturin's `bin` bindings package the same three native client executables, with the small `guac_bridge.run(arguments)` launcher and `python -m guac_bridge`. There is no PyO3 extension or Python data path. Build the Windows wheel on Windows and the Linux wheel on Linux. CI uses a manylinux build environment for the Linux wheel; a normal native Linux Cargo build alone does not reproduce that compatibility guarantee.
+This optional step requires a Python interpreter. Maturin's `bin` bindings package the same native `guac-bridge` executable, with the small `guac_bridge.run(arguments)` launcher and `python -m guac_bridge`. There is no PyO3 extension or Python data path. Build the Windows wheel on Windows and the Linux wheel on Linux. CI uses a manylinux build environment for the Linux wheel; a normal native Linux Cargo build alone does not reproduce that compatibility guarantee.
 
 ## Cargo installation from Git and CI publication
 
 Once a version containing these changes is released, users can install its native commands directly with Cargo:
 
 ```sh
-cargo install  --git https://github.com/himbeles/guac-bridge --bin guac-bridge --bin guac-ssh-client --bin guac-llm-client
+cargo install  --git https://github.com/himbeles/guac-bridge --bin guac-bridge
 ```
 
 Use `--tag <release-tag>` to select an exact release. The automatic helper build behavior above applies to Git source installs; prepared Cargo packages and source distributions can contain the helper assets already.

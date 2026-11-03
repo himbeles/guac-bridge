@@ -372,7 +372,7 @@ mod tray;
 mod usage;
 
 #[cfg(feature = "client")]
-mod update;
+mod maintenance;
 
 #[cfg(all(feature = "client", windows))]
 mod manager;

@@ -4,7 +4,7 @@ $ErrorActionPreference = 'Stop'
 Push-Location (Split-Path $PSScriptRoot)
 try {
     $arguments = @('build', '--locked', '--release', '--features', 'bundled-ui',
-        '--bin', 'guac-bridge', '--bin', 'guac-ssh-client', '--bin', 'guac-llm-client')
+        '--bin', 'guac-bridge')
     $binaryDirectory = 'target/release'
     if ($Target) {
         $arguments += @('--target', $Target)
@@ -17,9 +17,7 @@ try {
     $payload = 'target/installer-payload'
     if (Test-Path $payload) { Remove-Item $payload -Recurse -Force }
     New-Item -ItemType Directory -Force $payload | Out-Null
-    foreach ($name in @('guac-bridge', 'guac-ssh-client', 'guac-llm-client')) {
-        Copy-Item "$binaryDirectory/$name.exe" $payload
-    }
+    Copy-Item "$binaryDirectory/guac-bridge.exe" $payload
     Get-ChildItem $binaryDirectory -File | Where-Object { $_.Extension -in '.dll', '.pri' } |
         Copy-Item -Destination $payload
     Get-ChildItem $binaryDirectory -Directory | Where-Object {

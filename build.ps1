@@ -12,16 +12,16 @@ try {
     if ($env:OS -ne 'Windows_NT') { throw 'Use make build on Linux.' }
     Invoke-Native rustup @('target','add','x86_64-unknown-linux-musl','x86_64-pc-windows-msvc')
     $env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = 'rust-lld'
-    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--bin','guac-bridge-agent','--target','x86_64-unknown-linux-musl')
+    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--features','agent','--bin','guac-bridge-agent','--target','x86_64-unknown-linux-musl')
     New-Item -ItemType Directory -Force crates/guac-bridge/assets | Out-Null
     Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64 -Force
-    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--bin','guac-bridge-agent','--target','x86_64-pc-windows-msvc')
+    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--features','agent','--bin','guac-bridge-agent','--target','x86_64-pc-windows-msvc')
     Copy-Item target/x86_64-pc-windows-msvc/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe -Force
     $env:GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT = '1'
     Invoke-Native cargo @('build','--locked','--release','--bins','--examples','--target','x86_64-pc-windows-msvc')
     # Existing installer/tests expect host binaries in target/release.
     New-Item -ItemType Directory -Force target/release | Out-Null
-    foreach ($name in @('guac-bridge','guac-ssh-client','guac-llm-client','guac-bridge-agent')) {
+    foreach ($name in @('guac-bridge','guac-bridge-agent')) {
         Copy-Item "target/x86_64-pc-windows-msvc/release/$name.exe" "target/release/$name.exe" -Force
     }
     New-Item -ItemType Directory -Force target/release/examples | Out-Null
@@ -34,7 +34,7 @@ try {
     New-Item -ItemType Directory -Force dist | Out-Null
     $version = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value
     if (!$version) { throw 'Cannot read Cargo workspace version' }
-    Compress-Archive -Path target/release/guac-bridge.exe,target/release/guac-ssh-client.exe,target/release/guac-llm-client.exe,LICENSE,README.md -DestinationPath "dist/guac-bridge-$version-windows-x86_64.zip" -Force
+    Compress-Archive -Path target/release/guac-bridge.exe,LICENSE,README.md -DestinationPath "dist/guac-bridge-$version-windows-x86_64.zip" -Force
     if ($Installer) {
         & ./installer/build.ps1 -Target x86_64-pc-windows-msvc
     }

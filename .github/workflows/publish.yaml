@@ -24,7 +24,7 @@ jobs:
         with: {targets: x86_64-unknown-linux-musl}
       - name: Build static helper without client dependencies
         run: >-
-          cargo build  --release -p guac-bridge --no-default-features
+          cargo build  --release -p guac-bridge --no-default-features --features agent
           --bin guac-bridge-agent --target x86_64-unknown-linux-musl
           --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
       - name: Check standalone executable
@@ -48,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           $env:RUSTFLAGS = '-C target-feature=+crt-static'
-          cargo build  --release --no-default-features --bin guac-bridge-agent
+          cargo build  --release --no-default-features --features agent --bin guac-bridge-agent
           New-Item -ItemType Directory -Force agent
           Copy-Item target/release/guac-bridge-agent.exe agent/guac-bridge-agent-windows-x86_64.exe
       - uses: actions/upload-artifact@v7
@@ -117,7 +117,9 @@ jobs:
       - name: Test native credential store
         env: {GUAC_TEST_NATIVE_KEYRING: "1"}
         run: cargo test  -p guac-bridge
-      - run: cargo build  --release -p guac-bridge --bins --examples
+      - run: |
+          cargo build --locked --release -p guac-bridge --bins --examples
+          Copy-Item crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe target/release/guac-bridge-agent.exe
       - run: python -m unittest discover -s tests/native -p test_windows.py -v
       - name: Install shared UI runtime for Windows tests
         run: ./scripts/install-ui-runtime.ps1
@@ -130,7 +132,7 @@ jobs:
         env: {GUAC_TEST_SHELL: cmd.exe}
         run: python -m unittest discover -s tests/windows -p test_bootstrap.py -v
       - run: python -m maturin build --release  --out dist
-      - name: Install and test uv entry points
+      - name: Install and test the uv CLI
         shell: pwsh
         run: |
           $env:UV_TOOL_DIR = "$env:RUNNER_TEMP/guac-tools"
@@ -138,8 +140,11 @@ jobs:
           $wheel = (Get-ChildItem dist/*.whl).FullName
           uv tool install --from $wheel guac-bridge
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
-          & "$env:UV_TOOL_BIN_DIR/guac-ssh-client.exe" --help
-          & "$env:UV_TOOL_BIN_DIR/guac-llm-client.exe" --help
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" ssh --help
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" llm --help
+          foreach ($legacy in @('guac-ssh-client.exe', 'guac-llm-client.exe')) {
+            if (Test-Path "$env:UV_TOOL_BIN_DIR/$legacy") { throw "Unexpected CLI alias: $legacy" }
+          }
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/package-native.py $wheel
@@ -198,8 +203,10 @@ jobs:
           export UV_TOOL_BIN_DIR="$RUNNER_TEMP/guac-bin"
           uv tool install --from dist/*.whl guac-bridge
           "$UV_TOOL_BIN_DIR/guac-bridge" --version
-          "$UV_TOOL_BIN_DIR/guac-ssh-client" --help
-          "$UV_TOOL_BIN_DIR/guac-llm-client" --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" ssh --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" llm --help
+          test ! -e "$UV_TOOL_BIN_DIR/guac-ssh-client"
+          test ! -e "$UV_TOOL_BIN_DIR/guac-llm-client"
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           python scripts/package-native.py dist/*.whl
       - name: Check source distribution contains the helper

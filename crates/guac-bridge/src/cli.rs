@@ -18,12 +18,8 @@ struct Cli {
 enum Command {
     #[command(hide = true)]
     Manager,
-    /// Stop bridges and tray, then upgrade this uv tool installation.
-    Update,
     /// Stop all registered bridges and the tray before an external update.
     PrepareUpdate,
-    #[command(hide = true)]
-    InternalUpdate { parent: u32, uv: std::path::PathBuf },
     /// Show the Windows tray and running bridge manager.
     Tray {
         #[arg(long, hide = true)]
@@ -166,17 +162,6 @@ impl Args {
         Ok(())
     }
 }
-pub fn alias_entry(mode: &str) -> i32 {
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|a| a == "tray" || a == "manager")
-    {
-        return main_entry(std::env::args_os());
-    }
-    let mut arguments = vec![OsString::from("guac-bridge"), OsString::from(mode)];
-    arguments.extend(std::env::args_os().skip(1));
-    main_entry(arguments)
-}
 pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let arguments: Vec<_> = arguments.into_iter().collect();
     let requested_hook = arguments.iter().any(|arg| {
@@ -195,22 +180,16 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             return code;
         }
     };
-    let maintenance = match &cli.command {
-        Command::Update => Some(crate::update::start()),
-        Command::PrepareUpdate => Some(crate::update::prepare()),
-        Command::InternalUpdate { parent, uv } => Some(crate::update::worker(*parent, uv)),
-        _ => None,
-    };
-    if let Some(result) = maintenance {
-        return match result {
-            Ok(()) => 0,
-            Err(e) => {
-                crate::console::line(&format!("Update failed: {e:#}"));
-                1
-            }
-        };
-    }
     let (mode, mut args) = match cli.command {
+        Command::PrepareUpdate => {
+            return match crate::maintenance::prepare() {
+                Ok(()) => 0,
+                Err(e) => {
+                    crate::console::line(&format!("Update preparation failed: {e:#}"));
+                    1
+                }
+            };
+        }
         Command::Manager => {
             #[cfg(windows)]
             {
@@ -237,7 +216,6 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
                 }
             };
         }
-        Command::Update | Command::PrepareUpdate | Command::InternalUpdate { .. } => unreachable!(),
         Command::Ssh(a) => ("ssh", a),
         Command::Llm(a) => ("llm", a),
     };

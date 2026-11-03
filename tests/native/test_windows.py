@@ -115,10 +115,8 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
                     started = True
         return ws
 
-    async def command(self,*flags,binary='guac-ssh-client.exe'):
-        args = [str(ROOT/'target/release'/binary)]
-        if binary == 'guac-bridge.exe':
-            args.append('ssh')
+    async def command(self,*flags):
+        args = [str(ROOT/'target/release/guac-bridge.exe'), 'ssh']
         args += ['--url',self.url,'--username','synthetic-user','--no-keyring','--startup-delay','0','--port',str(self.port),*flags]
         env = dict(os.environ, GUAC_BRIDGE_PASSWORD='synthetic-password',NO_PROXY='127.0.0.1')
         process = await asyncio.create_subprocess_exec(*args,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
@@ -135,11 +133,11 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(process.returncode,0,error.decode())
         return error.decode()
 
-    async def test_alias_start_reuse_status_stop_and_root_cli(self):
+    async def test_start_reuse_status_and_stop(self):
         self.assertIn('Bridge ready',await self.command('--ensure-running'))
         self.assertIn('already running',await self.command('--ensure-running'))
         self.assertEqual(self.commands,1)
-        self.assertIn('Bridge running',await self.command('--status',binary='guac-bridge.exe'))
+        self.assertIn('Bridge running',await self.command('--status'))
         self.assertIn('stopping',await self.command('--stop'))
         for _ in range(60):
             try:
@@ -154,7 +152,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_progress_is_visible_before_helper_becomes_ready(self):
         self.hold_ready = True
-        args = [str(ROOT/'target/release/guac-ssh-client.exe'),'--url',self.url,'--username','synthetic-user','--no-keyring','--startup-delay','0','--port',str(self.port),'--ensure-running']
+        args = [str(ROOT/'target/release/guac-bridge.exe'),'ssh','--url',self.url,'--username','synthetic-user','--no-keyring','--startup-delay','0','--port',str(self.port),'--ensure-running']
         env = dict(os.environ,GUAC_BRIDGE_PASSWORD='synthetic-password',NO_PROXY='127.0.0.1')
         process = await asyncio.create_subprocess_exec(*args,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
         self.children.append(process)

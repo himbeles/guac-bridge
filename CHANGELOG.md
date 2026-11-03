@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.0
+
+- Use `guac-bridge` as the single client CLI, with `ssh` and `llm` subcommands. Remove `guac-ssh-client` and `guac-llm-client` from Cargo, Python wheels, portable archives and Windows setup. Installer upgrades remove the obsolete executables.
+- Keep Python/PyPI and uv installations, including `python -m guac_bridge`. Remove the CLI's self-update command and its temporary updater process. Use `guac-bridge prepare-update`, followed by your external package manager or installer.
+- Remove the expandable per-bridge technical-details section from the manager. Keep the bridge list, activity, connection counts, traffic cards and stop/log controls.
+- Keep the private Windows UI runtime in the installer and test managed startup, package entry points and installer upgrade cleanup using the unified CLI.
+
 ## 2.2.1
 
 - Bundle a private x64 Windows App Runtime with the Windows installer using Microsoft's `windows-reactor-setup`. The manager starts without a separately installed shared runtime; setup works offline and uninstall removes the private runtime.

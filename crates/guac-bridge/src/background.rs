@@ -201,12 +201,7 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
     let password = crate::credentials::password(&args, &user)?;
     let exe = std::env::current_exe()?;
     let mut command = Command::new(&exe);
-    if !exe
-        .file_stem()
-        .is_some_and(|s| s == "guac-ssh-client" || s == "guac-llm-client")
-    {
-        command.arg(&args.mode);
-    }
+    command.arg(&args.mode);
     for (flag, value) in [
         ("--url", args.url.clone()),
         ("--username", args.username.clone()),
@@ -496,7 +491,6 @@ pub(crate) struct Bridge {
     pub key: String,
     pub instance: String,
     pub label: String,
-    pub details: String,
     pub usage: Option<crate::usage::Snapshot>,
     pub online: bool,
 }
@@ -552,13 +546,6 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
                     state.port.to_string()
                 },
                 state.target
-            ),
-            details: format!(
-                "PID: {}   Version: {}\r\nExecutable: {}\r\nInstance: {}",
-                state.pid,
-                state.version,
-                state.executable.display(),
-                state.instance
             ),
             state,
             usage,
