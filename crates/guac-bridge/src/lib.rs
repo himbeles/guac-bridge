@@ -373,3 +373,6 @@ mod usage;
 
 #[cfg(feature = "client")]
 mod update;
+
+#[cfg(all(feature = "client", windows))]
+mod manager;

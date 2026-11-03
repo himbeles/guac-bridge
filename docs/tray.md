@@ -12,7 +12,29 @@ guac-bridge tray
 ```
 
 The installer also adds **Guac Bridge Manager** to the Start menu. The portable
-and Python installations use the same command; no additional GUI runtime is needed.
+and Python installations use the same command.
+
+## Shared Windows UI runtime
+
+The manager is written in Rust with `windows-reactor` and renders native WinUI 3
+controls. Install **Microsoft Windows App Runtime 2.4 or newer, x64**, separately
+from [Microsoft's downloads page](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
+It is shared with other applications. Guac Bridge does not bundle, extract or
+automatically install the runtime, and does not require .NET or a web view.
+
+If the runtime is missing, opening the manager displays Reactor's prerequisite
+message and a link to Microsoft. The command-line bridges and small native tray
+host continue to work. Manager startup errors are saved to `manager.log` in the
+per-user data directory. Install the runtime and reopen the manager.
+
+The tray host and the WinUI manager are separate processes. Closing the manager
+window keeps the tray and bridges running. Clicking the tray reopens the manager;
+only one manager runs at a time. Exit tray and update preparation close the manager
+as well, waiting for both executables to exit before replacement.
+
+The responsive manager has a bridge sidebar, SSH/LLM tags and activity labels,
+live rate and cumulative usage cards, explicit stop confirmations and expandable
+technical details. It follows the Windows light/dark theme.
 
 The list labels each bridge `[SSH]` or `[LLM]` and shows its local endpoint and
 remote target. Select a bridge to see:
@@ -34,7 +56,7 @@ active SSH sessions and LLM requests. **Open log** opens the managed bridge's
 output log, or the configured debug log for a foreground bridge. A foreground
 bridge without a debug log has no log to open.
 
-Closing the manager hides its window. **Exit tray (keep bridges running)** removes
+Closing the manager exits its UI process while preserving the tray. **Exit tray (keep bridges running)** removes
 the tray icon and exits the manager. A subsequent bridge start launches the tray
 again, or use `guac-bridge tray` to reopen it.
 
@@ -73,7 +95,7 @@ The authentication token stays out of the UI and status responses. Treat the
 registration directory as private, as with the existing background controls.
 
 The manager holds a per-user file lock. A second manual launch raises the existing
-window; automatic launches reuse the existing manager. Explorer restarts are
+window; automatic launches reuse the existing tray host. Explorer restarts are
 handled by recreating the notification icon.
 
 A worker polls the control sockets, keeping socket waits off the UI thread.

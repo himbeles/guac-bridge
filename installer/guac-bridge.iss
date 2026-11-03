@@ -1,5 +1,5 @@
 #ifndef Version
-  #define Version "2.1.2"
+  #define Version "2.2.0"
 #endif
 [Setup]
 AppId={{66D9F158-5DF1-4B18-86C8-D10FE58B312E}
@@ -27,6 +27,7 @@ Compression=lzma2
 SolidCompression=yes
 UninstallDisplayIcon={app}\guac-bridge.exe
 LicenseFile=..\LICENSE
+InfoBeforeFile=runtime-info.txt
 
 [Tasks]
 Name: "addtopath"; Description: "Add Guac Bridge to my user PATH"; Flags: checkedonce

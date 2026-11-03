@@ -16,6 +16,8 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    #[command(hide = true)]
+    Manager,
     /// Stop bridges and tray, then upgrade this uv tool installation.
     Update,
     /// Stop all registered bridges and the tray before an external update.
@@ -165,7 +167,10 @@ impl Args {
     }
 }
 pub fn alias_entry(mode: &str) -> i32 {
-    if std::env::args_os().nth(1).is_some_and(|a| a == "tray") {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|a| a == "tray" || a == "manager")
+    {
         return main_entry(std::env::args_os());
     }
     let mut arguments = vec![OsString::from("guac-bridge"), OsString::from(mode)];
@@ -206,6 +211,23 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         };
     }
     let (mode, mut args) = match cli.command {
+        Command::Manager => {
+            #[cfg(windows)]
+            {
+                return match crate::manager::run() {
+                    Ok(()) => 0,
+                    Err(e) => {
+                        eprintln!("{e:#}");
+                        1
+                    }
+                };
+            }
+            #[cfg(not(windows))]
+            {
+                eprintln!("The manager is available on Windows");
+                return 1;
+            }
+        }
         Command::Tray { background } => {
             return match crate::tray::run(background) {
                 Ok(()) => 0,

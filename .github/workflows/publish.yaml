@@ -119,6 +119,8 @@ jobs:
         run: cargo test  -p guac-bridge
       - run: cargo build  --release -p guac-bridge --bins --examples
       - run: python -m unittest discover -s tests/native -p test_windows.py -v
+      - name: Install shared UI runtime for Windows tests
+        run: ./scripts/install-ui-runtime.ps1
       - run: python tests/windows/probe.py
       - run: python -m unittest discover -s tests/windows -p 'test_*.py' -v
       - name: Test Windows server from cmd shell

@@ -1,0 +1,11 @@
+Guac Bridge manager uses native WinUI 3 controls.
+
+To open the manager, install Microsoft Windows App Runtime 2.4 or newer for x64:
+https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads
+
+The Windows App Runtime is installed separately and shared with other apps.
+It is not bundled with Guac Bridge, and this installer does not download it.
+The command-line SSH and LLM bridges and the tray icon continue to work without it.
+
+Closing the manager window keeps the tray and bridges running. Use the tray icon
+or Start menu to reopen it. Use Exit tray to quit the tray, keeping bridges running.
