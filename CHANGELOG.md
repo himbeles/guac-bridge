@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.1.2
+
+- Keep the tray and bridges running when the manager window is closed with X or Alt+F4. Closing the window hides it; Exit tray remains the explicit quit action.
+- Fix bridge-list and detail-pane layout updates during native window resizing, maximize and restore.
+- Add native Windows regression coverage for system close and maximize/restore. Keep the existing UI framework and startup behavior.
+
 ## 2.1.1
 
 - Start the Windows tray as soon as the first bridge opens its local listener, before remote initialization. Restore it when reusing an existing background bridge.
