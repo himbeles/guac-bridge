@@ -357,6 +357,34 @@ fn metric(title: &str, value: String, row: i32, column: i32) -> View {
         )
 }
 pub(crate) fn run() -> Result<()> {
+    // Probe before calling Reactor's delay-loaded bootstrap. Never crash the CLI
+    // loader or silently attempt to fetch an OS compatibility/runtime component.
+    unsafe {
+        use windows_sys::{
+            Win32::{Foundation::FreeLibrary, System::LibraryLoader::*},
+            core::*,
+        };
+        let module = LoadLibraryW(w!("api-ms-win-appmodel-runtime-l1-1-5.dll"));
+        let supported = !module.is_null()
+            && GetProcAddress(module, c"TryCreatePackageDependency".as_ptr().cast()).is_some()
+            && GetProcAddress(module, c"AddPackageDependency".as_ptr().cast()).is_some();
+        if !module.is_null() {
+            FreeLibrary(module);
+        }
+        if !supported {
+            let message = w!(
+                "The WinUI manager requires Windows 11 or Windows Server 2025 (or newer). Command-line bridges and the tray remain available."
+            );
+            windows_sys::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                std::ptr::null_mut(),
+                message,
+                w!("Guac Bridge manager"),
+                0x10,
+            );
+            anyhow::bail!("The WinUI manager requires Windows 11 / Windows Server 2025 or newer");
+        }
+    }
+
     let lock = OpenOptions::new()
         .read(true)
         .write(true)

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 import unittest
@@ -53,6 +54,11 @@ def ui(hwnd, invoke=None):
 
 
 class TrayTests(unittest.TestCase):
+    def test_cli_starts_without_ui_activation(self):
+        result = subprocess.run([str(BINARY), '--version'], capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(b'guac-bridge', result.stdout)
+
     def test_bridge_launches_tray_before_remote_initialization(self):
         existing = user32.FindWindowW('GuacBridgeManager', None)
         if existing:
@@ -84,6 +90,7 @@ class TrayTests(unittest.TestCase):
                 user32.PostMessageW(hwnd, 0x111, 105, 0)
                 wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
 
+    @unittest.skipIf(sys.getwindowsversion().build < 22000, 'WinUI bootstrap requires Windows 11 APIs')
     def test_prepare_update_waits_for_tray_process_exit(self):
         existing = user32.FindWindowW('GuacBridgeManager', None)
         if existing:
@@ -101,6 +108,7 @@ class TrayTests(unittest.TestCase):
                 child.terminate()
                 child.wait(timeout=5)
 
+    @unittest.skipIf(sys.getwindowsversion().build < 22000, 'WinUI bootstrap requires Windows 11 APIs')
     def test_discovery_singleton_hide_reopen_and_exit(self):
         # Previous bridge tests may already have launched this job's tray.
         existing = user32.FindWindowW('GuacBridgeManager', None)

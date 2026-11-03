@@ -104,3 +104,5 @@ Older bridges remain manageable but cannot supply usage details until restarted
 with the new version. Unresponsive registrations are shown explicitly, retained,
 and never used for PID-based termination. Normal bridge shutdown removes only its
 own registration, verified using its token.
+
+The WinUI manager requires Windows 11 or Windows Server 2025 or newer because Reactor uses the OS package dependency APIs. Command-line bridges and the native tray host remain available on earlier Windows versions.

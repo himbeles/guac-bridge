@@ -9,3 +9,5 @@ The command-line SSH and LLM bridges and the tray icon continue to work without 
 
 Closing the manager window keeps the tray and bridges running. Use the tray icon
 or Start menu to reopen it. Use Exit tray to quit the tray, keeping bridges running.
+
+The manager requires Windows 11 / Windows Server 2025 or newer. Bridges and the tray host remain available on earlier Windows versions.
