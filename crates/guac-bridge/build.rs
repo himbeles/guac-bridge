@@ -84,6 +84,17 @@ fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     println!("cargo:rerun-if-changed=src");
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rerun-if-changed=assets/frog.ico");
+        println!("cargo:rerun-if-changed=assets/app.manifest");
+        winresource::WindowsResource::new()
+            .set_icon("assets/frog.ico")
+            .set_manifest_file("assets/app.manifest")
+            .set("FileDescription", "Guac Bridge")
+            .set("ProductName", "Guac Bridge")
+            .compile()
+            .expect("Cannot embed Windows icon, version and visual styles");
+    }
     let override_path = env::var_os("GUAC_BRIDGE_AGENT").map(PathBuf::from);
     let bundled = manifest.join("assets/guac-bridge-agent-linux-x86_64");
     let source = if let Some(path) = override_path {

@@ -5,6 +5,12 @@
 AppId={{66D9F158-5DF1-4B18-86C8-D10FE58B312E}
 AppName=Guac Bridge
 AppVersion={#Version}
+AppVerName=Guac Bridge {#Version}
+VersionInfoVersion={#Version}
+VersionInfoProductVersion={#Version}
+VersionInfoDescription=Guac Bridge {#Version} Setup
+SetupIconFile=..\crates\guac-bridge\assets\frog.ico
+WizardStyle=modern
 AppPublisher=Guac Bridge contributors
 AppPublisherURL=https://github.com/himbeles/guac-bridge
 DefaultDirName={localappdata}\Programs\Guac Bridge

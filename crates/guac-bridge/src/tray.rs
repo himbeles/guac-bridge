@@ -116,7 +116,7 @@ mod windows {
             data.uID = 1;
             data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
             data.uCallbackMessage = ICON;
-            data.hIcon = LoadIconW(std::ptr::null_mut(), IDI_APPLICATION);
+            data.hIcon = LoadIconW(GetModuleHandleW(std::ptr::null()), 1usize as PCWSTR);
             let tip = wide("Guac Bridge — manage running bridges");
             data.szTip[..tip.len()].copy_from_slice(&tip);
             Shell_NotifyIconW(operation, &data) != 0
@@ -460,11 +460,13 @@ mod windows {
         });
         unsafe {
             FreeConsole();
+            windows_sys::Win32::UI::Controls::InitCommonControls();
             let instance = GetModuleHandleW(std::ptr::null());
             let mut class: WNDCLASSW = std::mem::zeroed();
             class.lpfnWndProc = Some(window);
             class.hInstance = instance;
             class.lpszClassName = w!("GuacBridgeManager");
+            class.hIcon = LoadIconW(instance, 1usize as PCWSTR);
             class.hCursor = LoadCursorW(std::ptr::null_mut(), IDC_ARROW);
             class.hbrBackground = (COLOR_WINDOW + 1) as _;
             ensure!(RegisterClassW(&class) != 0, "Cannot register tray window");
@@ -483,9 +485,25 @@ mod windows {
                 std::ptr::null(),
             );
             ensure!(!hwnd.is_null(), "Cannot create tray window");
+            let font = CreateFontW(
+                -16,
+                0,
+                0,
+                0,
+                FW_NORMAL as i32,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET as u32,
+                OUT_DEFAULT_PRECIS as u32,
+                CLIP_DEFAULT_PRECIS as u32,
+                CLEARTYPE_QUALITY as u32,
+                DEFAULT_PITCH as u32,
+                w!("Segoe UI"),
+            );
             let child = |class: PCWSTR, title: PCWSTR, style: u32, id: usize| {
                 let handle = CreateWindowExW(
-                    WS_EX_CLIENTEDGE,
+                    0,
                     class,
                     title,
                     WS_CHILD | WS_VISIBLE | style,
@@ -498,10 +516,19 @@ mod windows {
                     instance,
                     std::ptr::null(),
                 );
+                windows_sys::Win32::UI::Controls::SetWindowTheme(
+                    handle,
+                    w!("Explorer"),
+                    std::ptr::null(),
+                );
                 SendMessageW(
                     handle,
                     WM_SETFONT,
-                    GetStockObject(DEFAULT_GUI_FONT) as usize,
+                    if font.is_null() {
+                        GetStockObject(DEFAULT_GUI_FONT) as usize
+                    } else {
+                        font as usize
+                    },
                     1,
                 );
                 handle
@@ -566,6 +593,9 @@ mod windows {
                 }
             }
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            if !font.is_null() {
+                DeleteObject(font);
+            }
         }
         Ok(())
     }

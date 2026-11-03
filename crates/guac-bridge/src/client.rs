@@ -590,6 +590,12 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
     let mut interrupt = tokio::signal::windows::ctrl_c()?;
     let listener=TcpListener::bind(("127.0.0.1",args.port())).await.with_context(|| format!("Cannot listen on 127.0.0.1:{}: the port is already in use or reserved. Choose another --port, or stop the process using it",args.port()))?;
 
+    #[cfg(windows)]
+    if !args.benchmark_control
+        && let Err(error) = crate::tray::launch()
+    {
+        crate::diagnostics::event(&format!("Cannot start tray: {error:#}"));
+    }
     let username = crate::credentials::username(&args)?;
     let password = crate::credentials::password(&args, &username)?;
     let mut http = reqwest::Client::builder()
