@@ -153,10 +153,11 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         && request(&s, "status").is_ok()
     {
         #[cfg(windows)]
-        if !args.stop && !args.status {
-            if let Err(error) = crate::tray::launch() {
-                crate::console::line(&format!("Warning: tray startup failed: {error:#}"));
-            }
+        if !args.stop
+            && !args.status
+            && let Err(error) = crate::tray::launch()
+        {
+            crate::console::line(&format!("Warning: tray startup failed: {error:#}"));
         }
         if args.stop {
             request(&s, "stop")?;
