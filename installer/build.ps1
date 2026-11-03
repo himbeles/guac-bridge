@@ -51,7 +51,7 @@ public static class GuacBuildManifest {
         $data = [GuacBuildManifest]::LockResource([GuacBuildManifest]::LoadResource($module, $resource))
         $bytes = New-Object byte[] $size
         [Runtime.InteropServices.Marshal]::Copy($data, $bytes, 0, $bytes.Length)
-        $xml = [Text.Encoding]::UTF8.GetString($bytes).TrimEnd([char]0)
+        $xml = [Text.Encoding]::UTF8.GetString($bytes).TrimEnd([char]0).TrimStart([char]0xFEFF)
         $xml | Set-Content target/installer-manifest.xml
         [xml]$document = $xml
         $description = $document.SelectSingleNode("//*[local-name()='description']")
