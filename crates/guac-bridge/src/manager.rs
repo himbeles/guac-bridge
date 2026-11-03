@@ -113,7 +113,27 @@ impl Manager {
                 ),
             ));
         } else {
-            sections.push(("legacy", InfoBar::new().is_open(true).severity(if bridge.online {InfoBarSeverity::Informational} else {InfoBarSeverity::Warning}).title(if bridge.online {"Older bridge"} else {"Bridge not responding"}).message(if bridge.online {"Restart this bridge with the current version to see live usage."} else {"Its registration is retained. No process has been terminated."}).into()));
+            sections.push((
+                "legacy",
+                InfoBar::new()
+                    .is_open(true)
+                    .severity(if bridge.online {
+                        InfoBarSeverity::Informational
+                    } else {
+                        InfoBarSeverity::Warning
+                    })
+                    .title(if bridge.online {
+                        "Older bridge"
+                    } else {
+                        "Bridge not responding"
+                    })
+                    .message(if bridge.online {
+                        "Restart this bridge with the current version to see live usage."
+                    } else {
+                        "Its registration is retained. No process has been terminated."
+                    })
+                    .into(),
+            ));
         }
         sections.push((
             "buttons",
