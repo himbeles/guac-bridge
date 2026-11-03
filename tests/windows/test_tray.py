@@ -1,4 +1,4 @@
-"""Native Win32 manager smoke test, including discovery and singleton behaviour."""
+"""Native tray and WinUI manager smoke tests, including process lifetime and usage."""
 import ctypes
 from ctypes import wintypes as w
 import json
@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import socketserver
 import subprocess
+import sys
 import threading
 import time
 import unittest
@@ -37,14 +38,27 @@ def wait_for(check, timeout=12):
     raise AssertionError('Timed out waiting for native manager state')
 
 
-def text(hwnd):
-    buffer = ctypes.create_unicode_buffer(8192)
-    # WM_GETTEXT supports edit controls in another process; GetWindowTextW does not.
-    user32.SendMessageW(hwnd, 0x000D, len(buffer), ctypes.addressof(buffer))
-    return buffer.value
+TITLE = 'Guac Bridge — running bridges'
+
+
+def manager():
+    return user32.FindWindowW(None, TITLE)
+
+
+def ui(hwnd, invoke=None):
+    args = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+        str(ROOT / 'tests/windows/uia.ps1'), '-Window', str(hwnd)]
+    if invoke:
+        args += ['-Invoke', invoke]
+    return subprocess.check_output(args, timeout=20).decode(errors='replace')
 
 
 class TrayTests(unittest.TestCase):
+    def test_cli_starts_without_ui_activation(self):
+        result = subprocess.run([str(BINARY), '--version'], capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(b'guac-bridge', result.stdout)
+
     def test_bridge_launches_tray_before_remote_initialization(self):
         existing = user32.FindWindowW('GuacBridgeManager', None)
         if existing:
@@ -76,22 +90,25 @@ class TrayTests(unittest.TestCase):
                 user32.PostMessageW(hwnd, 0x111, 105, 0)
                 wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
 
+    @unittest.skipIf(sys.getwindowsversion().build < 22000, 'WinUI bootstrap requires Windows 11 APIs')
     def test_prepare_update_waits_for_tray_process_exit(self):
         existing = user32.FindWindowW('GuacBridgeManager', None)
         if existing:
             user32.PostMessageW(existing, 0x111, 105, 0)
             wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
-        child = subprocess.Popen([str(BINARY), 'tray', '--background'])
+        child = subprocess.Popen([str(BINARY), 'tray'])
         try:
-            wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
+            wait_for(manager, timeout=30)
             result = subprocess.run([str(BINARY), 'prepare-update'], capture_output=True, timeout=30)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(child.wait(timeout=3), 0)
+            self.assertFalse(manager(), 'Update must close the WinUI process too')
         finally:
             if child.poll() is None:
                 child.terminate()
                 child.wait(timeout=5)
 
+    @unittest.skipIf(sys.getwindowsversion().build < 22000, 'WinUI bootstrap requires Windows 11 APIs')
     def test_discovery_singleton_hide_reopen_and_exit(self):
         # Previous bridge tests may already have launched this job's tray.
         existing = user32.FindWindowW('GuacBridgeManager', None)
@@ -128,45 +145,69 @@ class TrayTests(unittest.TestCase):
         try:
             child = subprocess.Popen([str(BINARY), 'tray', '--background'])
             hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
-            detail = user32.GetDlgItem(hwnd, 110)
-            wait_for(lambda: 'Total uploaded: 2.0 KiB' in text(detail))
-            self.assertIn('[LLM]', text(detail))
-            self.assertIn('Total downloaded: 4.0 KiB', text(detail))
-            self.assertNotIn(token, text(detail))
             self.assertFalse(user32.IsWindowVisible(hwnd))
+            self.assertFalse(manager(), 'Background tray must not open the manager')
             subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
-            wait_for(lambda: user32.IsWindowVisible(hwnd))
-            self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
-            # Start smaller than the runner desktop, independent of its resolution.
-            user32.MoveWindow(hwnd, 20, 20, 800, 460, True)
+            window = wait_for(manager, timeout=30)
+            content = wait_for(lambda: (value if 'Total uploaded' in value else None)
+                if (value := ui(window)) else None, timeout=30)
+            self.assertIn('LLM', content)
+            self.assertIn('2.0 KiB', content)
+            self.assertIn('Total downloaded', content)
+            self.assertIn('4.0 KiB', content)
+            self.assertNotIn(token, content)
+            # Keep the full window within the runner's small virtual desktop.
+            user32.MoveWindow(window, 10, 10, min(1000, user32.GetSystemMetrics(0) - 20),
+                min(680, user32.GetSystemMetrics(1) - 50), True)
+            subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', str(ROOT / 'tests/windows/uia.ps1'), '-Window', str(window),
+                '-Screenshot', str(ROOT / 'manager-preview.png')], check=True, timeout=20)
+            # A second launch raises the same UI process.
+            subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
+            self.assertEqual(manager(), window)
+            ui(window, 'Stop selected…')
+            self.assertIn('Disconnect and stop', ui(window))
+            self.assertNotIn('stop', commands, 'Confirmation must precede stop')
+            ui(window, 'Cancel')
+            self.assertNotIn('Disconnect and stop', ui(window))
+            # Resizing the native window preserves its content and constraints.
+            user32.MoveWindow(window, 20, 20, 800, 460, True)
             initial = w.RECT()
-            user32.GetWindowRect(detail, ctypes.byref(initial))
-            user32.SendMessageW(hwnd, 0x112, 0xF030, 0)  # SC_MAXIMIZE dispatches nested WM_SIZE
+            user32.GetWindowRect(window, ctypes.byref(initial))
+            user32.SendMessageW(window, 0x112, 0xF030, 0)
             enlarged = w.RECT()
-            user32.GetWindowRect(detail, ctypes.byref(enlarged))
-            self.assertGreater(enlarged.right - enlarged.left, initial.right - initial.left,
-                'Details must grow with the window when maximized')
-            user32.SendMessageW(hwnd, 0x112, 0xF120, 0)  # SC_RESTORE
-            restored = w.RECT()
-            user32.GetWindowRect(detail, ctypes.byref(restored))
-            self.assertEqual(restored.right - restored.left, initial.right - initial.left)
-            # Exercise direct close and the system command used by X / Alt+F4.
+            user32.GetWindowRect(window, ctypes.byref(enlarged))
+            self.assertGreater(enlarged.right - enlarged.left, initial.right - initial.left)
+            self.assertIn('Total uploaded', ui(window))
+            user32.SendMessageW(window, 0x112, 0xF120, 0)
+            # Both WM_CLOSE and X / Alt+F4 close only the manager process.
             for message, command in ((0x10, 0), (0x112, 0xF060)):
-                user32.PostMessageW(hwnd, message, command, 0)
-                wait_for(lambda: not user32.IsWindowVisible(hwnd))
+                user32.PostMessageW(window, message, command, 0)
+                wait_for(lambda: not manager())
                 self.assertIsNone(child.poll(), 'Closing the manager must preserve the tray process')
                 self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
                 self.assertNotIn('stop', commands)
                 subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
-                wait_for(lambda: user32.IsWindowVisible(hwnd))
-            user32.PostMessageW(hwnd, 0x111, 105, 0)  # Exit tray, keeping bridges
-            self.assertEqual(child.wait(timeout=10), 0)
+                window = wait_for(manager, timeout=30)
+                wait_for(lambda: '4.0 KiB' in ui(window), timeout=30)
+            user32.PostMessageW(hwnd, 0x111, 105, 0)
+            self.assertEqual(child.wait(timeout=20), 0)
+            self.assertFalse(manager(), 'Exit tray closes the manager too')
             self.assertTrue(registration.exists())
             self.assertNotIn('stop', commands)
         finally:
             if child and child.poll() is None:
-                child.terminate()
-                child.wait(timeout=5)
+                host = user32.FindWindowW('GuacBridgeManager', None)
+                if host:
+                    user32.PostMessageW(host, 0x111, 105, 0)
+                try:
+                    child.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    child.terminate()
+                    child.wait(timeout=5)
+            log = directory / 'manager.log'
+            if log.exists() and log.stat().st_size:
+                print('Manager diagnostics:', log.read_text(errors='replace'))
             registration.unlink(missing_ok=True)
             server.shutdown()
             server.server_close()

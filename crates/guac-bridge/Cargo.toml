@@ -10,7 +10,7 @@ include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 
 [features]
 default = ["client"]
-client = ["dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:fs2"]
+client = ["dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:fs2", "dep:windows-reactor"]
 
 [lib]
 name = "guac_bridge"
@@ -60,6 +60,7 @@ uuid = { version = "1", features = ["v4"], optional = true }
 fs2 = { version = "0.4", optional = true }
 
 [target.'cfg(windows)'.dependencies]
+windows-reactor = { version = "=0.100.0", optional = true }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_Controls"] }
 keyring = { version = "3", features = ["windows-native"], optional = true }
 

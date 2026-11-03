@@ -20,6 +20,8 @@ with tempfile.TemporaryDirectory() as temp:
     for document in ('LICENSE', 'README.md'):
         (folder/document).write_bytes((root/document).read_bytes())
     with zipfile.ZipFile(a.wheel) as wheel:
+        if windows and any(n.lower().endswith(('.dll', '.msix', '.msixbundle')) for n in wheel.namelist()):
+            raise SystemExit('Windows wheels must use the shared UI runtime, without bundled runtime files')
         for name in ('guac-bridge','guac-ssh-client','guac-llm-client'):
             name += '.exe' if windows else ''
             paths = [n for n in wheel.namelist() if n.endswith('/scripts/'+name)]

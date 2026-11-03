@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.0
+
+- Replace the Windows manager with native WinUI 3 controls using Microsoft's Rust `windows-reactor` library. Organize the resizable view into a bridge sidebar, activity summary, live rate and cumulative traffic cards, and expandable technical details. Follow Windows light/dark appearance and retain the frog icon.
+- Require Windows 11 / Windows Server 2025 or newer for the manager; delay-load its OS dependency to retain command-line and tray compatibility on earlier Windows systems.
+- Use the separately installed, shared Microsoft Windows App Runtime 2.4 or newer (x64). No UI runtime is bundled or automatically installed; installers disclose the prerequisite and CLI bridges and the tray remain usable without it.
+- Keep the tray host independent of the manager window. Closing the window preserves the tray and running bridges; reopening restores their current usage. Update preparation and Exit tray close the manager and wait for executable release.
+- Test WinUI discovery, traffic cards, stop confirmation, resizing, manager reopening and update shutdown with native Windows UI Automation.
+
 ## 2.1.2
 
 - Keep the tray and bridges running when the manager window is closed with X or Alt+F4. Closing the window hides it; Exit tray remains the explicit quit action.

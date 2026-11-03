@@ -92,3 +92,9 @@ See [Windows bridge manager](docs/tray.md).
 The Windows installer stops running bridges and the tray before updates. For uv
 tool installations, use `guac-bridge update` for the same shutdown and upgrade flow.
 Active sessions are disconnected; restart bridges afterwards.
+
+The Windows manager uses native WinUI 3 via Rust Reactor. Install the shared
+[Windows App Runtime 2.4+ (x64)](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads)
+separately; it is not bundled. Command-line bridges and the tray icon work without it.
+
+The WinUI manager requires Windows 11 or Windows Server 2025 or newer because Reactor uses the OS package dependency APIs. Command-line bridges and the native tray host remain available on earlier Windows versions.

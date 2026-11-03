@@ -85,6 +85,12 @@ fn main() {
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     println!("cargo:rerun-if-changed=src");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        // Reactor's framework bootstrap uses a Windows 11 API. Delay importing it so
+        // command-line bridges and the tray still start on older Windows systems.
+        if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+            println!("cargo:rustc-link-lib=delayimp");
+            println!("cargo:rustc-link-arg=/DELAYLOAD:api-ms-win-appmodel-runtime-l1-1-5.dll");
+        }
         println!("cargo:rerun-if-changed=assets/frog.ico");
         println!("cargo:rerun-if-changed=assets/app.manifest");
         winresource::WindowsResource::new()
