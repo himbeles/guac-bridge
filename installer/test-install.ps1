@@ -5,7 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 public static class GuacInstallerNative {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    public static extern IntPtr FindWindow(string className, string title);
+    public static extern IntPtr FindWindow(IntPtr className, string title);
     [DllImport("user32.dll")]
     public static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
 }
@@ -16,7 +16,7 @@ function Test-InstalledManager {
         $deadline = (Get-Date).AddSeconds(30)
         do {
             $title = 'Guac Bridge ' + [char]0x2014 + ' running bridges'
-            $window = [GuacInstallerNative]::FindWindow($null, $title)
+            $window = [GuacInstallerNative]::FindWindow([IntPtr]::Zero, $title)
             if ($window -ne [IntPtr]::Zero) { break }
             if ($tray.HasExited) { throw 'Installed tray exited before the manager opened' }
             Start-Sleep -Milliseconds 100
@@ -98,7 +98,7 @@ if ($WithoutSharedRuntime) {
     $deadline = (Get-Date).AddSeconds(30)
     do {
         $title = 'Guac Bridge ' + [char]0x2014 + ' running bridges'
-        $window = [GuacInstallerNative]::FindWindow($null, $title)
+        $window = [GuacInstallerNative]::FindWindow([IntPtr]::Zero, $title)
         if ($window -ne [IntPtr]::Zero) { break }
         Start-Sleep -Milliseconds 100
     } while ((Get-Date) -lt $deadline)
