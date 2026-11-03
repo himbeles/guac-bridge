@@ -30,4 +30,4 @@ integration: build
 	python -m unittest discover -s tests/native -p test_native.py -v
 package: build
 	mkdir -p dist
-	tar -czf dist/guac-bridge-linux-x86_64.tar.gz LICENSE README.md -C target/release guac-bridge guac-ssh-client guac-llm-client
+	tar -czf dist/guac-bridge-linux-x86_64.tar.gz LICENSE README.md -C target/release guac-bridge

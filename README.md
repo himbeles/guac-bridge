@@ -72,7 +72,7 @@ Enter your Guacamole credentials. The default local port is **8000**, forwarding
 
 Keep the bridge running while using the application. Stop it with **Ctrl+C**.
 
-The commands `guac-ssh-client` and `guac-llm-client` also work. Run any client with `--help` for credential storage, certificates, background operation and transport tuning.
+`guac-bridge` is the CLI entry point. Use its `ssh` and `llm` subcommands. Run `guac-bridge --help` or a subcommand with `--help` for credential storage, certificates, background operation and transport tuning.
 
 ## Contribution
 
@@ -89,9 +89,16 @@ On Windows, running bridges appear in the tray. Use `guac-bridge tray` to open
 the manager with SSH/LLM tags, live rates, session totals and stop controls.
 See [Windows bridge manager](docs/tray.md).
 
-The Windows installer stops running bridges and the tray before updates. For uv
-tool installations, use `guac-bridge update` for the same shutdown and upgrade flow.
-Active sessions are disconnected; restart bridges afterwards.
+The Windows installer stops running bridges and the tray before updates.
+For a uv installation, stop them before upgrading:
+
+```shell
+guac-bridge prepare-update
+uv tool upgrade guac-bridge
+```
+
+Run the upgrade only after preparation succeeds. Active sessions disconnect;
+restart bridges afterwards. Guac Bridge does not update itself.
 
 The Windows manager uses native WinUI 3 via Rust Reactor. The Windows installer
 includes a private UI runtime, so no separate runtime installation is needed.

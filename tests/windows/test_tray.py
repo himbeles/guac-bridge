@@ -156,6 +156,7 @@ class TrayTests(unittest.TestCase):
             self.assertIn('Total downloaded', content)
             self.assertIn('4.0 KiB', content)
             self.assertNotIn(token, content)
+            self.assertNotIn('Bridge details', content)
             # Keep the full window within the runner's small virtual desktop.
             user32.MoveWindow(window, 10, 10, min(1000, user32.GetSystemMetrics(0) - 20),
                 min(680, user32.GetSystemMetrics(1) - 50), True)

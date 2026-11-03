@@ -22,16 +22,6 @@ path = "src/main.rs"
 required-features = ["client"]
 
 [[bin]]
-name = "guac-ssh-client"
-path = "src/ssh_main.rs"
-required-features = ["client"]
-
-[[bin]]
-name = "guac-llm-client"
-path = "src/llm_main.rs"
-required-features = ["client"]
-
-[[bin]]
 name = "guac-bridge-agent"
 path = "src/agent.rs"
 

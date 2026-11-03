@@ -105,7 +105,13 @@ if ($WithoutSharedRuntime) {
     if ($window -eq [IntPtr]::Zero) { throw 'Manager did not open for installer update test' }
 } else { Start-Sleep -Milliseconds 500 }
 if ($tray.HasExited) { throw 'Tray failed to start for update test' }
+# Simulate obsolete client aliases from an older installer, then upgrade.
+Copy-Item "$dest/guac-bridge.exe" "$dest/guac-ssh-client.exe"
+Copy-Item "$dest/guac-bridge.exe" "$dest/guac-llm-client.exe"
 Run-Setup '/TASKS=addtopath'
+foreach ($legacy in @('guac-ssh-client.exe', 'guac-llm-client.exe')) {
+    if (Test-Path "$dest/$legacy") { throw "Upgrade left an obsolete CLI entry point: $legacy" }
+}
 if (-not $tray.WaitForExit(15000)) { throw 'Installer did not stop the old tray before replacing binaries' }
 Uninstall
 if ([Environment]::GetEnvironmentVariable('Path','User').Split(';') -contains $dest) { throw 'Uninstall did not remove the PATH entry it added' }

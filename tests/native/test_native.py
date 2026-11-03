@@ -59,10 +59,8 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.servers.append(server)
         return server.sockets[0].getsockname()[1]
 
-    async def child(self, *extra, mode='ssh', binary=BINARY):
-        command = [str(binary)]
-        if binary == BINARY:
-            command.append(mode)
+    async def child(self, *extra, mode='ssh'):
+        command = [str(BINARY), mode]
         command += ['--url', self.url, '--username', 'test', '--no-keyring', '--startup-delay', '0', *map(str, extra)]
         child = await asyncio.create_subprocess_exec(*command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
         self.children.append(child)
@@ -547,17 +545,16 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             if slave is not None:
                 os.close(slave)
 
-    async def test_managed_alias_start_reuse_status_and_stop(self):
+    async def test_managed_start_reuse_status_and_stop(self):
         target = await self.target(self.echo)
         # Reserve then release an available client port.
         dummy = await asyncio.start_server(lambda r,w:w.close(),'127.0.0.1',0)
         port = dummy.sockets[0].getsockname()[1]
         dummy.close()
         await dummy.wait_closed()
-        binary = BINARY.with_name('guac-ssh-client')
         async def command(*flags, input_window=3, expected=0):
             child = await self.child('--port',port,'--target-port',target,'--upload-batch-size','12288',
-                                     '--input-window',input_window,*flags,binary=binary)
+                                     '--input-window',input_window,*flags)
             await asyncio.wait_for(child.wait(),25)
             error = (await child.stderr.read()).decode()
             self.assertEqual(child.returncode,expected,error)

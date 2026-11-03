@@ -37,8 +37,8 @@ only one manager runs at a time. Exit tray and update preparation close the mana
 as well, waiting for both executables to exit before replacement.
 
 The responsive manager has a bridge sidebar, SSH/LLM tags and activity labels,
-live rate and cumulative usage cards, explicit stop confirmations and expandable
-technical details. It follows the Windows light/dark theme.
+live rate and cumulative usage cards, connection activity and explicit stop
+confirmations. It follows the Windows light/dark theme.
 
 The list labels each bridge `[SSH]` or `[LLM]` and shows its local endpoint and
 remote target. Select a bridge to see:
@@ -47,7 +47,6 @@ remote target. Select a bridge to see:
 - Sampled upload and download rates, refreshed approximately every two seconds.
 - Total uploaded and downloaded payload since that bridge started, and time since
   its last payload transfer. Totals remain available when connections close.
-- PID, version, executable path and a unique bridge instance ID.
 
 Upload means bytes read from local clients. Download means bytes successfully
 written to local clients. Counters exclude helper deployment, framing, ACKs and
@@ -72,23 +71,17 @@ so this also works when upgrading an older version that lacks tray support. Acti
 SSH sessions and LLM requests disconnect. If shutdown fails, the installer aborts
 before replacing files. Unresponsive registrations are retained; no PID is killed.
 
-For a uv tool installation, use:
+For a uv tool installation, prepare for the external upgrade:
 
 ```powershell
-guac-bridge update
+guac-bridge prepare-update
+uv tool upgrade guac-bridge
 ```
 
-This verifies that the command belongs to the uv tool installation, stops bridges
-and the tray, then runs `uv tool upgrade guac-bridge`, preserving uv's saved install
-settings. On Windows, an updater copied outside the installation runs in a separate
-window, waits for the original launcher to exit, then performs the upgrade. That
-window reports success or failure; the initial command only reports that it launched
-the updater. New bridge starts are blocked while this updater runs. Start bridges
-again with your normal command after updating. Connections are not restarted.
-
-A direct `uv tool upgrade guac-bridge` is not intercepted. For direct uv/pip commands
-or manual portable replacements, first run `guac-bridge prepare-update` and check
-that it succeeds. Do not start bridges between preparation and replacement.
+Run the upgrade only if preparation succeeds. For direct pip commands or manual
+portable replacements, also run `guac-bridge prepare-update` first. Do not start
+bridges between preparation and replacement. Active sessions disconnect; start
+bridges again afterwards. The CLI has no self-update command.
 
 ## Tracking and control
 

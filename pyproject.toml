@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "guac-bridge"
-version = "2.2.1"
+version = "3.0.0"
 description = "SSH and OpenAI-compatible endpoints through Guacamole, powered by Rust"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,5 +21,5 @@ bindings = "bin"
 python-source = "python"
 module-name = "guac_bridge"
 python-packages = ["guac_bridge"]
-targets = [{name="guac-bridge",kind="bin"}, {name="guac-ssh-client",kind="bin"}, {name="guac-llm-client",kind="bin"}]
+targets = [{name="guac-bridge",kind="bin"}]
 include = [{path="crates/guac-bridge/assets/*",format="sdist"}, {path=".cargo/config.toml",format="sdist"}]
