@@ -156,6 +156,9 @@ class TrayTests(unittest.TestCase):
             self.assertIn('Total downloaded', content)
             self.assertIn('4.0 KiB', content)
             self.assertNotIn(token, content)
+            # Keep the full window within the runner's small virtual desktop.
+            user32.MoveWindow(window, 10, 10, min(1000, user32.GetSystemMetrics(0) - 20),
+                min(680, user32.GetSystemMetrics(1) - 50), True)
             subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
                 '-File', str(ROOT / 'tests/windows/uia.ps1'), '-Window', str(window),
                 '-Screenshot', str(ROOT / 'manager-preview.png')], check=True, timeout=20)
@@ -194,8 +197,17 @@ class TrayTests(unittest.TestCase):
             self.assertNotIn('stop', commands)
         finally:
             if child and child.poll() is None:
-                child.terminate()
-                child.wait(timeout=5)
+                host = user32.FindWindowW('GuacBridgeManager', None)
+                if host:
+                    user32.PostMessageW(host, 0x111, 105, 0)
+                try:
+                    child.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    child.terminate()
+                    child.wait(timeout=5)
+            log = directory / 'manager.log'
+            if log.exists() and log.stat().st_size:
+                print('Manager diagnostics:', log.read_text(errors='replace'))
             registration.unlink(missing_ok=True)
             server.shutdown()
             server.server_close()

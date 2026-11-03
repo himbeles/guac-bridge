@@ -90,8 +90,10 @@ impl Manager {
             sections.push((
                 "connections",
                 label(format!(
-                    "{} active connections · {} since start",
-                    s.connections, s.total_connections
+                    "{} active connection{} · {} since start",
+                    s.connections,
+                    if s.connections == 1 { "" } else { "s" },
+                    s.total_connections
                 )),
             ));
             sections.push((
@@ -242,6 +244,7 @@ impl Component for Manager {
                 bridge.instance.clone(),
                 Button::new()
                     .horizontal_alignment(HorizontalAlignment::Stretch)
+                    .horizontal_content_alignment(HorizontalAlignment::Left)
                     .style(if selected {
                         ButtonStyle::Accent
                     } else {

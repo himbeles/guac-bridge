@@ -76,6 +76,7 @@ mod windows {
     struct Host {
         manager: Option<Child>,
         taskbar: u32,
+        retries: u32,
     }
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().chain(Some(0)).collect()
@@ -126,7 +127,7 @@ mod windows {
         }
         search.hwnd
     }
-    fn open_manager(host: &mut Host) -> Result<()> {
+    fn open_manager(host: &mut Host, window: HWND) -> Result<()> {
         if let Some(child) = &mut host.manager
             && child.try_wait()?.is_none()
         {
@@ -135,6 +136,13 @@ mod windows {
                 unsafe {
                     ShowWindow(hwnd, SW_RESTORE);
                     SetForegroundWindow(hwnd);
+                }
+            } else if host.retries > 0 {
+                // Closing the last WinUI window precedes process exit. Preserve
+                // an immediate reopen request without blocking the tray loop.
+                host.retries -= 1;
+                unsafe {
+                    SetTimer(window, 1, 100, None);
                 }
             }
             return Ok(());
@@ -190,8 +198,15 @@ mod windows {
             }
             match msg {
                 SHOW => {
-                    if let Err(e) = open_manager(&mut *ptr) {
+                    (*ptr).retries = 30;
+                    if let Err(e) = open_manager(&mut *ptr, hwnd) {
                         message(&format!("Cannot open manager: {e:#}"), true);
+                    }
+                }
+                WM_TIMER if wp == 1 => {
+                    KillTimer(hwnd, 1);
+                    if let Err(e) = open_manager(&mut *ptr, hwnd) {
+                        message(&format!("Cannot reopen manager: {e:#}"), true);
                     }
                 }
                 WM_COMMAND => match wp & 0xffff {
@@ -332,6 +347,7 @@ mod windows {
         let mut host = Box::new(Host {
             manager: None,
             taskbar: 0,
+            retries: 0,
         });
         unsafe {
             FreeConsole();
