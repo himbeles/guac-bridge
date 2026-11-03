@@ -58,10 +58,25 @@ function Uninstall {
 if ($WithoutSharedRuntime) {
     & target/release/guac-bridge.exe prepare-update
     if ($LASTEXITCODE -ne 0) { throw 'Cannot release running clients before runtime isolation' }
-    Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 | ForEach-Object {
-        Remove-AppxPackage -Package $_.PackageFullName -ErrorAction Stop
+    # Removing the newest framework can expose an older registered version.
+    # Match Reactor's actual x64/minimum-version requirement and remove each
+    # compatible version; older or x86 frameworks cannot satisfy the manager.
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        $frameworks = @(Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 |
+            Where-Object { $_.Architecture -eq 'X64' -and [version]$_.Version -ge [version]'2.4.0.0' })
+        if (!$frameworks.Count) { break }
+        foreach ($framework in $frameworks) {
+            Write-Host "Removing compatible shared runtime: $($framework.PackageFullName)"
+            Remove-AppxPackage -Package $framework.PackageFullName -ErrorAction Stop
+        }
+        Start-Sleep -Milliseconds 500
     }
-    if (Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2) { throw 'Shared UI runtime is still registered' }
+    $remaining = @(Get-AppxPackage -Name Microsoft.WindowsAppRuntime.2 |
+        Where-Object { $_.Architecture -eq 'X64' -and [version]$_.Version -ge [version]'2.4.0.0' })
+    if ($remaining.Count) {
+        $remaining | Format-List PackageFullName, Architecture, Version, Status
+        throw 'A compatible shared UI runtime is still registered'
+    }
 }
 Run-Setup '/TASKS=addtopath'
 if (!(Test-Path "$dest/Microsoft.WindowsAppRuntime.dll")) { throw 'Installer omitted the private runtime' }
