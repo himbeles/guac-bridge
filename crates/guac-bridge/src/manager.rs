@@ -401,6 +401,10 @@ pub(crate) fn run() -> Result<()> {
     let icon = background::directory()?.join("frog.ico");
     std::fs::write(&icon, include_bytes!("../assets/frog.ico"))?;
     let icon: &'static str = Box::leak(icon.to_string_lossy().into_owned().into_boxed_str());
-    App::run_component::<Manager>(icon).context("Cannot open WinUI manager. Install Microsoft Windows App Runtime 2.4 or newer (x64) from https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads")?;
+    #[cfg(feature = "bundled-ui")]
+    let help = "Cannot open the bundled WinUI manager. Repair or reinstall Guac Bridge to restore its UI runtime files.";
+    #[cfg(not(feature = "bundled-ui"))]
+    let help = "Cannot open WinUI manager. Install Microsoft Windows App Runtime 2.4 or newer (x64) from https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads";
+    App::run_component::<Manager>(icon).context(help)?;
     Ok(())
 }

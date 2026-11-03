@@ -36,9 +36,7 @@ try {
     if (!$version) { throw 'Cannot read Cargo workspace version' }
     Compress-Archive -Path target/release/guac-bridge.exe,target/release/guac-ssh-client.exe,target/release/guac-llm-client.exe,LICENSE,README.md -DestinationPath "dist/guac-bridge-$version-windows-x86_64.zip" -Force
     if ($Installer) {
-        $iscc = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
-        if (!(Test-Path $iscc)) { throw 'Install Inno Setup 6 to build the installer.' }
-        Invoke-Native $iscc @("/DVersion=$version",'installer/guac-bridge.iss')
+        & ./installer/build.ps1 -Target x86_64-pc-windows-msvc
     }
     Write-Host 'Build complete: target/release and dist'
 } finally {

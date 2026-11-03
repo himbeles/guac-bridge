@@ -93,9 +93,19 @@ fn main() {
         }
         println!("cargo:rerun-if-changed=assets/frog.ico");
         println!("cargo:rerun-if-changed=assets/app.manifest");
-        winresource::WindowsResource::new()
-            .set_icon("assets/frog.ico")
-            .set_manifest_file("assets/app.manifest")
+        #[cfg(feature = "bundled-ui")]
+        {
+            windows_reactor_setup::as_self_contained();
+            println!(
+                "cargo:rustc-link-arg-bins=/MANIFESTINPUT:{}",
+                manifest.join("assets/app.manifest").display()
+            );
+        }
+        let mut resource = winresource::WindowsResource::new();
+        resource.set_icon("assets/frog.ico");
+        #[cfg(not(feature = "bundled-ui"))]
+        resource.set_manifest_file("assets/app.manifest");
+        resource
             .set("FileDescription", "Guac Bridge")
             .set("ProductName", "Guac Bridge")
             .compile()
