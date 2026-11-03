@@ -20,6 +20,8 @@ enum Command {
     Manager,
     /// Stop all registered bridges and the tray before an external update.
     PrepareUpdate,
+    /// List registered bridges, their Guacamole destinations and local listeners.
+    List,
     /// Show the Windows tray and running bridge manager.
     Tray {
         #[arg(long, hide = true)]
@@ -74,9 +76,12 @@ pub(crate) struct Args {
     /// Skip the native credential store for this connection.
     #[arg(long)]
     pub no_keyring: bool,
-    /// Start or reuse a background bridge. It stays running after SSH exits; use --stop to end it.
-    #[arg(long, conflicts_with_all=["stop","status"])]
+    /// Start or reuse a background bridge (the default); use --stop to end it.
+    #[arg(long, conflicts_with_all=["stop","status","foreground"])]
     pub ensure_running: bool,
+    /// Run in this terminal until Ctrl+C instead of starting a background bridge.
+    #[arg(long, conflicts_with_all=["stop","status"])]
+    pub foreground: bool,
     /// Stop the managed bridge on --port, including its active connections.
     #[arg(long, conflicts_with = "status")]
     pub stop: bool,
@@ -125,6 +130,15 @@ impl Args {
             .unwrap_or(if self.mode == "ssh" { 22 } else { 8000 })
     }
     fn validate(&mut self) -> Result<()> {
+        if !self.foreground
+            && !self.managed_child
+            && !self.benchmark_control
+            && !self.forget_password
+            && !self.stop
+            && !self.status
+        {
+            self.ensure_running = true;
+        }
         ensure!(
             self.upload_batch_size.is_multiple_of(4),
             "--upload-batch-size must be a multiple of 4"
@@ -164,10 +178,26 @@ impl Args {
 }
 pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let arguments: Vec<_> = arguments.into_iter().collect();
-    let requested_hook = arguments.iter().any(|arg| {
-        arg.to_str()
-            .is_some_and(|value| matches!(value, "--ensure-running" | "--stop" | "--status"))
-    });
+    let default_background = arguments
+        .get(1)
+        .and_then(|a| a.to_str())
+        .is_some_and(|s| matches!(s, "ssh" | "llm"))
+        && !arguments.iter().any(|a| {
+            a.to_str().is_some_and(|s| {
+                matches!(
+                    s,
+                    "--foreground"
+                        | "--managed-child"
+                        | "--benchmark-control"
+                        | "--forget-password"
+                )
+            })
+        });
+    let requested_hook = default_background
+        || arguments.iter().any(|arg| {
+            arg.to_str()
+                .is_some_and(|value| matches!(value, "--ensure-running" | "--stop" | "--status"))
+        });
     let cli = match Cli::try_parse_from(arguments) {
         Ok(cli) => cli,
         Err(e) => {
@@ -181,6 +211,15 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         }
     };
     let (mode, mut args) = match cli.command {
+        Command::List => {
+            return match crate::background::list() {
+                Ok(()) => 0,
+                Err(e) => {
+                    eprintln!("Cannot list bridges: {e:#}");
+                    1
+                }
+            };
+        }
         Command::PrepareUpdate => {
             return match crate::maintenance::prepare() {
                 Ok(()) => 0,
@@ -220,7 +259,13 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         Command::Llm(a) => ("llm", a),
     };
     args.mode = mode.into();
-    let hook_output = args.ensure_running || args.stop || args.status;
+    let hook_output = args.ensure_running
+        || args.stop
+        || args.status
+        || (!args.foreground
+            && !args.managed_child
+            && !args.benchmark_control
+            && !args.forget_password);
     let result = (|| -> Result<()> {
         args.validate()?;
         if !args.ensure_running && !args.stop && !args.status {
@@ -277,6 +322,45 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn background_is_default_with_explicit_foreground_and_internal_exceptions() {
+        for mode in ["ssh", "llm"] {
+            for (extra, managed) in [
+                (vec![], true),
+                (vec!["--ensure-running"], true),
+                (vec!["--foreground"], false),
+                (vec!["--managed-child"], false),
+                (vec!["--benchmark-control"], false),
+                (vec!["--forget-password"], false),
+                (vec!["--stop"], false),
+                (vec!["--status"], false),
+            ] {
+                let cli = Cli::try_parse_from(
+                    ["guac-bridge", mode, "--url", "https://example.invalid"]
+                        .into_iter()
+                        .chain(extra),
+                )
+                .unwrap();
+                let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command else {
+                    panic!("bridge expected")
+                };
+                args.validate().unwrap();
+                assert_eq!(args.ensure_running, managed);
+            }
+        }
+        assert!(
+            Cli::try_parse_from([
+                "guac-bridge",
+                "ssh",
+                "--url",
+                "https://example.invalid",
+                "--ensure-running",
+                "--foreground"
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn tcp_and_gateway_windows_are_independent() {

@@ -6,7 +6,7 @@ input fallback. Stop an existing managed bridge after upgrading, then restart it
 with your normal command. The bundled helper updates automatically by content hash.
 
 ```powershell
-guac-bridge ssh --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223
+guac-bridge ssh --foreground --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223
 ```
 
 This protects the **client-to-helper console input** against missing, duplicated

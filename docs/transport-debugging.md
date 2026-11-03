@@ -6,7 +6,7 @@ Run the bridge in a PowerShell terminal while reproducing the problem:
 
 ```powershell
 guac-bridge ssh --port 2223 --stop
-guac-bridge ssh --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223 `
+guac-bridge ssh --foreground --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223 `
   --debug-log "$env:TEMP\guac-ssh-debug.log" `
   --server-debug-log '/home/YOUR_REMOTE_USER/.cache/guac-bridge/helpers/ssh-debug.log'
 ```

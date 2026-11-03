@@ -43,18 +43,14 @@ pub(crate) fn line(text: &str) {
         terminal_write(&format!("{text}\r\n"));
     }
 }
-fn draw(percent: usize, confirmed: bool, hook: bool) {
+fn draw(percent: usize, hook: bool) {
     let percent = percent.min(100);
     let filled = percent * 24 / 100;
-    let qualifier = if confirmed {
-        "remote confirmed"
-    } else {
-        "gateway acknowledged"
-    };
     let row = format!(
-        "\rHelper upload: {percent:3}% [{}{}] {qualifier:<20}   ",
+        "\rHelper upload: {percent:3}% [{}{}] v{}   ",
         "=".repeat(filled),
-        " ".repeat(24 - filled)
+        " ".repeat(24 - filled),
+        env!("CARGO_PKG_VERSION")
     );
     if std::io::stderr().is_terminal() {
         eprint!("{row}");
@@ -71,9 +67,9 @@ fn draw(percent: usize, confirmed: bool, hook: bool) {
 pub(crate) fn complete_upload() {
     if UPLOADING.swap(false, Ordering::Relaxed) {
         if PROGRESS.load(Ordering::Relaxed) != 0 {
-            draw(100, true, false);
+            draw(100, false);
         } else {
-            eprintln!("Helper upload: 100% (confirmed by remote shell)");
+            eprintln!("Helper upload: 100% · v{}", env!("CARGO_PKG_VERSION"));
         }
         COMPLETED.store(true, Ordering::Relaxed);
     }
@@ -91,7 +87,7 @@ pub(crate) fn hook_upload(text: &str) -> bool {
     if !std::io::stderr().is_terminal() {
         eprintln!("{text}");
     }
-    draw(percent, text.contains("remote shell"), true);
+    draw(percent, true);
     true
 }
 pub(crate) struct UploadProgress {
@@ -109,19 +105,14 @@ impl UploadProgress {
             last_reported: 0,
         }
     }
-    pub(crate) fn update(&mut self, percent: usize, confirmed: bool) {
+    pub(crate) fn update(&mut self, percent: usize, _confirmed: bool) {
         if !self.enabled || COMPLETED.load(Ordering::Relaxed) {
             return;
         }
         if std::io::stderr().is_terminal() {
-            draw(percent, confirmed, false);
+            draw(percent, false);
         } else if percent >= self.last_reported + 25 || percent == 100 {
-            let qualifier = if confirmed {
-                "confirmed by remote shell"
-            } else {
-                "gateway acknowledged"
-            };
-            eprintln!("Helper upload: {percent}% ({qualifier})");
+            eprintln!("Helper upload: {percent}% · v{}", env!("CARGO_PKG_VERSION"));
             self.last_reported = percent;
         }
         if percent == 100 {

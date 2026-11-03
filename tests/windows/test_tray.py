@@ -73,7 +73,7 @@ class TrayTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         child = subprocess.Popen([str(BINARY), 'ssh', '--url', f'http://127.0.0.1:{server.server_address[1]}',
             '--connection-id', 'test', '--data-source', 'mysql',
-            '--username', 'test', '--no-keyring', '--port', '0'],
+            '--username', 'test', '--no-keyring', '--foreground', '--port', '0'],
             env={**os.environ, 'GUAC_BRIDGE_PASSWORD': 'test', 'NO_PROXY': '127.0.0.1'})
         try:
             hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
@@ -139,7 +139,7 @@ class TrayTests(unittest.TestCase):
         registration = directory / 'llm-65534.json'
         self.assertFalse(registration.exists(), 'Refusing to replace an existing registration')
         registration.write_text(json.dumps(dict(pid=os.getpid(), control=server.server_address[1],
-            token=token, identity='tray-smoke-test', username=None, mode='llm', port=65534,
+            token=token, identity='tray-smoke-test', username='frog-user', jump_url='https://guac.example/guacamole/#/client/MQBjAG15c3Fs?token=never-display', mode='llm', port=65534,
             target='smoke-test:8000', version='test', executable=str(BINARY), instance=str(uuid.uuid4()))))
         child = None
         try:
@@ -155,6 +155,11 @@ class TrayTests(unittest.TestCase):
             self.assertIn('2.0 KiB', content)
             self.assertIn('Total downloaded', content)
             self.assertIn('4.0 KiB', content)
+            self.assertIn('https://guac.example/guacamole/#/client/MQBjAG15c3Fs', content)
+            self.assertIn('frog-user', content)
+            self.assertIn('http://127.0.0.1:65534', content)
+            self.assertIn('http://smoke-test:8000 (on server)', content)
+            self.assertNotIn('never-display', content)
             self.assertNotIn(token, content)
             self.assertNotIn('Bridge details', content)
             # Keep the full window within the runner's small virtual desktop.

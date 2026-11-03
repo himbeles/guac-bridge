@@ -134,8 +134,8 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         return error.decode()
 
     async def test_start_reuse_status_and_stop(self):
-        self.assertIn('Bridge ready',await self.command('--ensure-running'))
-        self.assertIn('already running',await self.command('--ensure-running'))
+        self.assertIn('Bridge ready',await self.command())
+        self.assertIn('already running',await self.command())
         self.assertEqual(self.commands,1)
         self.assertIn('Bridge running',await self.command('--status'))
         self.assertIn('stopping',await self.command('--stop'))

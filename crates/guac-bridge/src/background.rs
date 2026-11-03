@@ -22,6 +22,8 @@ struct State {
     identity: String,
     username: Option<String>,
     #[serde(default)]
+    jump_url: String,
+    #[serde(default)]
     mode: String,
     #[serde(default)]
     port: u16,
@@ -343,6 +345,7 @@ impl Drop for Managed {
 }
 pub(crate) async fn control(
     args: &Args,
+    username: &str,
     port: u16,
     stop: tokio::sync::mpsc::Sender<()>,
     usage: std::sync::Arc<crate::usage::Usage>,
@@ -356,7 +359,8 @@ pub(crate) async fn control(
         control: listener.local_addr()?.port(),
         token: uuid::Uuid::new_v4().to_string(),
         identity: identity(args),
-        username: args.username.clone(),
+        username: Some(username.into()),
+        jump_url: display_url(args.url.as_deref().unwrap_or_default()),
         mode: args.mode.clone(),
         port,
         target: format!("{}:{}", args.target_host, args.target_port()),
@@ -495,6 +499,47 @@ pub(crate) struct Bridge {
     pub online: bool,
 }
 impl Bridge {
+    pub fn destination(&self) -> String {
+        let url = display_url(&self.state.jump_url);
+        if url.is_empty() {
+            "Guacamole destination unavailable (restart bridge)".into()
+        } else {
+            url
+        }
+    }
+    pub fn local_url(&self) -> String {
+        let port = if self.state.port == 0 {
+            self.key.rsplit('-').next().unwrap_or("?").to_string()
+        } else {
+            self.state.port.to_string()
+        };
+        format!("{}://127.0.0.1:{port}", self.scheme())
+    }
+    pub fn server_url(&self) -> String {
+        if self.state.target.is_empty() {
+            "Server service unavailable".into()
+        } else {
+            format!("{}://{} (on server)", self.scheme(), self.state.target)
+        }
+    }
+    fn scheme(&self) -> &str {
+        if self.key.starts_with("ssh-") {
+            "ssh"
+        } else {
+            "http"
+        }
+    }
+    pub fn route(&self) -> String {
+        format!(
+            "{} → {} → {}",
+            self.local_url(),
+            self.destination(),
+            self.server_url()
+        )
+    }
+    pub fn user(&self) -> &str {
+        self.state.username.as_deref().unwrap_or("—")
+    }
     pub fn stop(&self) -> Result<()> {
         request(&self.state, "stop")
     }
@@ -502,6 +547,66 @@ impl Bridge {
     pub fn log_path(&self) -> Option<&PathBuf> {
         self.state.log.as_ref()
     }
+}
+
+// Display only navigation information, never URL credentials or authentication queries.
+fn display_url(value: &str) -> String {
+    let Ok(mut url) = url::Url::parse(value) else {
+        return String::new();
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return String::new();
+    }
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.set_query(None);
+    let fragment = url.fragment().and_then(|f| {
+        let path = f.split('?').next().unwrap_or_default();
+        path.strip_prefix("/client/")
+            .filter(|id| {
+                !id.is_empty()
+                    && id
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || "=_-%".contains(c))
+            })
+            .map(|_| path.to_owned())
+    });
+    url.set_fragment(fragment.as_deref());
+    url.to_string()
+}
+
+pub(crate) fn list() -> Result<()> {
+    let bridges = bridges()?;
+    if bridges.is_empty() {
+        println!("No registered bridges.");
+        return Ok(());
+    }
+    println!("TYPE\tSTATUS\tUSER\tLOCAL → GUACAMOLE → SERVER");
+    for bridge in bridges {
+        println!(
+            "{}\t{}\t{}\t{}",
+            bridge
+                .key
+                .split('-')
+                .next()
+                .unwrap_or("bridge")
+                .to_uppercase(),
+            if bridge.online {
+                "Running"
+            } else {
+                "Unresponsive"
+            },
+            single_line(bridge.user()),
+            single_line(&bridge.route())
+        );
+    }
+    Ok(())
+}
+fn single_line(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect()
 }
 pub(crate) fn bridges() -> Result<Vec<Bridge>> {
     let mut result = Vec::new();
@@ -634,6 +739,22 @@ mod control_tests {
     use super::*;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn display_urls_keep_connection_navigation_and_remove_secrets() {
+        assert_eq!(
+            display_url(
+                "https://alice:password@guac.example/guacamole/?token=secret#/client/MQBjAG15c3Fs?token=hidden"
+            ),
+            "https://guac.example/guacamole/#/client/MQBjAG15c3Fs"
+        );
+        assert_eq!(
+            display_url("https://guac.example/#token=secret"),
+            "https://guac.example/"
+        );
+        assert!(display_url("invalid").is_empty());
+        assert!(display_url("file:///private").is_empty());
+    }
 
     async fn roundtrip(command: &str, token: &str) -> (String, bool) {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))

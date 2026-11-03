@@ -1,7 +1,7 @@
 # Windows bridge manager
 
 A single native Windows tray icon starts automatically when an SSH or LLM bridge
-opens its local listener, including bridges started with `--ensure-running`.
+opens its local listener, including the default background startup and `--foreground` sessions.
 It also reappears when an existing background bridge is reused. Bridges enter
 the list once their remote helper is ready. The tray, manager and installer use
 the frog icon; Windows controls use native visual styles and Segoe UI. Open the bridge
@@ -38,10 +38,14 @@ as well, waiting for both executables to exit before replacement.
 
 The responsive manager has a bridge sidebar, SSH/LLM tags and activity labels,
 live rate and cumulative usage cards, connection activity and explicit stop
-confirmations. It follows the Windows light/dark theme.
+confirmations. It follows the Windows light/dark theme, with subtle frog-green selection and card accents.
 
-The list labels each bridge `[SSH]` or `[LLM]` and shows its local endpoint and
-remote target. Select a bridge to see:
+The sidebar shows SSH/LLM tags, the Guacamole jump-host URL, username and local URL.
+Select a bridge to see the route **local URL → Guacamole jump host → remote server service**,
+with the server loopback endpoint labelled explicitly. URL credentials and authentication
+queries are omitted. Older registrations need restarting to show their jump-host URL.
+The same route and user are available from `guac-bridge list` on Windows and Linux.
+Select a bridge to see:
 
 - Idle/transferring state, uptime, active and total local TCP connections.
 - Sampled upload and download rates, refreshed approximately every two seconds.
@@ -87,7 +91,7 @@ bridges again afterwards. The CLI has no self-update command.
 
 Each bridge registers in the existing per-user application data directory, using
 `ssh-PORT.json` or `llm-PORT.json`. A registration contains a random instance ID,
-PID, executable, version, target, and an authenticated loopback control endpoint.
+PID, executable, version, sanitized jump-host URL, Guacamole username, target, and an authenticated loopback control endpoint.
 The authentication token stays out of the UI and status responses. Treat the
 registration directory as private, as with the existing background controls.
 
