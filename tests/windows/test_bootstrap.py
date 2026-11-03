@@ -145,7 +145,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
                 "--no-keyring",
                 "--startup-delay",
                 "0",
-                "--local-port",
+                "--port",
                 "0",
                 "--remote-port",
                 str(port),

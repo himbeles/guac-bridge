@@ -6,7 +6,7 @@ input fallback. Stop an existing managed bridge after upgrading, then restart it
 with your normal command. The bundled helper updates automatically by content hash.
 
 ```powershell
-guac-bridge ssh --foreground 'YOUR_GUACAMOLE_URL' --user 'YOUR_USERNAME' --local-port 2223
+guac-bridge ssh --foreground 'YOUR_GUACAMOLE_URL' --user 'YOUR_USERNAME' --port 2223
 ```
 
 This protects the **client-to-helper console input** against missing, duplicated
@@ -58,8 +58,7 @@ fill timer or fragmenting full TCP frames into extra Guacamole input blobs.
 
 Foreground clients print recovery warnings to stderr, at most once every five
 seconds, with updated totals on orderly shutdown. Managed clients write them to
-their existing client log; use `--show-console` on Windows for a visible background
-console. The debug log also records the warnings when enabled.
+their client log. Use `--foreground` to see warnings in the current terminal. The debug log also records the warnings when enabled.
 
 Counters report retransmitted records, rejected records, invalid ACK checksums,
 and sequence gaps. They are **not IP packet-loss counters**. A retry can mean a

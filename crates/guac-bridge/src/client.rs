@@ -546,7 +546,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     #[cfg(windows)]
     let mut interrupt = tokio::signal::windows::ctrl_c()?;
-    let listener=TcpListener::bind(("127.0.0.1",args.port())).await.with_context(|| format!("Cannot listen on 127.0.0.1:{}: the port is already in use or reserved. Choose another --local-port, or stop the process using it",args.port()))?;
+    let listener=TcpListener::bind(("127.0.0.1",args.port())).await.with_context(|| format!("Cannot listen on 127.0.0.1:{}: the port is already in use or reserved. Choose another --port, or stop the process using it",args.port()))?;
 
     #[cfg(windows)]
     if !args.benchmark_control

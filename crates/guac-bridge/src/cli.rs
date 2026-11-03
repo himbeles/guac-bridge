@@ -137,10 +137,6 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             let mut line = String::new();
             std::io::stdin().lock().read_line(&mut line)?;
             args.resolved_password = Some(serde_json::from_str(&line)?);
-            #[cfg(windows)]
-            if args.show_console {
-                crate::background::visible_console()?;
-            }
         }
         if args.stop || args.status || args.background {
             return crate::background::handle(args);

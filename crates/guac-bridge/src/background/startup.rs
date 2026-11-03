@@ -80,7 +80,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         ensure!(
             s.identity == identity(&args)
                 && args.username.as_ref().is_none_or(|u| u == &s.username),
-            "A bridge with different settings already owns this port. Stop it first with --stop --local-port {}",
+            "A bridge with different settings already owns this port. Stop it first with --stop --port {}",
             args.port()
         );
         crate::console::line(&format!(
@@ -127,7 +127,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         &args.upload_batch_size.to_string(),
         "--server-os",
         args.server_os.as_str(),
-        "--local-port",
+        "--port",
         &args.port().to_string(),
         "--remote-port",
         &args.target_port().to_string(),
@@ -151,7 +151,6 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         ("--save-password", args.save_password),
         ("--no-keyring", args.no_keyring),
         ("--insecure", args.insecure),
-        ("--show-console", args.show_console),
     ] {
         if set {
             command.arg(flag);
@@ -175,11 +174,8 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(if args.show_console {
-            0x00000010 | 0x00000200
-        } else {
-            0x08000000 | 0x00000200
-        });
+        // Background bridges have no console and remain independent of the caller.
+        command.creation_flags(0x08000000 | 0x00000200);
     }
     #[cfg(unix)]
     {

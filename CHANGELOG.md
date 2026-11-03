@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.0.0
+
+- Simplify connection startup to `guac-bridge ssh URL --user USER` or `guac-bridge llm URL --user USER`. The URL is positional and required for startup; `--port` selects the local listener and `--remote-port` selects the server service. Background startup is the default; `--foreground` keeps an attached session. Remove `--show-console` and the redundant `--ensure-running` option.
+- Consolidate builds, helper staging, checks, portable packaging, installer construction and release preparation behind Rust's `cargo xtask`. Remove the competing Make, Python and PowerShell build scripts.
+- Make Cargo the application version source, including Python/uv package and installer metadata. Keep native, portable and Python/uv distribution paths.
+- Separate CLI options, managed-process startup and Guacamole session setup from forwarding, and expose `guac_bridge::run(argv)` as the application entry point.
+- Use the current bridge registration model and authenticated usage inspection. Remove compatibility defaults, status-only inspection fallback, compatibility UI messaging and obsolete executable cleanup. Retain unresponsive current registrations without PID-based termination.
+- Remove obsolete investigation scripts and archived benchmark reports. Keep focused build and architecture guidance, active protocol specifications and the current benchmark.
+
 ## 3.1.0
 
 - Start or reuse background bridges by default for `ssh` and `llm`. Keep `--ensure-running` as an explicit synonym and add `--foreground` for attached sessions. Update examples and lifecycle documentation.

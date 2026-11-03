@@ -216,20 +216,6 @@ async fn control_connection(
 }
 
 #[cfg(windows)]
-pub(crate) fn visible_console() -> Result<()> {
-    use std::os::windows::io::IntoRawHandle;
-    use windows_sys::Win32::System::Console::{STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
-    let output = OpenOptions::new().write(true).open("CONOUT$")?;
-    let error = output.try_clone()?;
-    // Keep the handles alive for the process lifetime, matching the OS standard handles.
-    unsafe {
-        SetStdHandle(STD_OUTPUT_HANDLE, output.into_raw_handle());
-        SetStdHandle(STD_ERROR_HANDLE, error.into_raw_handle());
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
 fn clear_parent_stdio_inheritance() -> Result<()> {
     use windows_sys::Win32::{
         Foundation::{

@@ -73,7 +73,7 @@ class TrayTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         child = subprocess.Popen([str(BINARY), 'ssh', f'http://127.0.0.1:{server.server_address[1]}',
             '--connection-id', 'test', '--data-source', 'mysql',
-            '--user', 'test', '--no-keyring', '--foreground', '--local-port', '0'],
+            '--user', 'test', '--no-keyring', '--foreground', '--port', '0'],
             env={**os.environ, 'GUAC_BRIDGE_PASSWORD': 'test', 'NO_PROXY': '127.0.0.1'})
         try:
             hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))

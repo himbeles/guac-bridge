@@ -17,7 +17,7 @@ pub(crate) struct BridgeOptions {
     #[arg(long)]
     pub data_source: Option<String>,
     /// Local loopback port (SSH: 2222, LLM: 8000).
-    #[arg(long = "local-port", help_heading = "Endpoints")]
+    #[arg(long = "port", help_heading = "Endpoints")]
     pub port: Option<u16>,
     /// Remote loopback service port (SSH: 22, LLM: 8000).
     #[arg(long = "remote-port", help_heading = "Endpoints")]
@@ -55,15 +55,12 @@ pub(crate) struct BridgeOptions {
     /// Run in this terminal until Ctrl+C instead of starting a background bridge.
     #[arg(long, conflicts_with_all=["stop","status"])]
     pub foreground: bool,
-    /// Stop the managed bridge on --local-port, including its active connections.
+    /// Stop the managed bridge on --port, including its active connections.
     #[arg(long, conflicts_with = "status")]
     pub stop: bool,
-    /// Show the managed bridge status on --local-port.
+    /// Show the managed bridge status on --port.
     #[arg(long)]
     pub status: bool,
-    /// Show a separate console for the managed process on Windows.
-    #[arg(long)]
-    pub show_console: bool,
     /// Use a manually installed helper instead of deploying the bundled agent.
     #[arg(long)]
     pub server_command: Option<String>,
@@ -139,7 +136,7 @@ impl BridgeOptions {
         ensure!(self.target_port() > 0, "Target port must be positive");
         ensure!(
             !(self.background || self.stop || self.status) || self.port() > 0,
-            "Managed bridges require a fixed --local-port greater than zero"
+            "Managed bridges require a fixed --port greater than zero"
         );
         ensure!(
             (1..=128).contains(&self.input_window),

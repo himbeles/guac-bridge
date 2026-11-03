@@ -47,7 +47,7 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-bridge ssh CONNECTION_URL --save-password --user GUACAMOLE_USERNAME --local-port %p"
+Match originalhost guac-server exec "guac-bridge ssh CONNECTION_URL --save-password --user GUACAMOLE_USERNAME --port %p"
 Match all
 ```
 
@@ -56,11 +56,11 @@ Connect with `ssh guac-server`. The hook starts or reuses the background bridge 
 The bridge stays running after SSH exits. Check or stop it with:
 
 ```shell
-guac-bridge ssh --status --local-port 2222
-guac-bridge ssh --stop --local-port 2222
+guac-bridge ssh --status --port 2222
+guac-bridge ssh --stop --port 2222
 ```
 
-Use a dedicated local port for each destination. Windows users can add `--show-console` to see the background bridge in a separate console.
+Use a dedicated local port for each destination.
 
 ## LLM bridge
 
@@ -68,7 +68,7 @@ Use a dedicated local port for each destination. Windows users can add `--show-c
 guac-bridge llm CONNECTION_URL
 ```
 
-Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--remote-port` for a different server port and `--local-port` for a different local port.
+Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--remote-port` for a different server port and `--port` for a different local port.
 
 The bridge runs in the background by default. Stop it with `guac-bridge llm --stop`. Use `--foreground` to keep it attached to this terminal until **Ctrl+C**.
 
@@ -86,7 +86,7 @@ The server endpoint is loopback on the remote machine. Unresponsive registration
 are marked explicitly. URL credentials and authentication queries are omitted.
 
 `ssh` and `llm` start or reuse a managed background bridge by default. Use
-`--foreground` for an attached process, including `--local-port 0` for an
+`--foreground` for an attached process, including `--port 0` for an
 automatically assigned local port.
 
 ## Contribution
