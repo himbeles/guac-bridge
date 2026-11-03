@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.1.1
+
+- Start the Windows tray as soon as the first bridge opens its local listener, before remote initialization. Restore it when reusing an existing background bridge.
+- Add a multi-resolution frog icon to the tray, manager, client executables and installer.
+- Enable native Windows visual styles and Explorer control theming, use Segoe UI, and remove sunken borders.
+- Embed client executable version metadata and explicit installer file/product versions; use the modern installer wizard.
+- Test tray startup during pending login and verify installer version metadata.
+
 ## 2.1.0
 
 - Add a native Windows tray manager for foreground and background bridges, with SSH/LLM tags, authenticated stop controls, executable/version details and unresponsive registration visibility.

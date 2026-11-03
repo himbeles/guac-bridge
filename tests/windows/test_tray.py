@@ -56,6 +56,7 @@ class TrayTests(unittest.TestCase):
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever, daemon=True).start()
         child = subprocess.Popen([str(BINARY), 'ssh', '--url', f'http://127.0.0.1:{server.server_address[1]}',
+            '--connection-id', 'test', '--data-source', 'mysql',
             '--username', 'test', '--no-keyring', '--port', '0'],
             env={**os.environ, 'GUAC_BRIDGE_PASSWORD': 'test', 'NO_PROXY': '127.0.0.1'})
         try:
