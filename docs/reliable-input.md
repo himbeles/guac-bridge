@@ -1,7 +1,7 @@
 # Reliable input transport
 
 All SSH and LLM bridges use this transport automatically, including managed
-bridges and executable aliases. There is no protocol selection flag and no raw
+bridges. There is no protocol selection flag and no raw
 input fallback. Stop an existing managed bridge after upgrading, then restart it
 with your normal command. The bundled helper updates automatically by content hash.
 

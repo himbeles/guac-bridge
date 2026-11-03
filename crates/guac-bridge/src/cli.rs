@@ -202,7 +202,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         Ok(cli) => cli,
         Err(e) => {
             let code = e.exit_code();
-            if requested_hook {
+            if requested_hook && code != 0 {
                 crate::console::line(e.to_string().trim_end());
             } else {
                 let _ = e.print();
