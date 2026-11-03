@@ -29,13 +29,13 @@ guac-bridge ssh --url CONNECTION_URL
 
 For a Windows server, add `--server-os windows` to either bridge command or the SSH Match hook. The default is Linux. RDP connections are not supported.
 
-Enter your Guacamole username and password. In another terminal:
+Enter your Guacamole username and password. Once the bridge is ready, connect:
 
 ```shell
 ssh -p 2222 SERVER_USERNAME@127.0.0.1
 ```
 
-Keep the bridge running while connected. Stop it with **Ctrl+C**.
+The command starts or reuses a background bridge and returns when ready. It keeps running after this terminal or SSH closes. Use `guac-bridge ssh --stop` to stop it. Add `--foreground` to run in the current terminal until **Ctrl+C**.
 
 ### Use an SSH config
 
@@ -47,7 +47,7 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-bridge ssh --ensure-running --save-password --url CONNECTION_URL --username GUACAMOLE_USERNAME --port %p"
+Match originalhost guac-server exec "guac-bridge ssh --save-password --url CONNECTION_URL --username GUACAMOLE_USERNAME --port %p"
 Match all
 ```
 
@@ -70,9 +70,25 @@ guac-bridge llm --url CONNECTION_URL
 
 Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--target-port` for a different server port and `--port` for a different local port.
 
-Keep the bridge running while using the application. Stop it with **Ctrl+C**.
+The bridge runs in the background by default. Stop it with `guac-bridge llm --stop`. Use `--foreground` to keep it attached to this terminal until **Ctrl+C**.
 
 `guac-bridge` is the CLI entry point. Use its `ssh` and `llm` subcommands. Run `guac-bridge --help` or a subcommand with `--help` for credential storage, certificates, background operation and transport tuning.
+
+## List bridges
+
+```shell
+guac-bridge list
+```
+
+Lists registered SSH and LLM bridges with status, Guacamole username and the route
+**local URL → Guacamole jump-host URL → service on the remote server**.
+The server endpoint is loopback on the remote machine. Unresponsive registrations
+are marked explicitly. Older bridges need restarting to show their jump-host URL.
+URL credentials and authentication queries are omitted.
+
+`ssh` and `llm` start or reuse a managed background bridge by default. The existing
+`--ensure-running` flag remains supported. Use `--foreground` for an attached
+process, including when using `--port 0` for an automatically assigned local port.
 
 ## Contribution
 

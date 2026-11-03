@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.0
+
+- Start or reuse background bridges by default for `ssh` and `llm`. Keep `--ensure-running` as an explicit synonym and add `--foreground` for attached sessions. Update examples and lifecycle documentation.
+- Add `guac-bridge list`, showing bridge status, Guacamole username and the local → jump host → remote service route. Retain and label unresponsive registrations.
+- Show Guacamole URLs and users in the Windows manager while keeping local endpoints and remote service URLs visible. Use subtle frog-green accents and preserve native light/dark controls.
+- Show the bundled helper version alongside upload progress and remove remote-confirmation wording from the progress row. Keep remote acknowledgements and checksum verification unchanged.
+- Omit URL credentials and authentication queries from displayed and stored jump-host metadata. Older registrations remain readable; restart those bridges to populate their jump-host URLs.
+
 ## 3.0.0
 
 - Use `guac-bridge` as the single client CLI, with `ssh` and `llm` subcommands. Remove `guac-ssh-client` and `guac-llm-client` from Cargo, Python wheels, portable archives and Windows setup. Installer upgrades remove the obsolete executables.

@@ -926,7 +926,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         let port=listener.local_addr()?.port();
         let (stop_tx,mut stop_rx)=mpsc::channel(1);
         let usage=Arc::new(crate::usage::Usage::default());
-        let _managed=crate::background::control(&args,port,stop_tx,usage.clone()).await?;
+        let _managed=crate::background::control(&args,&username,port,stop_tx,usage.clone()).await?;
         drop(startup_guard);
         if !args.benchmark_control{eprintln!("Bridge ready on 127.0.0.1:{port}; Ctrl+C to stop");}
         let control=async {if args.benchmark_control{benchmark_control(port).await}else{interrupt.recv().await;Ok(())}};

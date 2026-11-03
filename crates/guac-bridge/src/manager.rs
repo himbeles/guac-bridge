@@ -55,6 +55,8 @@ impl Manager {
         };
         let mut sections = vec![
             ("title", heading(endpoint(bridge), 22.0)),
+            ("user", label(format!("Guacamole user: {}", bridge.user()))),
+            ("route", label(bridge.route())),
             ("status", label(activity(bridge))),
         ];
         if let Some(s) = &bridge.usage {
@@ -246,41 +248,57 @@ impl Component for Manager {
             let selected = self.selected.as_ref() == Some(&bridge.instance);
             (
                 bridge.instance.clone(),
-                Button::new()
-                    .horizontal_alignment(HorizontalAlignment::Stretch)
-                    .horizontal_content_alignment(HorizontalAlignment::Left)
-                    .style(if selected {
-                        ButtonStyle::Accent
+                Border::new()
+                    .corner_radius(8.0)
+                    .border_thickness(Thickness::new(3.0, 0.0, 0.0, 0.0))
+                    .border_brush(if selected {
+                        Brush::Solid(Color::rgb(76, 132, 73))
                     } else {
-                        ButtonStyle::Subtle
+                        Brush::Solid(Color::transparent())
                     })
-                    .on_click(context.message(Message::Select(bridge.instance.clone())))
+                    .background(if selected {
+                        Brush::Solid(Color::argb(28, 96, 160, 80))
+                    } else {
+                        Brush::Solid(Color::transparent())
+                    })
                     .content(
-                        StackPanel::new().spacing(6.0).children((
-                            Border::new()
-                                .corner_radius(4.0)
-                                .padding(Thickness::new(8.0, 2.0, 8.0, 2.0))
-                                .horizontal_alignment(HorizontalAlignment::Left)
-                                .background(if selected {
-                                    ThemeBrush::CardBackground
-                                } else {
-                                    ThemeBrush::CardStroke
-                                })
-                                .content(
-                                    TextBlock::new()
-                                        .text(if bridge.key.starts_with("ssh-") {
-                                            "SSH"
+                        Button::new()
+                            .horizontal_alignment(HorizontalAlignment::Stretch)
+                            .horizontal_content_alignment(HorizontalAlignment::Left)
+                            .style(ButtonStyle::Subtle)
+                            .on_click(context.message(Message::Select(bridge.instance.clone())))
+                            .content(
+                                StackPanel::new().spacing(6.0).children((
+                                    Border::new()
+                                        .corner_radius(4.0)
+                                        .padding(Thickness::new(8.0, 2.0, 8.0, 2.0))
+                                        .horizontal_alignment(HorizontalAlignment::Left)
+                                        .background(if selected {
+                                            ThemeBrush::CardBackground
                                         } else {
-                                            "LLM"
+                                            ThemeBrush::CardStroke
                                         })
+                                        .content(
+                                            TextBlock::new()
+                                                .text(if bridge.key.starts_with("ssh-") {
+                                                    "SSH"
+                                                } else {
+                                                    "LLM"
+                                                })
+                                                .font_size(12.0)
+                                                .foreground(ThemeBrush::PrimaryText),
+                                        ),
+                                    TextBlock::new()
+                                        .text(endpoint(bridge))
+                                        .text_wrapping(TextWrapping::Wrap),
+                                    TextBlock::new().text(bridge.local_url()).font_size(12.0),
+                                    TextBlock::new()
+                                        .text(format!("User: {}", bridge.user()))
                                         .font_size(12.0)
-                                        .foreground(ThemeBrush::PrimaryText),
-                                ),
-                            TextBlock::new()
-                                .text(endpoint(bridge))
-                                .text_wrapping(TextWrapping::Wrap),
-                            TextBlock::new().text(activity(bridge)).font_size(12.0),
-                        )),
+                                        .text_wrapping(TextWrapping::Wrap),
+                                    TextBlock::new().text(activity(bridge)).font_size(12.0),
+                                )),
+                            ),
                     ),
             )
         });
@@ -296,7 +314,7 @@ impl Component for Manager {
         )).unwrap_or_else(View::empty);
         Grid::new().margin(24.0).rows([GridLength::Auto, GridLength::STAR, GridLength::Auto]).row_spacing(20.0).children((
             Grid::new().grid_row(0).columns([GridLength::STAR, GridLength::Auto]).children((
-                StackPanel::new().grid_column(0).spacing(6.0).children((heading("Running bridges",28.0), label("Connections, activity and data transferred since startup"))),
+                StackPanel::new().grid_column(0).spacing(6.0).children((heading("🐸 Running bridges",28.0), label("Connections, activity and data transferred since startup"))),
                 Button::new().grid_column(1).vertical_alignment(VerticalAlignment::Center).is_enabled(!self.busy && !self.bridges.is_empty()).on_click(context.message(Message::AskStop(true))).content("Stop all…"),
             )),
             Grid::new().grid_row(1).columns([GridLength::Pixel(290.0), GridLength::STAR]).column_spacing(24.0).children((
@@ -326,12 +344,7 @@ fn label(text: impl Into<String>) -> View {
         .into()
 }
 fn endpoint(bridge: &Bridge) -> String {
-    bridge
-        .label
-        .split_once("]  ")
-        .map(|(_, s)| s)
-        .unwrap_or(&bridge.label)
-        .to_string()
+    bridge.destination()
 }
 fn activity(bridge: &Bridge) -> &'static str {
     if let Some(s) = &bridge.usage {
@@ -355,7 +368,7 @@ fn metric(title: &str, value: String, row: i32, column: i32) -> View {
         .padding(16.0)
         .corner_radius(8.0)
         .background(ThemeBrush::CardBackground)
-        .border_brush(ThemeBrush::CardStroke)
+        .border_brush(Color::argb(55, 96, 150, 80))
         .border_thickness(1.0)
         .content(
             StackPanel::new()
