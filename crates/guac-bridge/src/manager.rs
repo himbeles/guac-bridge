@@ -360,6 +360,14 @@ fn metric(title: &str, value: String, row: i32, column: i32) -> View {
         )
 }
 pub(crate) fn run() -> Result<()> {
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(background::directory()?.join("manager.lock"))?;
+    lock.try_lock_exclusive()
+        .context("The bridge manager is already open")?;
     // Probe before calling Reactor's delay-loaded bootstrap. Never crash the CLI
     // loader or silently attempt to fetch an OS compatibility/runtime component.
     unsafe {
@@ -388,14 +396,6 @@ pub(crate) fn run() -> Result<()> {
         }
     }
 
-    let lock = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(background::directory()?.join("manager.lock"))?;
-    lock.try_lock_exclusive()
-        .context("The bridge manager is already open")?;
     let icon = background::directory()?.join("frog.ico");
     std::fs::write(&icon, include_bytes!("../assets/frog.ico"))?;
     let icon: &'static str = Box::leak(icon.to_string_lossy().into_owned().into_boxed_str());

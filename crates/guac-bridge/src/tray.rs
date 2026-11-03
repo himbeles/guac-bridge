@@ -113,6 +113,11 @@ mod windows {
                     search.hwnd = hwnd;
                     return 0;
                 }
+                // Bootstrap prerequisite dialogs belong to the manager too.
+                // Raise them on another click and dismiss them during shutdown.
+                if search.hwnd.is_null() && IsWindowVisible(hwnd) != 0 {
+                    search.hwnd = hwnd;
+                }
             }
             1
         }
