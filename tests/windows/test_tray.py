@@ -148,6 +148,9 @@ class TrayTests(unittest.TestCase):
             self.assertIn('Total downloaded', content)
             self.assertIn('4.0 KiB', content)
             self.assertNotIn(token, content)
+            subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', str(ROOT / 'tests/windows/uia.ps1'), '-Window', str(window),
+                '-Screenshot', str(ROOT / 'manager-preview.png')], check=True, timeout=20)
             # A second launch raises the same UI process.
             subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
             self.assertEqual(manager(), window)

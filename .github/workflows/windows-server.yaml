@@ -52,6 +52,9 @@ jobs:
         run: ./scripts/install-ui-runtime.ps1
       - run: python tests/windows/probe.py
       - run: python -m unittest discover -s tests/windows -p 'test_*.py' -v
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with: {name: "manager-preview-${{ runner.os }}-${{ matrix.os || 'publish' }}", path: manager-preview.png, if-no-files-found: ignore}
       - name: Bootstrap from cmd default shell
         env: {GUAC_TEST_SHELL: cmd.exe}
         run: python -m unittest discover -s tests/windows -p test_bootstrap.py -v
