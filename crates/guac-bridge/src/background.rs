@@ -153,8 +153,11 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
         && request(&s, "status").is_ok()
     {
         #[cfg(windows)]
-        if !args.stop && !args.status {
-            crate::tray::launch()?;
+        if !args.stop
+            && !args.status
+            && let Err(error) = crate::tray::launch()
+        {
+            crate::console::line(&format!("Warning: tray startup failed: {error:#}"));
         }
         if args.stop {
             request(&s, "stop")?;
@@ -193,6 +196,11 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
     }
     if args.status {
         bail!("No managed bridge running on port {}", args.port());
+    }
+    let _startup_guard = crate::update::startup_guard()?;
+    #[cfg(windows)]
+    if let Err(error) = crate::tray::launch() {
+        crate::console::line(&format!("Warning: tray startup failed: {error:#}"));
     }
     crate::console::line("Starting bridge…");
     // Prompt in the calling console. The password travels only over the child's stdin pipe.
@@ -457,7 +465,7 @@ pub(crate) fn visible_console() -> Result<()> {
 }
 
 #[cfg(windows)]
-fn clear_parent_stdio_inheritance() -> Result<()> {
+pub(crate) fn clear_parent_stdio_inheritance() -> Result<()> {
     use windows_sys::Win32::{
         Foundation::{
             GetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,

@@ -135,6 +135,60 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(process.returncode,0,error.decode())
         return error.decode()
 
+    async def test_ensure_running_starts_and_restores_tray(self):
+        import ctypes
+        from ctypes import wintypes as w
+        api = ctypes.WinDLL('user32', use_last_error=True)
+        api.FindWindowW.argtypes = [w.LPCWSTR, w.LPCWSTR]
+        api.FindWindowW.restype = w.HWND
+        api.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
+        def window():
+            return api.FindWindowW('GuacBridgeManager', None)
+        async def close_tray():
+            hwnd = window()
+            if hwnd:
+                api.PostMessageW(hwnd, 0x111, 105, 0)
+                for _ in range(100):
+                    if not window():
+                        return
+                    await asyncio.sleep(.05)
+                self.fail('Tray did not close')
+        for binary in ('guac-ssh-client.exe', 'guac-llm-client.exe', 'guac-bridge.exe'):
+            with self.subTest(binary=binary):
+                await close_tray()
+                self.hold_ready = True
+                self.ready_allowed.clear()
+                before = self.commands
+                start = asyncio.create_task(self.command('--ensure-running', binary=binary))
+                try:
+                    for _ in range(200):
+                        if window():
+                            break
+                        if start.done():
+                            self.fail('Managed startup finished before tray appeared: ' + await start)
+                        await asyncio.sleep(.05)
+                    self.assertTrue(window(), 'Tray missing while --ensure-running initializes bridge')
+                finally:
+                    self.ready_allowed.set()
+                output = await start
+                self.assertNotIn('tray startup failed', output)
+                await close_tray()
+                output = await self.command('--ensure-running', binary=binary)
+                self.assertNotIn('tray startup failed', output)
+                self.assertTrue(window(), 'Reusing bridge must restore tray')
+                self.assertEqual(self.commands, before + 1, 'Reusing must not start another bridge')
+                await self.command('--stop', binary=binary)
+                for _ in range(100):
+                    try:
+                        _, writer = await asyncio.open_connection('127.0.0.1', self.port)
+                        writer.close()
+                        await writer.wait_closed()
+                    except OSError:
+                        break
+                    await asyncio.sleep(.05)
+                else:
+                    self.fail('Bridge did not stop')
+
     async def test_alias_start_reuse_status_stop_and_root_cli(self):
         self.assertIn('Bridge ready',await self.command('--ensure-running'))
         self.assertIn('already running',await self.command('--ensure-running'))

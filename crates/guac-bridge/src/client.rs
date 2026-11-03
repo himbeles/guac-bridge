@@ -592,6 +592,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
 
     #[cfg(windows)]
     if !args.benchmark_control
+        && !args.managed_child
         && let Err(error) = crate::tray::launch()
     {
         crate::diagnostics::event(&format!("Cannot start tray: {error:#}"));
