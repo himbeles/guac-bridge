@@ -152,6 +152,10 @@ pub(crate) fn handle(mut args: Args) -> Result<()> {
     if let Ok(s) = state(&args)
         && request(&s, "status").is_ok()
     {
+        #[cfg(windows)]
+        if !args.stop && !args.status {
+            crate::tray::launch()?;
+        }
         if args.stop {
             request(&s, "stop")?;
             crate::console::line(&format!("Bridge stopping on port {}", args.port()));
@@ -399,10 +403,6 @@ pub(crate) async fn control(
             tokio::spawn(control_connection(socket, expected, stop, usage));
         }
     });
-    #[cfg(windows)]
-    if let Err(error) = crate::tray::launch() {
-        crate::diagnostics::event(&format!("Cannot start tray: {error:#}"));
-    }
     Ok(Some(Managed { path, token, task }))
 }
 

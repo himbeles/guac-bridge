@@ -1,7 +1,10 @@
 # Windows bridge manager
 
 A single native Windows tray icon starts automatically when an SSH or LLM bridge
-becomes ready, including bridges started with `--ensure-running`. Open the bridge
+opens its local listener, including bridges started with `--ensure-running`.
+It also reappears when an existing background bridge is reused. Bridges enter
+the list once their remote helper is ready. The tray, manager and installer use
+the frog icon; Windows controls use native visual styles and Segoe UI. Open the bridge
 manager by clicking the icon, or run:
 
 ```powershell

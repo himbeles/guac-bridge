@@ -43,6 +43,37 @@ def text(hwnd):
 
 
 class TrayTests(unittest.TestCase):
+    def test_bridge_launches_tray_before_remote_initialization(self):
+        existing = user32.FindWindowW('GuacBridgeManager', None)
+        if existing:
+            user32.PostMessageW(existing, 0x111, 105, 0)
+            wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
+        release = threading.Event()
+        class PendingLogin(socketserver.BaseRequestHandler):
+            def handle(self):
+                release.wait(20)
+        server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), PendingLogin)
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        child = subprocess.Popen([str(BINARY), 'ssh', '--url', f'http://127.0.0.1:{server.server_address[1]}',
+            '--connection-id', 'test', '--data-source', 'mysql',
+            '--username', 'test', '--no-keyring', '--port', '0'],
+            env={**os.environ, 'GUAC_BRIDGE_PASSWORD': 'test', 'NO_PROXY': '127.0.0.1'})
+        try:
+            hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
+            self.assertIsNone(child.poll(), 'Tray must start while login is still pending')
+            self.assertFalse(user32.IsWindowVisible(hwnd))
+        finally:
+            child.terminate()
+            child.wait(timeout=5)
+            release.set()
+            server.shutdown()
+            server.server_close()
+            hwnd = user32.FindWindowW('GuacBridgeManager', None)
+            if hwnd:
+                user32.PostMessageW(hwnd, 0x111, 105, 0)
+                wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
+
     def test_prepare_update_waits_for_tray_process_exit(self):
         existing = user32.FindWindowW('GuacBridgeManager', None)
         if existing:
