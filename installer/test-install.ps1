@@ -3,7 +3,7 @@ $installer = (Get-ChildItem dist/*-setup.exe | Select-Object -First 1).FullName
 $expectedVersion = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
 $versionInfo = (Get-Item $installer).VersionInfo
 if ($versionInfo.ProductVersion.Trim([char[]]@(0, 32)) -ne $expectedVersion) { throw "Incorrect installer ProductVersion: $($versionInfo.ProductVersion)" }
-if ($versionInfo.FileVersion.Trim([char[]]@(0, 32)) -ne "$expectedVersion.0") { throw "Incorrect installer FileVersion: $($versionInfo.FileVersion)" }
+if ((@($versionInfo.FileMajorPart, $versionInfo.FileMinorPart, $versionInfo.FileBuildPart, $versionInfo.FilePrivatePart) -join '.') -ne "$expectedVersion.0") { throw "Incorrect installer FileVersion: $($versionInfo.FileVersion)" }
 $dest = Join-Path $env:RUNNER_TEMP 'guac-installer-test'
 function Run-Setup($tasks) {
     $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$dest`"", $tasks) -Wait -PassThru
