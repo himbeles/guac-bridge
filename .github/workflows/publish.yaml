@@ -24,7 +24,7 @@ jobs:
         with: {targets: x86_64-unknown-linux-musl}
       - name: Build static helper without client dependencies
         run: >-
-          cargo build  --release -p guac-bridge --no-default-features
+          cargo build  --release -p guac-bridge --no-default-features --features agent
           --bin guac-bridge-agent --target x86_64-unknown-linux-musl
           --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
       - name: Check standalone executable
@@ -48,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           $env:RUSTFLAGS = '-C target-feature=+crt-static'
-          cargo build  --release --no-default-features --bin guac-bridge-agent
+          cargo build  --release --no-default-features --features agent --bin guac-bridge-agent
           New-Item -ItemType Directory -Force agent
           Copy-Item target/release/guac-bridge-agent.exe agent/guac-bridge-agent-windows-x86_64.exe
       - uses: actions/upload-artifact@v7
@@ -117,7 +117,9 @@ jobs:
       - name: Test native credential store
         env: {GUAC_TEST_NATIVE_KEYRING: "1"}
         run: cargo test  -p guac-bridge
-      - run: cargo build  --release -p guac-bridge --bins --examples
+      - run: |
+          cargo build --locked --release -p guac-bridge --bins --examples
+          Copy-Item crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe target/release/guac-bridge-agent.exe
       - run: python -m unittest discover -s tests/native -p test_windows.py -v
       - name: Install shared UI runtime for Windows tests
         run: ./scripts/install-ui-runtime.ps1

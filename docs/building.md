@@ -59,16 +59,16 @@ For a reproducible build, check out the desired tag or commit instead of a movin
 
 ```powershell
 $env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = 'rust-lld'
-cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl
+cargo build  --release -p guac-bridge --no-default-features --features agent --bin guac-bridge-agent --target x86_64-unknown-linux-musl
 Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64 -Force
 ```
 
-`--no-default-features` leaves out client networking and keychain dependencies. The musl helper is a Linux x86-64 executable; it is bundled by the Windows clients but runs only on the remote Linux server.
+`--no-default-features --features agent` builds the internal helper without client networking or keychain dependencies. The helper target is excluded from ordinary Cargo installations. The musl helper is a Linux x86-64 executable; it is bundled by the Windows clients but runs only on the remote Linux server.
 
 ### 3. Build and stage the Windows helper
 
 ```powershell
-cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-pc-windows-msvc
+cargo build  --release -p guac-bridge --no-default-features --features agent --bin guac-bridge-agent --target x86_64-pc-windows-msvc
 Copy-Item target/x86_64-pc-windows-msvc/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe -Force
 ```
 
@@ -120,7 +120,7 @@ Run these commands on the Linux x86-64 client build machine, from the same sourc
 ```sh
 rustup target add x86_64-unknown-linux-musl
 mkdir -p crates/guac-bridge/assets
-cargo build  --release -p guac-bridge --no-default-features --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+cargo build  --release -p guac-bridge --no-default-features --features agent --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
 cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
 ```
 

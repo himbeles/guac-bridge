@@ -12,10 +12,10 @@ try {
     if ($env:OS -ne 'Windows_NT') { throw 'Use make build on Linux.' }
     Invoke-Native rustup @('target','add','x86_64-unknown-linux-musl','x86_64-pc-windows-msvc')
     $env:CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER = 'rust-lld'
-    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--bin','guac-bridge-agent','--target','x86_64-unknown-linux-musl')
+    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--features','agent','--bin','guac-bridge-agent','--target','x86_64-unknown-linux-musl')
     New-Item -ItemType Directory -Force crates/guac-bridge/assets | Out-Null
     Copy-Item target/x86_64-unknown-linux-musl/release/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64 -Force
-    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--bin','guac-bridge-agent','--target','x86_64-pc-windows-msvc')
+    Invoke-Native cargo @('build','--locked','--release','--no-default-features','--features','agent','--bin','guac-bridge-agent','--target','x86_64-pc-windows-msvc')
     Copy-Item target/x86_64-pc-windows-msvc/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe -Force
     $env:GUAC_BRIDGE_REQUIRE_WINDOWS_AGENT = '1'
     Invoke-Native cargo @('build','--locked','--release','--bins','--examples','--target','x86_64-pc-windows-msvc')

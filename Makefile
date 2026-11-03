@@ -15,7 +15,7 @@ help:
 	@echo 'Windows: ./build.ps1 [-Check] [-Installer]'
 agent:
 	$(RUSTUP) target add $(AGENT_TARGET)
-	$(CARGO) build --locked --release --no-default-features --bin guac-bridge-agent --target $(AGENT_TARGET) --config 'target.$(AGENT_TARGET).linker="rust-lld"'
+	$(CARGO) build --locked --release --no-default-features --features agent --bin guac-bridge-agent --target $(AGENT_TARGET) --config 'target.$(AGENT_TARGET).linker="rust-lld"'
 	mkdir -p $(ASSETS)
 	cp target/$(AGENT_TARGET)/release/guac-bridge-agent $(ASSETS)/guac-bridge-agent-linux-x86_64
 	$(if $(WINDOWS_AGENT),cp "$(WINDOWS_AGENT)" $(ASSETS)/guac-bridge-agent-windows-x86_64.exe,:)
