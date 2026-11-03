@@ -85,11 +85,6 @@ First-install Linux upload therefore keeps its existing independently decoded
 installation. Windows retains its existing PowerShell bootstrap and final checksum.
 The protected transport starts only after the helper is running.
 
-The record receiver could be reused for a future cached-helper file-receive upgrade
-mode. This change does not implement that mode. Bootstrapping another receiver
-would add an extra executable or runtime requirement; a shell implementation would
-be a separate adapter needing its own correctness and performance validation.
-
 Interactive terminals display one updating upload progress bar. Redirected output
 uses sparse, readable progress lines, and SSH Match hooks redraw a bar on their
 calling terminal. Linux progress represents remote shell confirmation; Windows
@@ -106,70 +101,3 @@ Codec tests cover lost ACKs, missing delimiters, reordering, bounds, invalid ACK
 checksums, permanent-loss deadlines, and Windows armor damage and maximum frames.
 A real terminal test checks that upload progress occupies one row.
 
-Local Linux results (same client binary and static helper, defaults 4/8/64,
-65536-byte frame limit, preseeded cache) are recorded with every trial in
-[the results JSON](reliable-input-results.json). Rates below are median **MiB/s in
-each direction simultaneously**, not their sum. Zero RTT means no added simulator
-latency; the real PTY, WebSocket and process scheduling still have cost.
-
-| Workload | Raw | Reliable input |
-| --- | ---: | ---: |
-| 0 ms RTT, 16 MiB × 5 | 16.7158 | 17.1417 |
-| 50 ms RTT, 4 MiB × 3 | 0.7836 | 0.8043 |
-| 200 ms RTT, 2 MiB × 3 | 0.1978 | 0.2060 |
-| 50 ms RTT, four 1 MiB streams × 3 | 0.7787 | 0.8195 |
-
-No healthy bulk throughput regression was measured in these workloads. This is
-not a guarantee across hardware, gateways, payload distributions or very small
-flow-control window settings, and the small measured improvements should not be treated as
-universal speedups.
-
-At zero added RTT, client CPU was 7.10 versus 6.74 ms/MiB and
-helper CPU 8.40 versus 7.91 ms/MiB (raw versus reliable, normalized
-by upload plus download payload bytes). At 50 ms RTT, the extra CPU was
-0.68 client and 1.60 helper ms/MiB. The two 5-second idle trials used
-1.58 versus
-1.96 ms total client CPU.
-Client peak RSS was approximately 35.5 MiB in both modes; that workload figure is
-not a worst-case window memory bound.
-
-For 150 sequential 64-byte echoes at 50 ms RTT, the median of trial medians was
-51.611 versus 51.674 ms. Total client CPU increased
-from 34.09 to
-66.85 ms across those 150 echoes
-(about 0.22 ms extra CPU per echo). Small-message protection has a real CPU
-cost even though it did not materially change latency here.
-
-Console input bytes increased by 0.45% for the uniform-byte bulk workload.
-That comparison excludes Guacamole JSON/TLS headers and the extra return ACKs;
-it is not a claim about total network overhead. COBS avoids doubling zero-heavy
-payloads, while ESC-heavy data retains terminal escaping costs.
-
-With one live input blob dropped per 200 eligible blobs at 50 ms RTT, all payload
-hashes matched after 11 injected drops. Throughput was 0.7598 MiB/s per direction
-(5.5% below the protected healthy run). Warnings ended with 11 retransmissions,
-11 rejected records and 11 sequence gaps. Separate integration cases cover
-corruption, duplication, simultaneous streams and permanent loss.
-
-The comparison uses a dedicated benchmark binary. Its exact hash, settings and
-captured output are preserved in the results JSON. Protocol-selection controls in
-that measurement harness are not part of the application CLI.
-
-To measure the current transport after a local build (Python and aiohttp are only
-test dependencies):
-
-```sh
-make check
-make integration
-python scripts/benchmark.py --warm-cache --mib 16 --repeats 5
-python scripts/benchmark.py --warm-cache --mib 4 --repeats 3 --rtt-ms 50
-python scripts/benchmark.py --warm-cache --mib 4 --repeats 3 --rtt-ms 50 --drop-every 200
-python scripts/benchmark.py --warm-cache --rtt-ms 50 --pings 50 --repeats 3
-```
-
-Use `--connections 4 --mib 1` for parallel streams and `--idle-seconds 5` for idle
-measurements. The JSON records all settings and the tested client SHA256. A raw
-comparison requires the comparison binary recorded in the results; the application
-CLI has no raw transport option.
-Native Windows runtime performance has not been measured here; Linux-hosted
-Windows carrier tests do not replace a ConPTY integration run.

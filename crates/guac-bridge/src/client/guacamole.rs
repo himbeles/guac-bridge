@@ -69,8 +69,8 @@ impl Destination {
             kind,
             source,
         } = self;
-        let username = crate::credentials::username(&args)?;
-        let password = crate::credentials::password(&args, &username)?;
+        let username = crate::credentials::username(args)?;
+        let password = crate::credentials::password(args, &username)?;
         let mut http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(Duration::from_secs(args.connect_timeout))
@@ -117,7 +117,7 @@ impl Destination {
             .context("No authentication token; this login requires an external SSO/MFA flow")?
             .to_owned();
         if args.save_password {
-            crate::credentials::save(&args, &username, &password)?;
+            crate::credentials::save(args, &username, &password)?;
         }
         let mut ws_url = base.join("websocket-tunnel")?;
         ws_url
@@ -235,6 +235,56 @@ mod refresh_tests {
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
+    #[test]
+    fn destination_preserves_app_path_and_decodes_named_connection_fields() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct Config {
+            #[command(flatten)]
+            options: BridgeOptions,
+        }
+        let config = Config::try_parse_from([
+            "test",
+            "--guacamole-url",
+            "https://guac.example/guacamole/?token=private#/client/MQBjAG15c3Fs",
+        ])
+        .unwrap();
+        let destination = Destination::parse(&config.options).unwrap();
+        assert_eq!(destination.base.as_str(), "https://guac.example/guacamole/");
+        assert_eq!(destination.connection, "1");
+        assert_eq!(destination.source, "mysql");
+        assert!(destination.is_connection());
+        assert_eq!(
+            destination.refresh_url().unwrap().as_str(),
+            "https://guac.example/guacamole/api/session/data/mysql/connections/1"
+        );
+        let config = Config::try_parse_from([
+            "test",
+            "--guacamole-url",
+            "https://guac.example/guacamole/#/client/MQBjAG15c3Fs",
+            "--connection-id",
+            "chosen/id",
+            "--data-source",
+            "other",
+        ])
+        .unwrap();
+        let destination = Destination::parse(&config.options).unwrap();
+        assert!(
+            destination
+                .refresh_url()
+                .unwrap()
+                .as_str()
+                .ends_with("/other/connections/chosen%2Fid")
+        );
+        for value in [
+            "file:///private",
+            "https://alice:secret@guac.example/#/client/MQBjAG15c3Fs",
+            "https://guac.example/#/client/invalid",
+        ] {
+            let config = Config::try_parse_from(["test", "--guacamole-url", value]).unwrap();
+            assert!(Destination::parse(&config.options).is_err());
+        }
+    }
     #[tokio::test]
     async fn refresh_transient_failure_then_success_and_auth_rejection() {
         let http = reqwest::Client::builder().no_proxy().build().unwrap();

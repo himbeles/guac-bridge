@@ -200,7 +200,11 @@ mod windows {
                 }
             }
             let module = Module(module);
-            let resource = FindResourceW(module.0, 1_usize as *const u16, 24_usize as *const u16);
+            let resource = FindResourceW(
+                module.0,
+                std::ptr::without_provenance(1),
+                std::ptr::without_provenance(24),
+            );
             ensure!(!resource.is_null(), "Missing embedded application manifest");
             let size = SizeofResource(module.0, resource) as usize;
             let data = LockResource(LoadResource(module.0, resource));

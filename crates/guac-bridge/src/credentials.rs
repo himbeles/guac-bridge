@@ -2,7 +2,7 @@ use crate::options::BridgeOptions;
 use anyhow::{Context, Result, bail};
 use url::Url;
 fn entry(args: &BridgeOptions, user: &str) -> Result<keyring::Entry> {
-    let mut url = Url::parse(args.url.as_deref().context("--url is required")?)?;
+    let mut url = Url::parse(args.url.as_deref().context("--guacamole-url is required")?)?;
     url.set_fragment(None);
     url.set_query(None);
     let service = format!("guac-bridge:{}", url.as_str().trim_end_matches('/'));
