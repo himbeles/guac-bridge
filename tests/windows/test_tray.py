@@ -23,6 +23,7 @@ user32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
 user32.SendMessageW.restype = ctypes.c_ssize_t
 user32.IsWindowVisible.argtypes = [w.HWND]
 user32.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
+user32.GetWindowRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
 
 
 def wait_for(check, timeout=12):
@@ -135,6 +136,17 @@ class TrayTests(unittest.TestCase):
             subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
             wait_for(lambda: user32.IsWindowVisible(hwnd))
             self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
+            initial = w.RECT()
+            user32.GetWindowRect(detail, ctypes.byref(initial))
+            user32.SendMessageW(hwnd, 0x112, 0xF030, 0)  # SC_MAXIMIZE dispatches nested WM_SIZE
+            enlarged = w.RECT()
+            user32.GetWindowRect(detail, ctypes.byref(enlarged))
+            self.assertGreater(enlarged.right - enlarged.left, initial.right - initial.left,
+                'Details must grow with the window when maximized')
+            user32.SendMessageW(hwnd, 0x112, 0xF120, 0)  # SC_RESTORE
+            restored = w.RECT()
+            user32.GetWindowRect(detail, ctypes.byref(restored))
+            self.assertEqual(restored.right - restored.left, initial.right - initial.left)
             # Exercise direct close and the system command used by X / Alt+F4.
             for message, command in ((0x10, 0), (0x112, 0xF060)):
                 user32.PostMessageW(hwnd, message, command, 0)

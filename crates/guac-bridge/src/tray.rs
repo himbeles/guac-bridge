@@ -222,6 +222,11 @@ mod windows {
                 PostQuitMessage(0);
                 return 0;
             }
+            // Native move/resize loops dispatch WM_SIZE and other messages
+            // synchronously. Do not hold a Ui borrow or callback guard across them.
+            if matches!(msg, WM_SYSCOMMAND | WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK) {
+                return DefWindowProcW(hwnd, msg, wp, lp);
+            }
             if IN_CALLBACK.with(|value| value.replace(true)) {
                 return DefWindowProcW(hwnd, msg, wp, lp);
             }
