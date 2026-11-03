@@ -1,52 +1,18 @@
 //! Native Windows notification icon and bridge manager. Polling never runs on the UI thread.
 #[cfg(windows)]
 pub(crate) fn launch() -> anyhow::Result<()> {
-    use anyhow::{Context, ensure};
     use std::{
-        fs::OpenOptions,
         os::windows::process::CommandExt,
         process::{Command, Stdio},
-        time::{Duration, Instant},
     };
-    if windows::ready() {
-        return Ok(());
-    }
-    let log_path = crate::background::directory()?.join("tray.log");
-    let log = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)?;
-    // The caller may be an SSH Match exec hook. Do not let the tray inherit
-    // its original output pipes, which would prevent the hook from reaching EOF.
-    crate::background::clear_parent_stdio_inheritance()?;
-    let mut child = Command::new(std::env::current_exe()?)
+    Command::new(std::env::current_exe()?)
         .args(["tray", "--background"])
         .stdin(Stdio::null())
-        .stdout(Stdio::from(log.try_clone()?))
-        .stderr(Stdio::from(log))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .creation_flags(0x08000000)
-        .spawn()
-        .context("Cannot spawn tray process")?;
-    let deadline = Instant::now() + Duration::from_secs(5);
-    loop {
-        if windows::ready() {
-            return Ok(());
-        }
-        if let Some(status) = child.try_wait()? {
-            ensure!(
-                status.success(),
-                "Tray exited ({status}); see {}",
-                log_path.display()
-            );
-            // A singleton contender can exit before the first tray finishes startup.
-        }
-        ensure!(
-            Instant::now() < deadline,
-            "Tray did not become ready; see {}",
-            log_path.display()
-        );
-        std::thread::sleep(Duration::from_millis(50));
-    }
+        .spawn()?;
+    Ok(())
 }
 pub(crate) fn run(background: bool) -> anyhow::Result<()> {
     #[cfg(windows)]
@@ -107,26 +73,6 @@ mod windows {
     impl Drop for CallbackGuard {
         fn drop(&mut self) {
             IN_CALLBACK.with(|value| value.set(false));
-        }
-    }
-    const READY: u32 = WM_APP + 4;
-    pub(super) fn ready() -> bool {
-        unsafe {
-            let hwnd = FindWindowW(w!("GuacBridgeManager"), std::ptr::null());
-            if hwnd.is_null() {
-                return false;
-            }
-            let mut result = 0;
-            SendMessageTimeoutW(
-                hwnd,
-                READY,
-                0,
-                0,
-                SMTO_ABORTIFHUNG | SMTO_BLOCK,
-                200,
-                &mut result,
-            ) != 0
-                && result == 1
         }
     }
     const ICON: u32 = WM_APP + 1;
@@ -295,7 +241,6 @@ mod windows {
                 return 0;
             }
             match msg {
-                READY => return 1,
                 SHOW => {
                     ShowWindow(hwnd, SW_RESTORE);
                     SetForegroundWindow(hwnd);
