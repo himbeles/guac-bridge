@@ -1,6 +1,6 @@
 //! Guac Bridge: terminal framing and the native bridge entry point.
 //!
-//! [`run`] parses the same arguments as the `guac-bridge` executable and returns
+//! `run(argv)` parses the same arguments as the `guac-bridge` executable and returns
 //! an exit code. Protocol types remain shared by the client and standalone helper.
 //! See `docs/architecture.md` for module ownership and lifecycle invariants.
 //! Native binary multiplexing. ESC-safe byte stuffing for Guacamole terminal pipes.

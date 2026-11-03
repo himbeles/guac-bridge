@@ -7,7 +7,7 @@ use crate::options::BridgeOptions;
 use anyhow::{Context, Result, bail, ensure};
 use fs2::FileExt;
 use std::{
-    fs::{self, OpenOptions},
+    fs::OpenOptions,
     io::{Read, Write},
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -167,8 +167,8 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         .open(&log_path)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&log_path, fs::Permissions::from_mode(0o600))?;
+        use std::os::unix::std::fs::PermissionsExt;
+        std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o600))?;
     }
     command
         .stdin(Stdio::piped())

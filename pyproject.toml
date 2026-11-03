@@ -22,4 +22,4 @@ python-source = "python"
 module-name = "guac_bridge"
 python-packages = ["guac_bridge"]
 targets = [{name="guac-bridge",kind="bin"}]
-include = [{path="xtask/**",format="sdist"}, {path="crates/guac-bridge/assets/*",format="sdist"}, {path=".cargo/config.toml",format="sdist"}]
+include = [{path="crates/guac-bridge/assets/*",format="sdist"}, {path=".cargo/config.toml",format="sdist"}]
