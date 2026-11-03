@@ -43,8 +43,7 @@ confirmations. It follows the Windows light/dark theme, with subtle frog-green s
 The sidebar shows SSH/LLM tags, the Guacamole jump-host URL, username and local URL.
 Select a bridge to see the route **local URL → Guacamole jump host → remote server service**,
 with the server loopback endpoint labelled explicitly. URL credentials and authentication
-queries are omitted. Older registrations need restarting to show their jump-host URL.
-The same route and user are available from `guac-bridge list` on Windows and Linux.
+queries are omitted. The same route and user are available from `guac-bridge list` on Windows and Linux.
 Select a bridge to see:
 
 - Idle/transferring state, uptime, active and total local TCP connections.
@@ -71,8 +70,7 @@ again, or use `guac-bridge tray` to reopen it.
 
 The Windows installer automatically stops registered bridges and the tray before
 replacing files. It uses the new executable extracted into its temporary directory,
-so this also works when upgrading an older version that lacks tray support. Active
-SSH sessions and LLM requests disconnect. If shutdown fails, the installer aborts
+before replacing the running executable. Active SSH sessions and LLM requests disconnect. If shutdown fails, the installer aborts
 before replacing files. Unresponsive registrations are retained; no PID is killed.
 
 For a uv tool installation, prepare for the external upgrade:
@@ -100,9 +98,8 @@ window; automatic launches reuse the existing tray host. Explorer restarts are
 handled by recreating the notification icon.
 
 A worker polls the control sockets, keeping socket waits off the UI thread.
-`inspect` returns usage; existing `status` and `stop` commands still return `OK`.
-Older bridges remain manageable but cannot supply usage details until restarted
-with the new version. Unresponsive registrations are shown explicitly, retained,
+`inspect` returns usage; `status` and `stop` commands still return `OK`.
+Unresponsive registrations are shown explicitly, retained,
 and never used for PID-based termination. Normal bridge shutdown removes only its
 own registration, verified using its token.
 

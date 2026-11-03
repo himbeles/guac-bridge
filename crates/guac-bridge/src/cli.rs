@@ -181,6 +181,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn start_requires_positional_url_and_user_names_the_guacamole_login() {
+        for mode in ["ssh", "llm"] {
+            assert!(Cli::try_parse_from(["guac-bridge", mode]).is_err());
+            let cli = Cli::try_parse_from([
+                "guac-bridge",
+                mode,
+                "https://guac.example/",
+                "--user",
+                "alice",
+            ])
+            .unwrap();
+            let (Command::Ssh(args) | Command::Llm(args)) = cli.command else {
+                panic!("bridge expected")
+            };
+            assert_eq!(args.url.as_deref(), Some("https://guac.example/"));
+            assert_eq!(args.username.as_deref(), Some("alice"));
+            for action in ["--stop", "--status"] {
+                assert!(Cli::try_parse_from(["guac-bridge", mode, action]).is_ok());
+            }
+        }
+    }
+
+    #[test]
     fn background_is_default_with_explicit_foreground_and_internal_exceptions() {
         for mode in ["ssh", "llm"] {
             for (extra, managed) in [
@@ -193,14 +216,9 @@ mod tests {
                 (vec!["--status"], false),
             ] {
                 let cli = Cli::try_parse_from(
-                    [
-                        "guac-bridge",
-                        mode,
-                        "--guacamole-url",
-                        "https://example.invalid",
-                    ]
-                    .into_iter()
-                    .chain(extra),
+                    ["guac-bridge", mode, "https://example.invalid"]
+                        .into_iter()
+                        .chain(extra),
                 )
                 .unwrap();
                 let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command else {
@@ -222,14 +240,9 @@ mod tests {
         ] {
             for mode in ["ssh", "llm"] {
                 let cli = Cli::try_parse_from(
-                    [
-                        "guac-bridge",
-                        mode,
-                        "--guacamole-url",
-                        "http://example.invalid",
-                    ]
-                    .into_iter()
-                    .chain(flags.iter().copied()),
+                    ["guac-bridge", mode, "http://example.invalid"]
+                        .into_iter()
+                        .chain(flags.iter().copied()),
                 )
                 .unwrap();
                 let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command else {
@@ -247,14 +260,8 @@ mod tests {
         for mode in ["ssh", "llm"] {
             for option in ["--reliable-input", "--reliable-window"] {
                 assert!(
-                    Cli::try_parse_from([
-                        "guac-bridge",
-                        mode,
-                        "--guacamole-url",
-                        "http://example.invalid",
-                        option
-                    ])
-                    .is_err()
+                    Cli::try_parse_from(["guac-bridge", mode, "http://example.invalid", option])
+                        .is_err()
                 );
             }
         }
@@ -266,7 +273,6 @@ mod tests {
             let cli = Cli::try_parse_from([
                 "guac-bridge",
                 "ssh",
-                "--guacamole-url",
                 "http://example.invalid",
                 "--input-window",
                 value,

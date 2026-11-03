@@ -131,9 +131,8 @@ jobs:
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" ssh --help
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" llm --help
-          foreach ($legacy in @('guac-ssh-client.exe', 'guac-llm-client.exe')) {
-            if (Test-Path "$env:UV_TOOL_BIN_DIR/$legacy") { throw "Unexpected CLI alias: $legacy" }
-          }
+          $commands = @(Get-ChildItem "$env:UV_TOOL_BIN_DIR/guac*")
+          if ($commands.Count -ne 1 -or $commands[0].Name -ne 'guac-bridge.exe') { throw 'Expected one guac-bridge CLI entry point' }
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo xtask portable --wheel $wheel
@@ -193,8 +192,6 @@ jobs:
           "$UV_TOOL_BIN_DIR/guac-bridge" --version
           "$UV_TOOL_BIN_DIR/guac-bridge" ssh --help
           "$UV_TOOL_BIN_DIR/guac-bridge" llm --help
-          test ! -e "$UV_TOOL_BIN_DIR/guac-ssh-client"
-          test ! -e "$UV_TOOL_BIN_DIR/guac-llm-client"
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           cargo xtask portable --wheel dist/*.whl
       - name: Check source distribution contains the helper

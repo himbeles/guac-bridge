@@ -137,9 +137,8 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
             child = await asyncio.create_subprocess_exec(
                 str(ROOT / "target/release/guac-bridge.exe"),
                 mode,
-                "--guacamole-url",
                 url,
-                "--guacamole-user",
+                "--user",
                 "test",
                 "--server-os",
                 "windows",

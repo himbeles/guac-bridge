@@ -143,7 +143,6 @@ mod tests {
         }
         let args = TestArgs::parse_from([
             "test",
-            "--guacamole-url",
             "https://example.invalid/#/client/test",
             "--server-os",
             "windows",

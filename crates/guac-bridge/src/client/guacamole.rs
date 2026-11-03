@@ -27,7 +27,7 @@ pub(super) struct Session {
 }
 impl Destination {
     pub(super) fn parse(args: &BridgeOptions) -> Result<Self> {
-        let mut base = Url::parse(args.url.as_deref().context("--guacamole-url is required")?)?;
+        let mut base = Url::parse(args.url.as_deref().context("URL is required")?)?;
         ensure!(
             ["http", "https"].contains(&base.scheme())
                 && base.host_str().is_some()
@@ -245,7 +245,6 @@ mod refresh_tests {
         }
         let config = Config::try_parse_from([
             "test",
-            "--guacamole-url",
             "https://guac.example/guacamole/?token=private#/client/MQBjAG15c3Fs",
         ])
         .unwrap();
@@ -260,7 +259,6 @@ mod refresh_tests {
         );
         let config = Config::try_parse_from([
             "test",
-            "--guacamole-url",
             "https://guac.example/guacamole/#/client/MQBjAG15c3Fs",
             "--connection-id",
             "chosen/id",
@@ -281,7 +279,7 @@ mod refresh_tests {
             "https://alice:secret@guac.example/#/client/MQBjAG15c3Fs",
             "https://guac.example/#/client/invalid",
         ] {
-            let config = Config::try_parse_from(["test", "--guacamole-url", value]).unwrap();
+            let config = Config::try_parse_from(["test", value]).unwrap();
             assert!(Destination::parse(&config.options).is_err());
         }
     }

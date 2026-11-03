@@ -6,9 +6,11 @@ use clap::Args as ClapArgs;
 
 #[derive(ClapArgs, Clone, Debug)]
 pub(crate) struct BridgeOptions {
-    #[arg(long = "guacamole-url", help_heading = "Connection", required_unless_present_any=["stop","status"])]
+    /// Guacamole connection URL. Required when starting a bridge.
+    #[arg(value_name = "URL", required_unless_present_any=["stop","status"])]
     pub url: Option<String>,
-    #[arg(long = "guacamole-user", help_heading = "Connection")]
+    /// Guacamole login username (prompted when omitted).
+    #[arg(long = "user", help_heading = "Connection")]
     pub username: Option<String>,
     #[arg(long)]
     pub connection_id: Option<String>,

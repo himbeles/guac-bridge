@@ -18,22 +18,14 @@ struct State {
     control: u16,
     token: String,
     identity: String,
-    username: Option<String>,
-    #[serde(default)]
+    username: String,
     jump_url: String,
-    #[serde(default)]
     mode: String,
-    #[serde(default)]
     port: u16,
-    #[serde(default)]
     target: String,
-    #[serde(default)]
     version: String,
-    #[serde(default)]
     executable: PathBuf,
-    #[serde(default)]
     instance: String,
-    #[serde(default)]
     log: Option<PathBuf>,
 }
 pub(crate) fn directory() -> Result<PathBuf> {
@@ -141,7 +133,7 @@ pub(crate) async fn control(
         control: listener.local_addr()?.port(),
         token: uuid::Uuid::new_v4().to_string(),
         identity: identity(args),
-        username: Some(username.into()),
+        username: username.into(),
         jump_url: display_url(args.url.as_deref().unwrap_or_default()),
         mode: args.mode.clone(),
         port,
@@ -282,30 +274,16 @@ pub(crate) struct Bridge {
 }
 impl Bridge {
     pub fn destination(&self) -> String {
-        let url = display_url(&self.state.jump_url);
-        if url.is_empty() {
-            "Guacamole destination unavailable (restart bridge)".into()
-        } else {
-            url
-        }
+        display_url(&self.state.jump_url)
     }
     pub fn local_url(&self) -> String {
-        let port = if self.state.port == 0 {
-            self.key.rsplit('-').next().unwrap_or("?").to_string()
-        } else {
-            self.state.port.to_string()
-        };
-        format!("{}://127.0.0.1:{port}", self.scheme())
+        format!("{}://127.0.0.1:{}", self.scheme(), self.state.port)
     }
     pub fn server_url(&self) -> String {
-        if self.state.target.is_empty() {
-            "Server service unavailable".into()
-        } else {
-            format!("{}://{} (on server)", self.scheme(), self.state.target)
-        }
+        format!("{}://{} (on server)", self.scheme(), self.state.target)
     }
     fn scheme(&self) -> &str {
-        if self.key.starts_with("ssh-") {
+        if self.state.mode == "ssh" {
             "ssh"
         } else {
             "http"
@@ -320,7 +298,7 @@ impl Bridge {
         )
     }
     pub fn user(&self) -> &str {
-        self.state.username.as_deref().unwrap_or("—")
+        &self.state.username
     }
     pub fn stop(&self) -> Result<()> {
         request(&self.state, "stop")
@@ -408,30 +386,26 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
         let Ok(state) = serde_json::from_slice::<State>(&bytes) else {
             continue;
         };
+        if !["ssh", "llm"].contains(&state.mode.as_str())
+            || state.port == 0
+            || state.instance.is_empty()
+            || state.target.is_empty()
+            || display_url(&state.jump_url).is_empty()
+            || key != format!("{}-{}", state.mode, state.port)
+        {
+            continue;
+        }
         let usage = exchange(&state, "inspect")
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok());
-        let online = usage.is_some() || request(&state, "status").is_ok();
-        let tag = if state.mode.is_empty() {
-            key.split('-').next().unwrap_or("bridge")
-        } else {
-            &state.mode
-        };
+        let online = usage.is_some();
         result.push(Bridge {
             key: key.into(),
-            instance: if state.instance.is_empty() {
-                format!("{key}-{}", state.pid)
-            } else {
-                state.instance.clone()
-            },
+            instance: state.instance.clone(),
             label: format!(
                 "[{}]  127.0.0.1:{} → {}",
-                tag.to_uppercase(),
-                if state.port == 0 {
-                    key.rsplit('-').next().unwrap_or("?").to_string()
-                } else {
-                    state.port.to_string()
-                },
+                state.mode.to_uppercase(),
+                state.port,
                 state.target
             ),
             state,
@@ -546,7 +520,7 @@ mod control_tests {
         (response, stopped.try_recv().is_ok())
     }
     #[tokio::test]
-    async fn authentication_and_legacy_commands() {
+    async fn authenticated_inspection_and_control() {
         assert_eq!(
             roundtrip("status", "correct-token").await,
             ("OK\n".into(), false)
@@ -566,12 +540,5 @@ mod control_tests {
         assert_eq!(snapshot.uploaded, 321);
         assert!(!stopped);
         assert!(!value.contains("correct-token"));
-    }
-    #[test]
-    fn older_registrations_remain_readable() {
-        let value = r#"{"pid":1,"control":1234,"token":"secret","identity":"old","username":null}"#;
-        let state: State = serde_json::from_str(value).unwrap();
-        assert!(state.instance.is_empty());
-        assert!(state.log.is_none());
     }
 }

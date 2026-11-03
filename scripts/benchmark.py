@@ -38,7 +38,7 @@ async def trial(args):
                 writer.close()
         server = await asyncio.start_server(echo, '127.0.0.1', 0)
         env = dict(os.environ, GUAC_BRIDGE_PASSWORD='test', NO_PROXY='127.0.0.1')
-        command_line = [str(args.client.resolve()), 'ssh', '--guacamole-url', url, '--guacamole-user', 'test', '--no-keyring', '--local-port', '0', '--remote-port', str(server.sockets[0].getsockname()[1]), '--startup-delay', '0', '--window', str(args.window), '--frame-size', str(args.frame_size), '--input-window', str(args.input_window), '--benchmark-control']
+        command_line = [str(args.client.resolve()), 'ssh', url, '--user', 'test', '--no-keyring', '--local-port', '0', '--remote-port', str(server.sockets[0].getsockname()[1]), '--startup-delay', '0', '--window', str(args.window), '--frame-size', str(args.frame_size), '--input-window', str(args.input_window), '--benchmark-control']
         child = await asyncio.create_subprocess_exec(*command_line, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=env)
         async def command(text):
             child.stdin.write(text.encode()+b'\n')

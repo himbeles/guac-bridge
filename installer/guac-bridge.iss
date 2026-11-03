@@ -39,10 +39,6 @@ Name: "addtopath"; Description: "Add Guac Bridge to my user PATH"; Flags: checke
 Source: "..\\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-[InstallDelete]
-Type: files; Name: "{app}\guac-ssh-client.exe"
-Type: files; Name: "{app}\guac-llm-client.exe"
-
 [Icons]
 Name: "{group}\Guac Bridge Manager"; Filename: "{app}\guac-bridge.exe"; Parameters: "tray"
 

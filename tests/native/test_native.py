@@ -65,7 +65,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         command = [str(BINARY), mode]
         if foreground and not any(flag in extra for flag in ('--stop', '--status')):
             command += ['--foreground']
-        command += ['--guacamole-url', self.url, '--guacamole-user', 'test', '--no-keyring', '--startup-delay', '0', *map(str, extra)]
+        command += [self.url, '--user', 'test', '--no-keyring', '--startup-delay', '0', *map(str, extra)]
         child = await asyncio.create_subprocess_exec(*command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
         self.children.append(child)
         return child
@@ -101,7 +101,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child.returncode, 0, error)
         return error
 
-    async def test_list_empty_and_legacy_unresponsive(self):
+    async def test_list_empty_and_unresponsive(self):
         async def listing():
             child = await asyncio.create_subprocess_exec(str(BINARY), 'list',
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
@@ -111,17 +111,19 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('No registered bridges', await listing())
         directory = self.home/'data'/'guac-bridge'
         directory.mkdir(parents=True, exist_ok=True)
-        # Closed socket: an old registration cannot establish a live bridge.
+        # A current registration with a closed control socket stays visible as unresponsive.
         import socket
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
         (directory/'ssh-2222.json').write_text(json.dumps(dict(
-            pid=1, control=port, token='private-control-token', identity='old', username='old-user')))
+            pid=1, control=port, token='private-control-token', identity='offline', username='test-user',
+            mode='ssh', port=2222, target='127.0.0.1:22', jump_url='https://guac.example/',
+            instance='offline-instance', version=VERSION, executable=str(BINARY), log=None)))
         text = await listing()
         self.assertIn('Unresponsive', text)
-        self.assertIn('restart bridge', text)
-        self.assertIn('old-user', text)
+        self.assertIn('https://guac.example/', text)
+        self.assertIn('test-user', text)
         self.assertIn('ssh://127.0.0.1:2222', text)
         self.assertNotIn('private-control-token', text)
         self.assertTrue((directory/'ssh-2222.json').exists())
@@ -251,8 +253,8 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_terminal_upload_uses_one_progress_row(self):
         import pty
         master, slave = pty.openpty()
-        child = await asyncio.create_subprocess_exec(str(BINARY), 'ssh', '--foreground', '--guacamole-url', self.url,
-            '--guacamole-user', 'test', '--no-keyring', '--startup-delay', '0', '--local-port', '0',
+        child = await asyncio.create_subprocess_exec(str(BINARY), 'ssh', '--foreground', self.url,
+            '--user', 'test', '--no-keyring', '--startup-delay', '0', '--local-port', '0',
             '--remote-port', str(await self.target(self.echo)), stderr=slave,
             stdout=asyncio.subprocess.DEVNULL, env=self.env())
         self.children.append(child)
@@ -554,7 +556,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         dummy.close()
         await dummy.wait_closed()
         config = self.home/'ssh-config'
-        hook = f'{BINARY} ssh --guacamole-url {self.url} --guacamole-user test --no-keyring --startup-delay 0 --local-port {port} --remote-port {target}'
+        hook = f'{BINARY} ssh {self.url} --user test --no-keyring --startup-delay 0 --local-port {port} --remote-port {target}'
         config.write_text(f'Host hook-test\n    HostName 127.0.0.1\n    Port {port}\nMatch originalhost hook-test exec "{hook}"\nMatch all\n')
         master, slave = pty.openpty()
         def session():

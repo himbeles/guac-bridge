@@ -169,7 +169,7 @@ mod tests {
         }
     }
     #[test]
-    fn short_osc_envelopes_fit_legacy_conpty() {
+    fn short_osc_envelopes_fit_conpty() {
         let wire = osc_bytes(OSC_PREFIX, &vec![255; 65536]);
         for part in wire.split(|b| *b == 7) {
             assert!(part.len() < 220);

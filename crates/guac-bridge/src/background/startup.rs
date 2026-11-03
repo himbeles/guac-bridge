@@ -79,10 +79,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         }
         ensure!(
             s.identity == identity(&args)
-                && args
-                    .username
-                    .as_ref()
-                    .is_none_or(|u| s.username.as_ref() == Some(u)),
+                && args.username.as_ref().is_none_or(|u| u == &s.username),
             "A bridge with different settings already owns this port. Stop it first with --stop --local-port {}",
             args.port()
         );
@@ -109,10 +106,11 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
     let password = crate::credentials::password(&args, &user)?;
     let exe = std::env::current_exe()?;
     let mut command = Command::new(&exe);
-    command.arg(&args.mode);
+    command
+        .arg(&args.mode)
+        .arg(args.url.as_deref().context("URL is required")?);
     for (flag, value) in [
-        ("--guacamole-url", args.url.clone()),
-        ("--guacamole-user", args.username.clone()),
+        ("--user", args.username.clone()),
         ("--connection-id", args.connection_id.clone()),
         ("--data-source", args.data_source.clone()),
         ("--ca-file", args.ca_file.clone()),

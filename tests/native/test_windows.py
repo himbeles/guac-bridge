@@ -117,7 +117,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def command(self,*flags):
         args = [str(ROOT/'target/release/guac-bridge.exe'), 'ssh']
-        args += ['--guacamole-url',self.url,'--guacamole-user','synthetic-user','--no-keyring','--startup-delay','0','--local-port',str(self.port),*flags]
+        args += [self.url,'--user','synthetic-user','--no-keyring','--startup-delay','0','--local-port',str(self.port),*flags]
         env = dict(os.environ, GUAC_BRIDGE_PASSWORD='synthetic-password',NO_PROXY='127.0.0.1')
         process = await asyncio.create_subprocess_exec(*args,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
         self.children.append(process)
@@ -152,7 +152,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_progress_is_visible_before_helper_becomes_ready(self):
         self.hold_ready = True
-        args = [str(ROOT/'target/release/guac-bridge.exe'),'ssh','--guacamole-url',self.url,'--guacamole-user','synthetic-user','--no-keyring','--startup-delay','0','--local-port',str(self.port)]
+        args = [str(ROOT/'target/release/guac-bridge.exe'),'ssh',self.url,'--user','synthetic-user','--no-keyring','--startup-delay','0','--local-port',str(self.port)]
         env = dict(os.environ,GUAC_BRIDGE_PASSWORD='synthetic-password',NO_PROXY='127.0.0.1')
         process = await asyncio.create_subprocess_exec(*args,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
         self.children.append(process)

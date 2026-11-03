@@ -24,7 +24,7 @@ Open the desired Guacamole terminal in your browser and copy its full URL. Use i
 ### Connect
 
 ```shell
-guac-bridge ssh --guacamole-url CONNECTION_URL
+guac-bridge ssh CONNECTION_URL
 ```
 
 For a Windows server, add `--server-os windows` to either bridge command or the SSH Match hook. The default is Linux. RDP connections are not supported.
@@ -47,7 +47,7 @@ Host guac-server
     Port 2222
     User SERVER_USERNAME
 
-Match originalhost guac-server exec "guac-bridge ssh --save-password --guacamole-url CONNECTION_URL --guacamole-user GUACAMOLE_USERNAME --local-port %p"
+Match originalhost guac-server exec "guac-bridge ssh CONNECTION_URL --save-password --user GUACAMOLE_USERNAME --local-port %p"
 Match all
 ```
 
@@ -65,7 +65,7 @@ Use a dedicated local port for each destination. Windows users can add `--show-c
 ## LLM bridge
 
 ```shell
-guac-bridge llm --guacamole-url CONNECTION_URL
+guac-bridge llm CONNECTION_URL
 ```
 
 Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--remote-port` for a different server port and `--local-port` for a different local port.
@@ -83,8 +83,7 @@ guac-bridge list
 Lists registered SSH and LLM bridges with status, Guacamole username and the route
 **local URL → Guacamole jump-host URL → service on the remote server**.
 The server endpoint is loopback on the remote machine. Unresponsive registrations
-are marked explicitly. Older bridges need restarting to show their jump-host URL.
-URL credentials and authentication queries are omitted.
+are marked explicitly. URL credentials and authentication queries are omitted.
 
 `ssh` and `llm` start or reuse a managed background bridge by default. Use
 `--foreground` for an attached process, including `--local-port 0` for an
