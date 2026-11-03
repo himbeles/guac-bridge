@@ -2,7 +2,7 @@ name: Windows server helper
 on:
   pull_request:
   push:
-    branches: [main, feat/windows-server]
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 concurrency:
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with: {targets: x86_64-unknown-linux-musl}
-      - run: cargo build  --release --no-default-features --features agent --bin guac-bridge-agent --target x86_64-unknown-linux-musl --config 'target.x86_64-unknown-linux-musl.linker="rust-lld"'
+      - run: cargo xtask helper linux
       - uses: actions/upload-artifact@v7
         with: {name: windows-test-linux-agent, path: target/x86_64-unknown-linux-musl/release/guac-bridge-agent}
   console:
@@ -41,12 +41,9 @@ jobs:
       - run: |
           New-Item -ItemType Directory -Force crates/guac-bridge/assets
           Copy-Item linux-agent/guac-bridge-agent crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64
-          $env:RUSTFLAGS = '-C target-feature=+crt-static'
-          cargo build  --release --no-default-features --features agent --bin guac-bridge-agent --examples
-          Copy-Item target/release/guac-bridge-agent.exe crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe
-          Remove-Item Env:RUSTFLAGS
-          cargo build  --release --bins --examples
-      - run: cargo test --locked --lib
+          cargo xtask helper windows
+          cargo xtask build --prepared
+      - run: cargo test --locked --workspace
       - run: python -m pip install aiohttp
       - name: Install shared UI runtime for Windows tests
         if: matrix.os != 'windows-2022'

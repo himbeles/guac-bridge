@@ -5,8 +5,8 @@ Stop the managed bridge first so it does not retain the listener.
 Run the bridge in a PowerShell terminal while reproducing the problem:
 
 ```powershell
-guac-bridge ssh --port 2223 --stop
-guac-bridge ssh --foreground --url 'YOUR_GUACAMOLE_URL' --username 'YOUR_USERNAME' --port 2223 `
+guac-bridge ssh --local-port 2223 --stop
+guac-bridge ssh --foreground --guacamole-url 'YOUR_GUACAMOLE_URL' --guacamole-user 'YOUR_USERNAME' --local-port 2223 `
   --debug-log "$env:TEMP\guac-ssh-debug.log" `
   --server-debug-log '/home/YOUR_REMOTE_USER/.cache/guac-bridge/helpers/ssh-debug.log'
 ```
@@ -20,7 +20,7 @@ is limited to approximately 2 MiB. Unix log files are mode 600; on Windows keep 
 in your private user directory. A custom `--server-command` helper must support the
 new `--debug-log` option.
 
-Both options are optional and also work with the default background startup (`--ensure-running`). Adding them changes
+Both options are optional and also work with the default background startup . Adding them changes
 the managed bridge configuration; stop the existing bridge before restarting it.
 
 ## What to collect

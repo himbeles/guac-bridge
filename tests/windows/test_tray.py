@@ -71,9 +71,9 @@ class TrayTests(unittest.TestCase):
         server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), PendingLogin)
         server.daemon_threads = True
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        child = subprocess.Popen([str(BINARY), 'ssh', '--url', f'http://127.0.0.1:{server.server_address[1]}',
+        child = subprocess.Popen([str(BINARY), 'ssh', '--guacamole-url', f'http://127.0.0.1:{server.server_address[1]}',
             '--connection-id', 'test', '--data-source', 'mysql',
-            '--username', 'test', '--no-keyring', '--foreground', '--port', '0'],
+            '--guacamole-user', 'test', '--no-keyring', '--foreground', '--local-port', '0'],
             env={**os.environ, 'GUAC_BRIDGE_PASSWORD': 'test', 'NO_PROXY': '127.0.0.1'})
         try:
             hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))

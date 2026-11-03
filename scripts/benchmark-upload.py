@@ -16,7 +16,7 @@ async def run(batch, delay, drop=False):
         url=await gateway.start();child=None
         try:
             start=time.monotonic()
-            child=await asyncio.create_subprocess_exec(str(BINARY),'ssh','--url',url,'--username','test','--no-keyring','--port','0','--startup-delay','0','--benchmark-control','--upload-batch-size',str(batch),'--connect-timeout',str(1 if drop else 10),stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=dict(os.environ,GUAC_BRIDGE_PASSWORD='test',NO_PROXY='127.0.0.1,localhost'))
+            child=await asyncio.create_subprocess_exec(str(BINARY),'ssh','--guacamole-url',url,'--guacamole-user','test','--no-keyring','--local-port','0','--startup-delay','0','--benchmark-control','--upload-batch-size',str(batch),'--connect-timeout',str(1 if drop else 10),stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=dict(os.environ,GUAC_BRIDGE_PASSWORD='test',NO_PROXY='127.0.0.1,localhost'))
             line=await asyncio.wait_for(child.stdout.readline(),90)
             wall=time.monotonic()-start
             if drop:

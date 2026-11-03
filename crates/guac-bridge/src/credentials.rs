@@ -1,14 +1,14 @@
-use crate::cli::Args;
+use crate::options::BridgeOptions;
 use anyhow::{Context, Result, bail};
 use url::Url;
-fn entry(args: &Args, user: &str) -> Result<keyring::Entry> {
+fn entry(args: &BridgeOptions, user: &str) -> Result<keyring::Entry> {
     let mut url = Url::parse(args.url.as_deref().context("--url is required")?)?;
     url.set_fragment(None);
     url.set_query(None);
     let service = format!("guac-bridge:{}", url.as_str().trim_end_matches('/'));
     keyring::Entry::new(&service, user).context("System credential store is unavailable")
 }
-pub(crate) fn username(args: &Args) -> Result<String> {
+pub(crate) fn username(args: &BridgeOptions) -> Result<String> {
     if let Some(name) = &args.username {
         return Ok(name.clone());
     }
@@ -23,7 +23,7 @@ pub(crate) fn username(args: &Args) -> Result<String> {
     }
     Ok(name.into())
 }
-pub(crate) fn password(args: &Args, user: &str) -> Result<String> {
+pub(crate) fn password(args: &BridgeOptions, user: &str) -> Result<String> {
     if let Some(value) = &args.resolved_password {
         return Ok(value.clone());
     }
@@ -42,12 +42,12 @@ pub(crate) fn password(args: &Args, user: &str) -> Result<String> {
     rpassword::prompt_password("Guacamole password: ")
         .context("Cannot read password from the console")
 }
-pub(crate) fn save(args: &Args, user: &str, password: &str) -> Result<()> {
+pub(crate) fn save(args: &BridgeOptions, user: &str, password: &str) -> Result<()> {
     entry(args, user)?
         .set_password(password)
         .map_err(|_| anyhow::anyhow!("Cannot save password in the system credential store"))
 }
-pub(crate) fn forget(args: &Args) -> Result<()> {
+pub(crate) fn forget(args: &BridgeOptions) -> Result<()> {
     let user = username(args)?;
     entry(args, &user)?
         .delete_credential()

@@ -1,4 +1,4 @@
-use crate::{cli::Args, shell_quote};
+use crate::{options::BridgeOptions, shell_quote};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use sha2::{Digest, Sha256};
@@ -11,7 +11,7 @@ pub(crate) fn digest() -> String {
     format!("{:x}", Sha256::digest(AGENT))
 }
 pub(crate) const WINDOWS_AGENT: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/agent-windows"));
-pub(crate) fn agent(args: &Args) -> Result<&'static [u8]> {
+pub(crate) fn agent(args: &BridgeOptions) -> Result<&'static [u8]> {
     if args.server_os == "windows" {
         ensure!(
             !WINDOWS_AGENT.is_empty(),
@@ -22,20 +22,20 @@ pub(crate) fn agent(args: &Args) -> Result<&'static [u8]> {
         Ok(AGENT)
     }
 }
-pub(crate) fn encoded_agent(args: &Args) -> Result<Vec<u8>> {
+pub(crate) fn encoded_agent(args: &BridgeOptions) -> Result<Vec<u8>> {
     Ok(STANDARD.encode(agent(args)?).into_bytes())
 }
 
 /// Wait for raw/no-echo mode before sending a long command or upload.
 /// Replace the interactive shell so readline cannot re-enable echo for the script.
-pub(crate) fn prepare(args: &Args, nonce: &str) -> Result<Vec<u8>> {
+pub(crate) fn prepare(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
     if args.server_os == "windows" {
         return windows_command(args, nonce);
     }
     Ok(format!(r"stty raw -echo || exit; printf '\033]482202;2;BOOT\007{nonce}:PREPARED\n\033]482203;\007'; exec /bin/sh -s
 ").into_bytes())
 }
-pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
+pub(crate) fn command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
     if args.server_os == "windows" {
         return Ok(Vec::new());
     }
@@ -82,7 +82,7 @@ pub(crate) fn command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
 fn powershell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "''"))
 }
-fn windows_command(args: &Args, nonce: &str) -> Result<Vec<u8>> {
+fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
     let bytes = agent(args)?;
     let hash = format!("{:x}", Sha256::digest(bytes));
     let mut options = format!(
@@ -139,11 +139,11 @@ mod tests {
         #[derive(Parser)]
         struct TestArgs {
             #[command(flatten)]
-            args: Args,
+            args: BridgeOptions,
         }
         let args = TestArgs::parse_from([
             "test",
-            "--url",
+            "--guacamole-url",
             "https://example.invalid/#/client/test",
             "--server-os",
             "windows",

@@ -1,6 +1,6 @@
-use crate::{FRAME, WINDOW};
-use anyhow::{Result, ensure};
-use clap::{Args as ClapArgs, Parser, Subcommand};
+use crate::options::BridgeOptions;
+use anyhow::Result;
+use clap::{Parser, Subcommand};
 use std::{ffi::OsString, time::Duration};
 
 #[derive(Parser)]
@@ -28,155 +28,12 @@ enum Command {
         background: bool,
     },
     /// Forward the remote SSH service.
-    Ssh(Args),
+    Ssh(BridgeOptions),
     /// Forward a remote OpenAI-compatible HTTP endpoint, including streaming.
-    Llm(Args),
+    Llm(BridgeOptions),
 }
 
-#[derive(ClapArgs, Clone, Debug)]
-pub(crate) struct Args {
-    #[arg(long, required_unless_present_any=["stop","status"])]
-    pub url: Option<String>,
-    #[arg(long, alias = "user")]
-    pub username: Option<String>,
-    #[arg(long)]
-    pub connection_id: Option<String>,
-    #[arg(long)]
-    pub data_source: Option<String>,
-    /// Local loopback port (SSH: 2222, LLM: 8000).
-    #[arg(long)]
-    pub port: Option<u16>,
-    /// Remote loopback service port (SSH: 22, LLM: 8000).
-    #[arg(long)]
-    pub target_port: Option<u16>,
-    #[arg(long, default_value = "127.0.0.1")]
-    pub target_host: String,
-    #[arg(long, default_value_t = 30)]
-    pub connect_timeout: u64,
-    #[arg(long, default_value_t = 1.0)]
-    pub startup_delay: f64,
-    #[arg(long, default_value_t = 8)]
-    pub max_connections: usize,
-    /// TCP frames in flight per connection; independent of --input-window.
-    #[arg(long, default_value_t=WINDOW)]
-    pub window: usize,
-    /// Maximum bytes per frame. Larger frames reduce overhead; small writes still send immediately.
-    #[arg(long, default_value_t=FRAME as u32, value_parser=clap::value_parser!(u32).range(4096..=65536))]
-    pub frame_size: u32,
-    #[arg(long)]
-    pub ca_file: Option<String>,
-    /// Disable certificate verification. Prefer --ca-file for a private CA.
-    #[arg(long)]
-    pub insecure: bool,
-    /// Save the password to the native system credential store after successful login.
-    #[arg(long, conflicts_with_all=["forget_password","no_keyring"])]
-    pub save_password: bool,
-    #[arg(long, conflicts_with = "no_keyring")]
-    pub forget_password: bool,
-    /// Skip the native credential store for this connection.
-    #[arg(long)]
-    pub no_keyring: bool,
-    /// Start or reuse a background bridge (the default); use --stop to end it.
-    #[arg(long, conflicts_with_all=["stop","status","foreground"])]
-    pub ensure_running: bool,
-    /// Run in this terminal until Ctrl+C instead of starting a background bridge.
-    #[arg(long, conflicts_with_all=["stop","status"])]
-    pub foreground: bool,
-    /// Stop the managed bridge on --port, including its active connections.
-    #[arg(long, conflicts_with = "status")]
-    pub stop: bool,
-    /// Show the managed bridge status on --port.
-    #[arg(long)]
-    pub status: bool,
-    /// Show a separate console for the managed process on Windows.
-    #[arg(long)]
-    pub show_console: bool,
-    /// Use a manually installed helper instead of deploying the bundled agent.
-    #[arg(long)]
-    pub server_command: Option<String>,
-    /// Local metadata-only transport log (rotates at 2 MiB, plus one backup).
-    #[arg(long)]
-    pub debug_log: Option<String>,
-    /// Remote helper metadata log; use an absolute path in a private directory.
-    #[arg(long)]
-    pub server_debug_log: Option<String>,
-    /// Remote server OS. Windows requires an SSH terminal and PowerShell 5.1+.
-    #[arg(long, default_value = "linux", value_parser = ["linux", "windows"])]
-    pub server_os: String,
-    /// Linux helper-upload bytes between remote acknowledgements; live forwarding is unaffected.
-    #[arg(long,default_value_t=crate::deploy::UPLOAD_CHUNK as u32,value_parser=clap::value_parser!(u32).range(3072..=49152))]
-    pub upload_batch_size: u32,
-    #[arg(long, hide = true)]
-    pub benchmark_control: bool,
-    #[arg(long, hide = true)]
-    pub managed_child: bool,
-    #[arg(skip)]
-    pub mode: String,
-    /// Guacamole input blobs awaiting gateway ACKs (1-128); independent of TCP credits.
-    #[arg(long, default_value_t = 8)]
-    pub input_window: usize,
-    #[arg(skip)]
-    pub input_chunk: usize,
-    #[arg(skip)]
-    pub resolved_password: Option<String>,
-}
-impl Args {
-    pub fn port(&self) -> u16 {
-        self.port
-            .unwrap_or(if self.mode == "ssh" { 2222 } else { 8000 })
-    }
-    pub fn target_port(&self) -> u16 {
-        self.target_port
-            .unwrap_or(if self.mode == "ssh" { 22 } else { 8000 })
-    }
-    fn validate(&mut self) -> Result<()> {
-        if !self.foreground
-            && !self.managed_child
-            && !self.benchmark_control
-            && !self.forget_password
-            && !self.stop
-            && !self.status
-        {
-            self.ensure_running = true;
-        }
-        ensure!(
-            self.upload_batch_size.is_multiple_of(4),
-            "--upload-batch-size must be a multiple of 4"
-        );
-        ensure!(
-            (1..=64).contains(&self.window),
-            "--window must be between 1 and 64"
-        );
-        ensure!(
-            [4096, 8192, 16384, 32768, 65536].contains(&self.frame_size),
-            "--frame-size must be 4096, 8192, 16384, 32768 or 65536"
-        );
-        ensure!(
-            (1..=16).contains(&self.max_connections) && self.connect_timeout > 0,
-            "Invalid connection limit or timeout"
-        );
-        ensure!(
-            self.startup_delay.is_finite() && self.startup_delay >= 0.0,
-            "Invalid startup delay"
-        );
-        ensure!(
-            ["127.0.0.1", "localhost", "::1"].contains(&self.target_host.as_str()),
-            "Remote target must be loopback"
-        );
-        ensure!(self.target_port() > 0, "Target port must be positive");
-        ensure!(
-            !(self.ensure_running || self.stop || self.status) || self.port() > 0,
-            "Managed bridges require a fixed --port greater than zero"
-        );
-        ensure!(
-            (1..=128).contains(&self.input_window),
-            "--input-window must be between 1 and 128"
-        );
-        self.input_chunk = 6048;
-        Ok(())
-    }
-}
-pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
+pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let arguments: Vec<_> = arguments.into_iter().collect();
     let default_background = arguments
         .get(1)
@@ -196,7 +53,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let requested_hook = default_background
         || arguments.iter().any(|arg| {
             arg.to_str()
-                .is_some_and(|value| matches!(value, "--ensure-running" | "--stop" | "--status"))
+                .is_some_and(|value| matches!(value, "--stop" | "--status"))
         });
     let cli = match Cli::try_parse_from(arguments) {
         Ok(cli) => cli,
@@ -259,7 +116,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         Command::Llm(a) => ("llm", a),
     };
     args.mode = mode.into();
-    let hook_output = args.ensure_running
+    let hook_output = args.background
         || args.stop
         || args.status
         || (!args.foreground
@@ -268,7 +125,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             && !args.forget_password);
     let result = (|| -> Result<()> {
         args.validate()?;
-        if !args.ensure_running && !args.stop && !args.status {
+        if !args.background && !args.stop && !args.status {
             crate::diagnostics::init(args.debug_log.as_deref())?;
             crate::diagnostics::event(&format!(
                 "transport window={} frame_size={} input_window={} input_chunk={} input_protocol=reliable-v1",
@@ -285,7 +142,7 @@ pub fn main_entry(arguments: impl IntoIterator<Item = OsString>) -> i32 {
                 crate::background::visible_console()?;
             }
         }
-        if args.stop || args.status || args.ensure_running {
+        if args.stop || args.status || args.background {
             return crate::background::handle(args);
         }
         if args.forget_password {
@@ -328,7 +185,6 @@ mod tests {
         for mode in ["ssh", "llm"] {
             for (extra, managed) in [
                 (vec![], true),
-                (vec!["--ensure-running"], true),
                 (vec!["--foreground"], false),
                 (vec!["--managed-child"], false),
                 (vec!["--benchmark-control"], false),
@@ -337,29 +193,23 @@ mod tests {
                 (vec!["--status"], false),
             ] {
                 let cli = Cli::try_parse_from(
-                    ["guac-bridge", mode, "--url", "https://example.invalid"]
-                        .into_iter()
-                        .chain(extra),
+                    [
+                        "guac-bridge",
+                        mode,
+                        "--guacamole-url",
+                        "https://example.invalid",
+                    ]
+                    .into_iter()
+                    .chain(extra),
                 )
                 .unwrap();
                 let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command else {
                     panic!("bridge expected")
                 };
                 args.validate().unwrap();
-                assert_eq!(args.ensure_running, managed);
+                assert_eq!(args.background, managed);
             }
         }
-        assert!(
-            Cli::try_parse_from([
-                "guac-bridge",
-                "ssh",
-                "--url",
-                "https://example.invalid",
-                "--ensure-running",
-                "--foreground"
-            ])
-            .is_err()
-        );
     }
 
     #[test]
@@ -372,9 +222,14 @@ mod tests {
         ] {
             for mode in ["ssh", "llm"] {
                 let cli = Cli::try_parse_from(
-                    ["guac-bridge", mode, "--url", "http://example.invalid"]
-                        .into_iter()
-                        .chain(flags.iter().copied()),
+                    [
+                        "guac-bridge",
+                        mode,
+                        "--guacamole-url",
+                        "http://example.invalid",
+                    ]
+                    .into_iter()
+                    .chain(flags.iter().copied()),
                 )
                 .unwrap();
                 let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command else {
@@ -395,7 +250,7 @@ mod tests {
                     Cli::try_parse_from([
                         "guac-bridge",
                         mode,
-                        "--url",
+                        "--guacamole-url",
                         "http://example.invalid",
                         option
                     ])
@@ -411,7 +266,7 @@ mod tests {
             let cli = Cli::try_parse_from([
                 "guac-bridge",
                 "ssh",
-                "--url",
+                "--guacamole-url",
                 "http://example.invalid",
                 "--input-window",
                 value,

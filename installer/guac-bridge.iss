@@ -1,5 +1,8 @@
 #ifndef Version
-  #define Version "3.0.0"
+  #error "Pass /DVersion from cargo xtask installer"
+#endif
+#ifndef PayloadDir
+  #error "Pass /DPayloadDir from cargo xtask installer"
 #endif
 [Setup]
 AppId={{66D9F158-5DF1-4B18-86C8-D10FE58B312E}
@@ -34,7 +37,7 @@ Name: "addtopath"; Description: "Add Guac Bridge to my user PATH"; Flags: checke
 
 [Files]
 Source: "..\\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\target\installer-payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
 Type: files; Name: "{app}\guac-ssh-client.exe"

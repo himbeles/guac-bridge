@@ -1,3 +1,8 @@
+//! Guac Bridge: terminal framing and the native bridge entry point.
+//!
+//! [`run`] parses the same arguments as the `guac-bridge` executable and returns
+//! an exit code. Protocol types remain shared by the client and standalone helper.
+//! See `docs/architecture.md` for module ownership and lifecycle invariants.
 //! Native binary multiplexing. ESC-safe byte stuffing for Guacamole terminal pipes.
 use anyhow::{Result, bail, ensure};
 use std::fmt::Write;
@@ -348,13 +353,15 @@ mod tests {
 #[cfg(feature = "client")]
 mod background;
 #[cfg(feature = "client")]
-pub mod cli;
+mod cli;
 #[cfg(feature = "client")]
 mod client;
 #[cfg(feature = "client")]
 mod credentials;
 #[cfg(feature = "client")]
 mod deploy;
+#[cfg(feature = "client")]
+mod options;
 
 #[cfg(feature = "client")]
 mod proxy;
@@ -376,3 +383,12 @@ mod maintenance;
 
 #[cfg(all(feature = "client", windows))]
 mod manager;
+
+/// Run the native CLI with an argv sequence including its executable name.
+///
+/// This is the sole application entry point for the binary and Rust callers.
+/// It owns argument parsing, background-process dispatch and the Tokio runtime.
+#[cfg(feature = "client")]
+pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> i32 {
+    cli::run(arguments)
+}

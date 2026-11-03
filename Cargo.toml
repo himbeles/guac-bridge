@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/guac-bridge"]
+members = ["crates/guac-bridge", "xtask"]
 default-members = ["crates/guac-bridge"]
 resolver = "2"
 
