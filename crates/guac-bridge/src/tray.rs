@@ -222,9 +222,16 @@ mod windows {
                 PostQuitMessage(0);
                 return 0;
             }
-            // Native move/resize loops dispatch WM_SIZE and other messages
-            // synchronously. Do not hold a Ui borrow or callback guard across them.
-            if matches!(msg, WM_SYSCOMMAND | WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK) {
+            // Default processing can synchronously dispatch WM_CLOSE/WM_SIZE
+            // (including through WM_WINDOWPOSCHANGED). Do not borrow Ui or
+            // hold the callback guard for messages we delegate to Windows.
+            // Registered messages start at 0xC000, including TaskbarCreated.
+            if msg < 0xC000
+                && !matches!(
+                    msg,
+                    SHOW | ICON | WM_GETMINMAXINFO | WM_TIMER | WM_SIZE | WM_COMMAND
+                )
+            {
                 return DefWindowProcW(hwnd, msg, wp, lp);
             }
             if IN_CALLBACK.with(|value| value.replace(true)) {

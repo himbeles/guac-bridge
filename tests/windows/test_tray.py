@@ -24,6 +24,7 @@ user32.SendMessageW.restype = ctypes.c_ssize_t
 user32.IsWindowVisible.argtypes = [w.HWND]
 user32.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
 user32.GetWindowRect.argtypes = [w.HWND, ctypes.POINTER(w.RECT)]
+user32.MoveWindow.argtypes = [w.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, w.BOOL]
 
 
 def wait_for(check, timeout=12):
@@ -136,6 +137,8 @@ class TrayTests(unittest.TestCase):
             subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
             wait_for(lambda: user32.IsWindowVisible(hwnd))
             self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
+            # Start smaller than the runner desktop, independent of its resolution.
+            user32.MoveWindow(hwnd, 20, 20, 800, 460, True)
             initial = w.RECT()
             user32.GetWindowRect(detail, ctypes.byref(initial))
             user32.SendMessageW(hwnd, 0x112, 0xF030, 0)  # SC_MAXIMIZE dispatches nested WM_SIZE
