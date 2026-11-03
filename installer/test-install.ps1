@@ -68,8 +68,19 @@ if (!(Test-Path "$dest/Microsoft.WindowsAppRuntime.dll")) { throw 'Installer omi
 if ($WithoutSharedRuntime) { Test-InstalledManager }
 if (-not ([Environment]::GetEnvironmentVariable('Path','User').Split(';') -contains $dest)) { throw 'PATH option did not add the install directory' }
 # An update must release the installed executable held by the tray automatically.
-$tray = Start-Process -FilePath "$dest/guac-bridge.exe" -ArgumentList 'tray', '--background' -PassThru
-Start-Sleep -Milliseconds 500
+$trayArguments = @('tray')
+if (!$WithoutSharedRuntime) { $trayArguments += '--background' }
+$tray = Start-Process -FilePath "$dest/guac-bridge.exe" -ArgumentList $trayArguments -PassThru
+if ($WithoutSharedRuntime) {
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        $title = 'Guac Bridge ' + [char]0x2014 + ' running bridges'
+        $window = [GuacInstallerNative]::FindWindow($null, $title)
+        if ($window -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    if ($window -eq [IntPtr]::Zero) { throw 'Manager did not open for installer update test' }
+} else { Start-Sleep -Milliseconds 500 }
 if ($tray.HasExited) { throw 'Tray failed to start for update test' }
 Run-Setup '/TASKS=addtopath'
 if (-not $tray.WaitForExit(15000)) { throw 'Installer did not stop the old tray before replacing binaries' }

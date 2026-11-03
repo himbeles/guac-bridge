@@ -5,10 +5,10 @@ Push-Location (Split-Path $PSScriptRoot)
 try {
     $arguments = @('build', '--locked', '--release', '--features', 'bundled-ui',
         '--bin', 'guac-bridge', '--bin', 'guac-ssh-client', '--bin', 'guac-llm-client')
-    $profile = 'target/release'
+    $binaryDirectory = 'target/release'
     if ($Target) {
         $arguments += @('--target', $Target)
-        $profile = "target/$Target/release"
+        $binaryDirectory = "target/$Target/release"
     }
     & cargo @arguments
     if ($LASTEXITCODE -ne 0) { throw 'Bundled UI build failed' }
@@ -18,11 +18,11 @@ try {
     if (Test-Path $payload) { Remove-Item $payload -Recurse -Force }
     New-Item -ItemType Directory -Force $payload | Out-Null
     foreach ($name in @('guac-bridge', 'guac-ssh-client', 'guac-llm-client')) {
-        Copy-Item "$profile/$name.exe" $payload
+        Copy-Item "$binaryDirectory/$name.exe" $payload
     }
-    Get-ChildItem $profile -File | Where-Object { $_.Extension -in '.dll', '.pri' } |
+    Get-ChildItem $binaryDirectory -File | Where-Object { $_.Extension -in '.dll', '.pri' } |
         Copy-Item -Destination $payload
-    Get-ChildItem $profile -Directory | Where-Object {
+    Get-ChildItem $binaryDirectory -Directory | Where-Object {
         $_.Name -match '^[a-z]{2,3}(-[a-z0-9]+)+$' -or $_.Name -eq 'microsoft.ui.xaml'
     } | Copy-Item -Destination $payload -Recurse
 
