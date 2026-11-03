@@ -62,8 +62,10 @@ function Uninstall {
     if (Test-Path "$dest/Microsoft.WindowsAppRuntime.dll") { throw 'Uninstall left the private runtime behind' }
 }
 if ($WithoutSharedRuntime) {
-    & target/release/guac-bridge.exe prepare-update
-    if ($LASTEXITCODE -ne 0) { throw 'Cannot release running clients before runtime isolation' }
+    if (Test-Path target/release/guac-bridge.exe) {
+        & target/release/guac-bridge.exe prepare-update
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot release running clients before runtime isolation' }
+    }
     # Removing the newest framework can expose an older registered version.
     # Match Reactor's actual x64/minimum-version requirement and remove each
     # compatible version; older or x86 frameworks cannot satisfy the manager.
