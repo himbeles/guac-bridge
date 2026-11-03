@@ -37,11 +37,28 @@ def wait_for(check, timeout=12):
 
 def text(hwnd):
     buffer = ctypes.create_unicode_buffer(8192)
-    user32.GetWindowTextW(hwnd, buffer, len(buffer))
+    # WM_GETTEXT supports edit controls in another process; GetWindowTextW does not.
+    user32.SendMessageW(hwnd, 0x000D, len(buffer), ctypes.addressof(buffer))
     return buffer.value
 
 
 class TrayTests(unittest.TestCase):
+    def test_prepare_update_waits_for_tray_process_exit(self):
+        existing = user32.FindWindowW('GuacBridgeManager', None)
+        if existing:
+            user32.PostMessageW(existing, 0x111, 105, 0)
+            wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
+        child = subprocess.Popen([str(BINARY), 'tray', '--background'])
+        try:
+            wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
+            result = subprocess.run([str(BINARY), 'prepare-update'], capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(child.wait(timeout=3), 0)
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
+
     def test_discovery_singleton_hide_reopen_and_exit(self):
         # Previous bridge tests may already have launched this job's tray.
         existing = user32.FindWindowW('GuacBridgeManager', None)
