@@ -112,7 +112,6 @@ impl Manager {
                         .unwrap_or_else(|| "No data transferred yet".into()),
                 ),
             ));
-            sections.push(("meaning", label("Payload totals since this bridge started. Upload is data from local clients; download is data delivered to them. Protocol overhead is excluded.")));
         } else {
             sections.push(("legacy", InfoBar::new().is_open(true).severity(if bridge.online {InfoBarSeverity::Informational} else {InfoBarSeverity::Warning}).title(if bridge.online {"Older bridge"} else {"Bridge not responding"}).message(if bridge.online {"Restart this bridge with the current version to see usage and full metadata."} else {"Its registration is retained. No process has been terminated."}).into()));
         }
@@ -140,10 +139,13 @@ impl Manager {
                     SlotView::new(ExpanderSlot::Header, heading("Bridge details", 16.0)),
                     SlotView::new(
                         ExpanderSlot::Content,
-                        TextBlock::new()
-                            .text(bridge.details.clone())
-                            .text_wrapping(TextWrapping::Wrap)
-                            .is_text_selection_enabled(true),
+                        StackPanel::new().spacing(16.0).children((
+                            TextBlock::new()
+                                .text(bridge.details.clone())
+                                .text_wrapping(TextWrapping::Wrap)
+                                .is_text_selection_enabled(true),
+                            label("Payload totals since this bridge started. Upload is data from local clients; download is data delivered to them. Protocol overhead is excluded."),
+                        )),
                     ),
                 ]),
         ));
