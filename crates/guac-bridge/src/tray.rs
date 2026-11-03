@@ -16,6 +16,9 @@ pub(crate) fn launch() -> anyhow::Result<()> {
         .create(true)
         .append(true)
         .open(&log_path)?;
+    // The caller may be an SSH Match exec hook. Do not let the tray inherit
+    // its original output pipes, which would prevent the hook from reaching EOF.
+    crate::background::clear_parent_stdio_inheritance()?;
     let mut child = Command::new(std::env::current_exe()?)
         .args(["tray", "--background"])
         .stdin(Stdio::null())

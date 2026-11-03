@@ -465,7 +465,7 @@ pub(crate) fn visible_console() -> Result<()> {
 }
 
 #[cfg(windows)]
-fn clear_parent_stdio_inheritance() -> Result<()> {
+pub(crate) fn clear_parent_stdio_inheritance() -> Result<()> {
     use windows_sys::Win32::{
         Foundation::{
             GetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,
