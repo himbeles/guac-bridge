@@ -1,0 +1,110 @@
+"""Native Win32 manager smoke test, including discovery and singleton behaviour."""
+import ctypes
+from ctypes import wintypes as w
+import json
+import os
+from pathlib import Path
+import socketserver
+import subprocess
+import threading
+import time
+import unittest
+import uuid
+
+ROOT = Path(__file__).resolve().parents[2]
+BINARY = ROOT / 'target/release/guac-bridge.exe'
+user32 = ctypes.WinDLL('user32', use_last_error=True)
+user32.FindWindowW.argtypes = [w.LPCWSTR, w.LPCWSTR]
+user32.FindWindowW.restype = w.HWND
+user32.GetDlgItem.argtypes = [w.HWND, ctypes.c_int]
+user32.GetDlgItem.restype = w.HWND
+user32.PostMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
+user32.SendMessageW.argtypes = [w.HWND, w.UINT, w.WPARAM, w.LPARAM]
+user32.SendMessageW.restype = ctypes.c_ssize_t
+user32.IsWindowVisible.argtypes = [w.HWND]
+user32.GetWindowTextW.argtypes = [w.HWND, w.LPWSTR, ctypes.c_int]
+
+
+def wait_for(check, timeout=12):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        value = check()
+        if value:
+            return value
+        time.sleep(.05)
+    raise AssertionError('Timed out waiting for native manager state')
+
+
+def text(hwnd):
+    buffer = ctypes.create_unicode_buffer(8192)
+    user32.GetWindowTextW(hwnd, buffer, len(buffer))
+    return buffer.value
+
+
+class TrayTests(unittest.TestCase):
+    def test_discovery_singleton_hide_reopen_and_exit(self):
+        # Previous bridge tests may already have launched this job's tray.
+        existing = user32.FindWindowW('GuacBridgeManager', None)
+        if existing:
+            user32.PostMessageW(existing, 0x111, 105, 0)
+            wait_for(lambda: not user32.FindWindowW('GuacBridgeManager', None))
+        token = str(uuid.uuid4())
+        commands = []
+
+        class Control(socketserver.StreamRequestHandler):
+            def handle(self):
+                request = json.loads(self.rfile.readline(1024))
+                if request.get('token') != token:
+                    return
+                commands.append(request['command'])
+                if request['command'] == 'inspect':
+                    self.wfile.write(json.dumps(dict(uptime_ms=5000, uploaded=2048,
+                        downloaded=4096, connections=1, total_connections=3,
+                        idle_ms=0)).encode() + b'\n')
+                else:
+                    self.wfile.write(b'OK\n')
+
+        server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), Control)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        directory = Path(os.environ['LOCALAPPDATA']) / 'guac-bridge' / 'data'
+        directory.mkdir(parents=True, exist_ok=True)
+        registration = directory / 'llm-65534.json'
+        self.assertFalse(registration.exists(), 'Refusing to replace an existing registration')
+        registration.write_text(json.dumps(dict(pid=os.getpid(), control=server.server_address[1],
+            token=token, identity='tray-smoke-test', username=None, mode='llm', port=65534,
+            target='smoke-test:8000', version='test', executable=str(BINARY), instance=str(uuid.uuid4()))))
+        child = None
+        try:
+            child = subprocess.Popen([str(BINARY), 'tray', '--background'])
+            hwnd = wait_for(lambda: user32.FindWindowW('GuacBridgeManager', None))
+            detail = user32.GetDlgItem(hwnd, 110)
+            wait_for(lambda: 'Total uploaded: 2.0 KiB' in text(detail))
+            self.assertIn('[LLM]', text(detail))
+            self.assertIn('Total downloaded: 4.0 KiB', text(detail))
+            self.assertNotIn(token, text(detail))
+            self.assertFalse(user32.IsWindowVisible(hwnd))
+            subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
+            wait_for(lambda: user32.IsWindowVisible(hwnd))
+            self.assertEqual(user32.FindWindowW('GuacBridgeManager', None), hwnd)
+            user32.PostMessageW(hwnd, 0x10, 0, 0)  # WM_CLOSE hides only
+            wait_for(lambda: not user32.IsWindowVisible(hwnd))
+            self.assertIsNone(child.poll())
+            subprocess.run([str(BINARY), 'tray'], check=True, timeout=10)
+            wait_for(lambda: user32.IsWindowVisible(hwnd))
+            user32.PostMessageW(hwnd, 0x111, 105, 0)  # Exit tray, keeping bridges
+            self.assertEqual(child.wait(timeout=10), 0)
+            self.assertTrue(registration.exists())
+            self.assertNotIn('stop', commands)
+        finally:
+            if child and child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
+            registration.unlink(missing_ok=True)
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -13,6 +13,12 @@ function Uninstall {
 }
 Run-Setup '/TASKS=addtopath'
 if (-not ([Environment]::GetEnvironmentVariable('Path','User').Split(';') -contains $dest)) { throw 'PATH option did not add the install directory' }
+# An update must release the installed executable held by the tray automatically.
+$tray = Start-Process -FilePath "$dest/guac-bridge.exe" -ArgumentList 'tray', '--background' -PassThru
+Start-Sleep -Milliseconds 500
+if ($tray.HasExited) { throw 'Tray failed to start for update test' }
+Run-Setup '/TASKS=addtopath'
+if (-not $tray.WaitForExit(15000)) { throw 'Installer did not stop the old tray before replacing binaries' }
 Uninstall
 if ([Environment]::GetEnvironmentVariable('Path','User').Split(';') -contains $dest) { throw 'Uninstall did not remove the PATH entry it added' }
 Run-Setup '/MERGETASKS=!addtopath'

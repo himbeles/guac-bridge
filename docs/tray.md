@@ -1,0 +1,81 @@
+# Windows bridge manager
+
+A single native Windows tray icon starts automatically when an SSH or LLM bridge
+becomes ready, including bridges started with `--ensure-running`. Open the bridge
+manager by clicking the icon, or run:
+
+```powershell
+guac-bridge tray
+```
+
+The installer also adds **Guac Bridge Manager** to the Start menu. The portable
+and Python installations use the same command; no additional GUI runtime is needed.
+
+The list labels each bridge `[SSH]` or `[LLM]` and shows its local endpoint and
+remote target. Select a bridge to see:
+
+- Idle/transferring state, uptime, active and total local TCP connections.
+- Sampled upload and download rates, refreshed approximately every two seconds.
+- Total uploaded and downloaded payload since that bridge started, and time since
+  its last payload transfer. Totals remain available when connections close.
+- PID, version, executable path and a unique bridge instance ID.
+
+Upload means bytes read from local clients. Download means bytes successfully
+written to local clients. Counters exclude helper deployment, framing, ACKs and
+retransmissions. They reset when the bridge process restarts; restarting the tray
+preserves the running bridge's totals. These are aggregate counters, not payload
+logs or records of earlier bridge runs.
+
+**Stop selected** and **Stop all** ask for confirmation because they disconnect
+active SSH sessions and LLM requests. **Open log** opens the managed bridge's
+output log, or the configured debug log for a foreground bridge. A foreground
+bridge without a debug log has no log to open.
+
+Closing the manager hides its window. **Exit tray (keep bridges running)** removes
+the tray icon and exits the manager. A subsequent bridge start launches the tray
+again, or use `guac-bridge tray` to reopen it.
+
+## Updating
+
+The Windows installer automatically stops registered bridges and the tray before
+replacing files. It uses the new executable extracted into its temporary directory,
+so this also works when upgrading an older version that lacks tray support. Active
+SSH sessions and LLM requests disconnect. If shutdown fails, the installer aborts
+before replacing files. Unresponsive registrations are retained; no PID is killed.
+
+For a uv tool installation, use:
+
+```powershell
+guac-bridge update
+```
+
+This verifies that the command belongs to the uv tool installation, stops bridges
+and the tray, then runs `uv tool upgrade guac-bridge`, preserving uv's saved install
+settings. On Windows, an updater copied outside the installation runs in a separate
+window, waits for the original launcher to exit, then performs the upgrade. That
+window reports success or failure; the initial command only reports that it launched
+the updater. New bridge starts are blocked while this updater runs. Start bridges
+again with your normal command after updating. Connections are not restarted.
+
+A direct `uv tool upgrade guac-bridge` is not intercepted. For direct uv/pip commands
+or manual portable replacements, first run `guac-bridge prepare-update` and check
+that it succeeds. Do not start bridges between preparation and replacement.
+
+## Tracking and control
+
+Each bridge registers in the existing per-user application data directory, using
+`ssh-PORT.json` or `llm-PORT.json`. A registration contains a random instance ID,
+PID, executable, version, target, and an authenticated loopback control endpoint.
+The authentication token stays out of the UI and status responses. Treat the
+registration directory as private, as with the existing background controls.
+
+The manager holds a per-user file lock. A second manual launch raises the existing
+window; automatic launches reuse the existing manager. Explorer restarts are
+handled by recreating the notification icon.
+
+A worker polls the control sockets, keeping socket waits off the UI thread.
+`inspect` returns usage; existing `status` and `stop` commands still return `OK`.
+Older bridges remain manageable but cannot supply usage details until restarted
+with the new version. Unresponsive registrations are shown explicitly, retained,
+and never used for PID-based termination. Normal bridge shutdown removes only its
+own registration, verified using its token.

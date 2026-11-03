@@ -389,6 +389,8 @@ async fn input_sender(
     }
     Ok(())
 }
+// Each argument is a separate channel resource; keep forwarding ownership explicit.
+#[allow(clippy::too_many_arguments)]
 async fn channel(
     id: u32,
     stream: TcpStream,
@@ -397,7 +399,9 @@ async fn channel(
     input: mpsc::Sender<Input>,
     channels: Channels,
     args: Arc<Args>,
+    usage: Arc<crate::usage::Usage>,
 ) -> Result<()> {
+    let _connection = usage.connection();
     let (mut reader, mut writer) = stream.into_split();
     let remote_closed = AtomicBool::new(false);
     let result: Result<()> = async {
@@ -425,6 +429,7 @@ async fn channel(
                     return Ok::<(), anyhow::Error>(());
                 }
                 permit.forget();
+                usage.transferred(true, n);
                 input
                     .send(Input::Event(Frame::payload(
                         Kind::Data,
@@ -439,6 +444,7 @@ async fn channel(
                 match frame.kind {
                     Kind::Data => {
                         writer.write_all(&frame.data).await?;
+                        usage.transferred(false, frame.data.len());
                         input
                             .send(Input::Event(Frame::control(Kind::Credit, id)))
                             .await?;
@@ -576,6 +582,7 @@ async fn benchmark_control(port: u16) -> Result<()> {
 }
 
 pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
+    let startup_guard = crate::update::startup_guard()?;
     let (base, connection, kind, source) = parse_url(&args)?;
     #[cfg(unix)]
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
@@ -912,7 +919,9 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
 
         let port=listener.local_addr()?.port();
         let (stop_tx,mut stop_rx)=mpsc::channel(1);
-        let _managed=crate::background::control(&args,stop_tx).await?;
+        let usage=Arc::new(crate::usage::Usage::default());
+        let _managed=crate::background::control(&args,port,stop_tx,usage.clone()).await?;
+        drop(startup_guard);
         if !args.benchmark_control{eprintln!("Bridge ready on 127.0.0.1:{port}; Ctrl+C to stop");}
         let control=async {if args.benchmark_control{benchmark_control(port).await}else{interrupt.recv().await;Ok(())}};
         tokio::pin!(control);
@@ -930,7 +939,7 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
         tokio::pin!(refresh);
         loop {
             tokio::select!{
-                _=stop_rx.recv(),if args.managed_child=>break,
+                _=stop_rx.recv(),if !args.benchmark_control=>break,
                 result=&mut control=>{result?;break;},
                 _=failed.changed()=>bail!("{}",failed.borrow().as_deref().unwrap_or("Bridge failed")),
                 result=&mut refresh,if kind=="c"=>{result?;break;},
@@ -942,7 +951,8 @@ pub(crate) async fn serve(args: Arc<Args>) -> Result<()> {
                     let (tx,rx)=mpsc::channel(args.window+4);let credits=Arc::new(Semaphore::new(args.window));
                     channels.lock().unwrap().insert(id,Channel{queue:tx,credits:credits.clone()});
                     let (input,channels,args)=(input.clone(),channels.clone(),args.clone());
-                    connections.spawn(async move {if let Err(error)=channel(id,stream,rx,credits,input,channels,args).await{crate::diagnostics::event(&format!("TCP channel {id}: {error:#}"));eprintln!("TCP channel {id}: {error:#}");}});
+                    let usage=usage.clone();
+                    connections.spawn(async move {if let Err(error)=channel(id,stream,rx,credits,input,channels,args,usage).await{crate::diagnostics::event(&format!("TCP channel {id}: {error:#}"));eprintln!("TCP channel {id}: {error:#}");}});
                 },
                 _=connections.join_next(),if !connections.is_empty()=>(),
             }

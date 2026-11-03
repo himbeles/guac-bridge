@@ -60,7 +60,7 @@ uuid = { version = "1", features = ["v4"], optional = true }
 fs2 = { version = "0.4", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Threading"] }
 keyring = { version = "3", features = ["windows-native"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -84,3 +84,11 @@ See [Building](docs/building.md), [Testing](docs/testing.md), [Transport debuggi
 
 See [Transport](docs/transport.md) for flow control and reliability, and
 [Connections](docs/connections.md) for deployment and process lifetimes.
+
+On Windows, running bridges appear in the tray. Use `guac-bridge tray` to open
+the manager with SSH/LLM tags, live rates, session totals and stop controls.
+See [Windows bridge manager](docs/tray.md).
+
+The Windows installer stops running bridges and the tray before updates. For uv
+tool installations, use `guac-bridge update` for the same shutdown and upgrade flow.
+Active sessions are disconnected; restart bridges afterwards.

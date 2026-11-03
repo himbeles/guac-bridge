@@ -13,6 +13,8 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ChangesEnvironment=yes
+CloseApplications=yes
+RestartApplications=no
 OutputDir=..\dist
 OutputBaseFilename=guac-bridge-{#Version}-windows-x86_64-setup
 Compression=lzma2
@@ -29,7 +31,22 @@ Source: "..\target\release\guac-bridge.exe"; DestDir: "{app}"; Flags: ignorevers
 Source: "..\target\release\guac-ssh-client.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\target\release\guac-llm-client.exe"; DestDir: "{app}"; Flags: ignoreversion
 
+[Icons]
+Name: "{group}\Guac Bridge Manager"; Filename: "{app}\guac-bridge.exe"; Parameters: "tray"
+
 [Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var ExitCode: Integer;
+begin
+  Result := '';
+  ExtractTemporaryFile('guac-bridge.exe');
+  if not Exec(ExpandConstant('{tmp}\guac-bridge.exe'), 'prepare-update', '', SW_HIDE,
+              ewWaitUntilTerminated, ExitCode) then
+    Result := 'Could not stop Guac Bridge before updating. Close its bridges and tray, then retry.'
+  else if ExitCode <> 0 then
+    Result := 'Guac Bridge shutdown failed. A bridge may still be starting, or the tray may have a dialog open. Close it and retry; no files have been replaced.';
+end;
+
 function HasPath(Value, Item: String): Boolean;
 begin
   Result := Pos(';' + Lowercase(Item) + ';', ';' + Lowercase(Value) + ';') > 0;
