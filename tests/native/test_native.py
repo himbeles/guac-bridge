@@ -155,6 +155,27 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(child.returncode, 0)
             self.assertIn('update is in progress', (await child.stderr.read()).decode())
 
+    async def test_startup_gate_blocks_update_until_released(self):
+        import fcntl
+        directory = self.home/'data'/'guac-bridge'
+        directory.mkdir(parents=True)
+
+        async def prepare():
+            command = await asyncio.create_subprocess_exec(str(BINARY), 'prepare-update',
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
+            output, error = await asyncio.wait_for(command.communicate(), 5)
+            return command.returncode, (output+error).decode()
+
+        with (directory/'update.lock').open('w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_SH)
+            code, text = await prepare()
+            self.assertNotEqual(code, 0)
+            self.assertIn('A bridge is still starting', text)
+
+        code, text = await prepare()
+        self.assertEqual(code, 0, text)
+        self.assertIn('Bridges and tray stopped', text)
+
     async def test_tray_registration_usage_and_authenticated_stop(self):
         import re
         target = await self.target(self.echo)

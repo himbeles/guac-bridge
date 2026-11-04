@@ -88,6 +88,7 @@ fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     println!("cargo:rerun-if-changed=src");
+    #[cfg(windows)]
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         // Reactor's framework bootstrap uses a Windows 11 API. Delay importing it so
         // command-line bridges and the tray still start on older Windows systems.

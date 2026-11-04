@@ -1,6 +1,6 @@
 # Build and package
 
-Run from the repository root with stable Rust/rustup and native build tools:
+Run from the repository root with Rust 1.95 or newer via rustup and native build tools:
 
 ```sh
 cargo xtask build

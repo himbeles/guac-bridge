@@ -54,7 +54,6 @@ pub(crate) fn rates(old: &crate::usage::Snapshot, new: &crate::usage::Snapshot) 
 mod windows {
     use crate::background;
     use anyhow::{Result, ensure};
-    use fs2::FileExt;
     use std::{
         fs::OpenOptions,
         process::{Child, Command, Stdio},
@@ -312,14 +311,14 @@ mod windows {
                     PostMessageW(hwnd, WM_COMMAND, EXIT, 0);
                 }
             }
-            if lock.try_lock_exclusive().is_ok() {
+            if lock.try_lock().is_ok() {
                 if process.as_ref().is_none_or(
                     |p| unsafe { WaitForSingleObject(p.as_raw_handle(), 0) } == WAIT_OBJECT_0,
-                ) && manager_lock.try_lock_exclusive().is_ok()
+                ) && manager_lock.try_lock().is_ok()
                 {
                     return Ok(());
                 }
-                FileExt::unlock(&lock)?;
+                lock.unlock()?;
             }
             ensure!(
                 Instant::now() < deadline,
@@ -335,9 +334,9 @@ mod windows {
             .create(true)
             .truncate(false)
             .open(background::directory()?.join("tray.lock"))?;
-        if let Err(e) = lock.try_lock_exclusive() {
-            if e.raw_os_error() != fs2::lock_contended_error().raw_os_error() {
-                return Err(e.into());
+        if let Err(e) = lock.try_lock() {
+            if let std::fs::TryLockError::Error(error) = e {
+                return Err(error.into());
             }
             if !background {
                 unsafe {
