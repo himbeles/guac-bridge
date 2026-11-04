@@ -215,37 +215,6 @@ async fn control_connection(
     }
 }
 
-#[cfg(windows)]
-fn clear_parent_stdio_inheritance() -> Result<()> {
-    use windows_sys::Win32::{
-        Foundation::{
-            GetHandleInformation, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,
-        },
-        System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE},
-    };
-    // Stable Rust Command inherits every inheritable process handle, including
-    // the SSH hook's original output pipes, even when its child's stdio is redirected.
-    // Clear only these inherited originals; Command creates the new child's own
-    // stdin pipe and log handles separately. No process-wide handle enumeration.
-    for id in [STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE] {
-        unsafe {
-            let handle = GetStdHandle(id);
-            if handle.is_null() || handle == INVALID_HANDLE_VALUE {
-                continue;
-            }
-            let mut flags = 0;
-            if GetHandleInformation(handle, &mut flags) != 0 && flags & HANDLE_FLAG_INHERIT != 0 {
-                ensure!(
-                    SetHandleInformation(handle, HANDLE_FLAG_INHERIT, 0) != 0,
-                    "Cannot isolate background process output handles: {}",
-                    std::io::Error::last_os_error()
-                );
-            }
-        }
-    }
-    Ok(())
-}
-
 /// A registration is only considered live after its authenticated socket responds.
 /// Never remove an unresponsive registration or terminate a PID from this data.
 #[cfg_attr(not(windows), allow(dead_code))]

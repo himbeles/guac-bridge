@@ -1,14 +1,12 @@
 //! Managed child launch, password stdin handoff and startup-log relay.
 //! The parent waits for authenticated readiness; it never treats a PID as authority.
-#[cfg(windows)]
-use super::clear_parent_stdio_inheritance;
 use super::{directory, identity, request, state};
 use crate::options::BridgeOptions;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
     fs::OpenOptions,
     io::{Read, Write},
-    process::{Command, Stdio},
+    process::Command,
     time::{Duration, Instant},
 };
 
@@ -166,29 +164,31 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o600))?;
     }
-    command
-        .stdin(Stdio::piped())
-        .stdout(Stdio::from(log.try_clone()?))
-        .stderr(Stdio::from(log));
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        // Background bridges have no console and remain independent of the caller.
-        command.creation_flags(0x08000000 | 0x00000200);
-    }
+    let mut child = {
+        let (input, mut password_pipe) = std::io::pipe()?;
+        let child = crate::child_process::spawn(&command, &input, &log, 0x08000000 | 0x00000200)
+            .context("Cannot start managed bridge")?;
+        drop(input);
+        writeln!(password_pipe, "{}", serde_json::to_string(&password)?)?;
+        child
+    };
     #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    #[cfg(windows)]
-    clear_parent_stdio_inheritance()?;
-    let mut child = command.spawn().context("Cannot start managed bridge")?;
-    writeln!(
-        child.stdin.take().context("No child input pipe")?,
-        "{}",
-        serde_json::to_string(&password)?
-    )?;
+    let mut child = {
+        use std::{os::unix::process::CommandExt, process::Stdio};
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::from(log.try_clone()?))
+            .stderr(Stdio::from(log))
+            .process_group(0);
+        let mut child = command.spawn().context("Cannot start managed bridge")?;
+        writeln!(
+            child.stdin.take().context("No child input pipe")?,
+            "{}",
+            serde_json::to_string(&password)?
+        )?;
+        child
+    };
     let mut startup_file = std::fs::File::open(&log_path)?;
     let mut startup_log = StartupLog::default();
     let mut deadline = Instant::now() + Duration::from_secs(args.connect_timeout + 135);

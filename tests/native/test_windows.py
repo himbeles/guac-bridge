@@ -150,6 +150,45 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         else:
             self.fail('Background process did not stop')
 
+    async def test_background_bridge_and_tray_release_inherited_config(self):
+        import ctypes
+        from ctypes import wintypes
+        import subprocess
+        import tempfile
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+            ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        env = dict(os.environ, GUAC_BRIDGE_PASSWORD='synthetic-password', NO_PROXY='127.0.0.1')
+        binary = str(ROOT/'target/release/guac-bridge.exe')
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp)/'ssh config'
+            config.write_text('Host test\n    HostName localhost\n')
+            # Open like an SSH caller: readable, inheritable, and denying delete sharing.
+            handle = kernel.CreateFileW(str(config), 0x80000000, 3, None, 3, 0, None)
+            self.assertNotEqual(handle, wintypes.HANDLE(-1).value)
+            try:
+                os.set_handle_inheritable(handle, True)
+                result = await asyncio.to_thread(subprocess.run,
+                    [binary, 'ssh', self.url, '--user', 'synthetic-user', '--no-keyring',
+                     '--startup-delay', '0', '--port', str(self.port)],
+                    env=env, close_fds=False, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                self.assertIn(b'Bridge ready', result.stderr)
+            finally:
+                kernel.CloseHandle(handle)
+            try:
+                self.assertIn('Bridge running', await self.command('--status'))
+                replacement = Path(temp)/'replacement'
+                replacement.write_text('Host changed\n')
+                replacement.replace(config)
+                self.assertEqual(config.read_text(), 'Host changed\n')
+            finally:
+                result = await asyncio.to_thread(subprocess.run, [binary, 'prepare-update'],
+                    env=env, capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+
     async def test_progress_is_visible_before_helper_becomes_ready(self):
         self.hold_ready = True
         args = [str(ROOT/'target/release/guac-bridge.exe'),'ssh',self.url,'--user','synthetic-user','--no-keyring','--startup-delay','0','--port',str(self.port)]
