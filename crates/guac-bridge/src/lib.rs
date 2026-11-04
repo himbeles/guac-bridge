@@ -392,3 +392,6 @@ mod manager;
 pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> i32 {
     cli::run(arguments)
 }
+
+#[cfg(all(feature = "client", windows))]
+mod child_process;

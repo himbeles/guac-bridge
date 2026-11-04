@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.0.2
+
+- Restrict Windows background bridge, tray and manager child processes to explicitly supplied input and output handles. Prevent inherited SSH config file handles from being retained after a Match exec hook returns.
+- Preserve password-pipe handoff, log redirection and detached process lifetimes. Add Windows regression tests for inherited file release, live bridge config replacement and argument quoting.
+
 ## 4.0.1
 
 - Replace fs2 with standard-library file locking for bridge startup, update exclusion, tray and manager coordination. Preserve shared startup guards and exclusive update guards.

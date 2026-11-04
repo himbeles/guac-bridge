@@ -1,17 +1,13 @@
 //! Native Windows notification icon and bridge manager. Polling never runs on the UI thread.
 #[cfg(windows)]
 pub(crate) fn launch() -> anyhow::Result<()> {
-    use std::{
-        os::windows::process::CommandExt,
-        process::{Command, Stdio},
-    };
-    Command::new(std::env::current_exe()?)
-        .args(["tray", "--background"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .creation_flags(0x08000000)
-        .spawn()?;
+    let null = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("NUL")?;
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    command.args(["tray", "--background"]);
+    crate::child_process::spawn(&command, &null, &null, 0x08000000)?;
     Ok(())
 }
 pub(crate) fn run(background: bool) -> anyhow::Result<()> {
@@ -56,7 +52,7 @@ mod windows {
     use anyhow::{Result, ensure};
     use std::{
         fs::OpenOptions,
-        process::{Child, Command, Stdio},
+        process::Command,
         time::{Duration, Instant},
     };
     use windows_sys::{
@@ -73,7 +69,7 @@ mod windows {
     const EXIT: usize = 105;
     const STOP_ALL: usize = 102;
     struct Host {
-        manager: Option<Child>,
+        manager: Option<crate::child_process::Child>,
         taskbar: u32,
         retries: u32,
     }
@@ -157,14 +153,11 @@ mod windows {
             .truncate(true)
             .open(background::directory()?.join("manager.log"))?;
         let mut command = Command::new(std::env::current_exe()?);
-        command
-            .arg("manager")
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(log.try_clone()?))
-            .stderr(Stdio::from(log));
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-        host.manager = Some(command.spawn()?);
+        command.arg("manager");
+        let null = OpenOptions::new().read(true).write(true).open("NUL")?;
+        host.manager = Some(crate::child_process::spawn(
+            &command, &null, &log, 0x08000000,
+        )?);
         Ok(())
     }
     fn message(text: &str, error: bool) {
