@@ -1,5 +1,11 @@
 # Changelog
 
+## 4.0.1
+
+- Replace fs2 with standard-library file locking for bridge startup, update exclusion, tray and manager coordination. Preserve shared startup guards and exclusive update guards.
+- Restrict client-only and platform-specific dependencies, enable only the required Tokio and futures-util features, and remove unused transitive dependencies.
+- Declare Rust 1.95 as the minimum supported version, matching the Windows UI dependencies, and add coverage for startup locks blocking updates until released.
+
 ## 4.0.0
 
 - Simplify connection startup to `guac-bridge ssh URL --user USER` or `guac-bridge llm URL --user USER`. The URL is positional and required for startup; `--port` selects the local listener and `--remote-port` selects the server service. Background startup is the default; `--foreground` keeps an attached session. Remove `--show-console` and the redundant `--ensure-running` option.

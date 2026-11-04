@@ -2,6 +2,7 @@
 name = "guac-bridge"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "SSH and OpenAI-compatible endpoints through Guacamole, with automatic helper deployment"
@@ -12,7 +13,7 @@ include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 default = ["client"]
 agent = []
 bundled-ui = ["client", "dep:windows-reactor-setup"]
-client = ["dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:fs2", "dep:windows-reactor"]
+client = ["dep:futures-util", "dep:serde", "dep:sha2", "dep:socket2", "dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:windows-reactor"]
 
 [lib]
 name = "guac_bridge"
@@ -33,13 +34,12 @@ base64 = "0.22"
 crc32fast = "1.5"
 memchr = "2"
 clap = { version = "4", features = ["derive"] }
-futures-util = "0.3"
-libc = "0.2"
-serde = { version = "1", features = ["derive"] }
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 serde_json = "1"
-sha2 = "0.10"
-socket2 = "0.6"
-tokio = { version = "1", features = ["full"] }
+sha2 = { version = "0.10", optional = true }
+socket2 = { version = "0.6", optional = true }
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "io-std", "sync", "time", "signal"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"], optional = true }
 tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-native-roots"], optional = true }
 url = { version = "2", optional = true }
@@ -50,7 +50,9 @@ rustls-pemfile = { version = "2", optional = true }
 rpassword = { version = "7", optional = true }
 directories = { version = "6", optional = true }
 uuid = { version = "1", features = ["v4"], optional = true }
-fs2 = { version = "0.4", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-reactor = { version = "=0.100.0", optional = true }
@@ -60,6 +62,6 @@ keyring = { version = "3", features = ["windows-native"], optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"], optional = true }
 
-[build-dependencies]
+[target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 windows-reactor-setup = { version = "=0.100.0", optional = true }

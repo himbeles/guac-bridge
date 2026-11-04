@@ -4,7 +4,6 @@ use crate::{
     usage::Snapshot,
 };
 use anyhow::{Context, Result};
-use fs2::FileExt;
 use std::{collections::HashMap, fs::OpenOptions, time::Duration};
 use windows_reactor::*;
 
@@ -369,7 +368,7 @@ pub(crate) fn run() -> Result<()> {
         .create(true)
         .truncate(false)
         .open(background::directory()?.join("manager.lock"))?;
-    lock.try_lock_exclusive()
+    lock.try_lock()
         .context("The bridge manager is already open")?;
     // Probe before calling Reactor's delay-loaded bootstrap. Never crash the CLI
     // loader or silently attempt to fetch an OS compatibility/runtime component.

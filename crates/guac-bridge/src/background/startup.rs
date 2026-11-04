@@ -5,7 +5,6 @@ use super::clear_parent_stdio_inheritance;
 use super::{directory, identity, request, state};
 use crate::options::BridgeOptions;
 use anyhow::{Context, Result, bail, ensure};
-use fs2::FileExt;
 use std::{
     fs::OpenOptions,
     io::{Read, Write},
@@ -56,7 +55,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         .read(true)
         .write(true)
         .open(dir.join(format!("{}-{}.lock", args.mode, args.port())))?;
-    lock.lock_exclusive()?;
+    lock.lock()?;
     if let Ok(s) = state(&args)
         && request(&s, "status").is_ok()
     {
