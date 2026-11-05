@@ -1,14 +1,14 @@
 # 🐸 Guac Bridge
 
-Forward TCP services through a gateway SSH terminal, then connect with your normal
-local application. SSH, HTTP, TLS, model APIs and Remote Desktop traffic pass
-through the same byte-transparent transport.
+Access remote TCP services through a gateway SSH terminal using your normal local
+applications. One transport carries SSH, web traffic, model APIs and Remote
+Desktop, preserving the application's authentication and encryption.
 
 ## Gateways
 
 | Gateway | Connection URL | Setup |
 | --- | --- | --- |
-| **Guacamole** (default) | Full browser URL of the SSH terminal | Copy the connection URL from your browser |
+| **Apache Guacamole** (default) | Full browser URL of the SSH terminal | Copy the connection URL from your browser |
 | **FortiGate** | SSL-VPN portal origin | Select `--gateway fortigate` and supply the server SSH settings |
 
 Both options start the matching helper inside the gateway's SSH terminal. The
@@ -32,7 +32,16 @@ and core utilities; Windows servers need PowerShell 5.1+ and a Windows SSH conso
 The helper requires no remote runtime installation, administrator access or
 internet connection. Its private cache must allow execution.
 
-## TCP forwarding
+### Windows desktop manager
+
+The installer includes a private UI runtime. The Windows manager requires Windows
+11 or Server 2025 or newer. CLI forwarding and the tray also work on older Windows
+versions. For uv or portable installations, the manager additionally needs
+[Windows App Runtime 2.4+ x64](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
+
+## Usage
+
+### Forward a TCP service
 
 ```shell
 guac-bridge tcp CONNECTION_URL --port 5432
@@ -53,7 +62,7 @@ headers and streamed responses pass unchanged. UDP is not forwarded.
 Every public argument and transport option is documented in
 `guac-bridge COMMAND --help`.
 
-## Port presets
+### Use a port preset
 
 Presets use the same TCP engine and select default ports and connection labels.
 
@@ -77,7 +86,7 @@ RDP forwarding connects your Remote Desktop client directly to the service throu
 the helper. The gateway SSH session starts the helper; an additional SSH client
 or `LocalForward` is not needed.
 
-## Manage bridges
+### Manage bridges
 
 ```shell
 guac-bridge list
@@ -93,7 +102,7 @@ On Windows, `guac-bridge tray` opens the manager with live counters and stop
 controls. Closing the manager leaves bridges running. See
 [Windows bridge manager](docs/tray.md).
 
-## SSH config integration
+### Integrate with SSH config
 
 ```sshconfig
 Host guac-server
@@ -121,17 +130,29 @@ uv tool upgrade guac-bridge
 Upgrade after preparation succeeds, then restart bridges. Preparation closes
 active connections, the tray and manager. Guac Bridge does not update itself.
 
-The installer includes a private UI runtime. The Windows manager requires Windows
-11 or Server 2025 or newer. CLI forwarding and the tray also work on older Windows
-versions. For uv or portable installations, the manager additionally needs
-[Windows App Runtime 2.4+ x64](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
+## Reference
 
-## Documentation and development
+For all commands and arguments, run `guac-bridge --help` or
+`guac-bridge COMMAND --help`.
 
-Run `cargo xtask build` and `cargo xtask check` from the repository root.
+| Guide | Contents |
+| --- | --- |
+| [Connections](docs/connections.md) | Authentication, helper deployment and bridge lifetime |
+| [Windows bridge manager](docs/tray.md) | Tray controls and desktop manager |
+| [Architecture](docs/architecture.md) | Components and data flow |
+| [Transport](docs/transport.md) | Framing and reliable delivery |
+| [Transport debugging](docs/transport-debugging.md) | Logs and troubleshooting |
+| [Benchmarking](docs/benchmarking.md) | Measuring throughput |
+
+## Development
+
+Run these commands from the repository root:
+
+```shell
+cargo xtask build
+cargo xtask check
+```
+
 The application and helper live in [crates/guac-bridge](crates/guac-bridge).
-
-See [Architecture](docs/architecture.md), [Building](docs/building.md),
-[Testing](docs/testing.md), [Connections](docs/connections.md),
-[Transport](docs/transport.md), [Transport debugging](docs/transport-debugging.md)
-and [Benchmarking](docs/benchmarking.md).
+See [Building](docs/building.md) and [Testing](docs/testing.md) for requirements
+and validation workflows.
