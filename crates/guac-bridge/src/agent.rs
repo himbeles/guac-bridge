@@ -228,9 +228,7 @@ fn write_frame(
     } else {
         guac_bridge::terminal_wire::output(frame, windows)?
     };
-    stdout.write_all(&bytes)?;
-    stdout.flush()?;
-    Ok(())
+    guac_bridge::terminal_wire::write_output(stdout, &bytes, windows)
 }
 
 async fn serve(args: Arc<Args>) -> Result<()> {
@@ -281,8 +279,8 @@ async fn serve(args: Arc<Args>) -> Result<()> {
             tokio::select!{
                 _=&mut stop=>break,
                 _=output_tick.tick(),if reliable_output.is_some()=>{
-                    stdout.write_all(&reliable_output.as_mut().unwrap().retry(std::time::Instant::now()).context("Reliable helper output delivery stalled")?)?;
-                    stdout.flush()?;
+                    let bytes = reliable_output.as_mut().unwrap().retry(std::time::Instant::now()).context("Reliable helper output delivery stalled")?;
+                    guac_bridge::terminal_wire::write_output(&mut stdout, &bytes, args.windows_console)?;
                 },
                 changed=input_acks.changed(),if input_acks_open=>{
                     if changed.is_ok() {
@@ -378,10 +376,14 @@ fn report_fatal(error: &anyhow::Error) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     // Also handles failures before the ordinary output pipe was opened.
     stdout.write_all(b"\x1b]482203;\x07")?;
-    stdout.write_all(&guac_bridge::terminal_wire::osc_bytes(
-        guac_bridge::terminal_wire::ERROR_PREFIX,
-        &report.as_bytes()[..end],
-    ))?;
+    guac_bridge::terminal_wire::write_output(
+        &mut stdout,
+        &guac_bridge::terminal_wire::osc_bytes(
+            guac_bridge::terminal_wire::ERROR_PREFIX,
+            &report.as_bytes()[..end],
+        ),
+        true,
+    )?;
     stdout.write_all(b"\x1b]482202;2;GBERR:END\x07\x1b]482203;\x07")?;
     stdout.flush()?;
     Ok(())

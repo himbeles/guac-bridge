@@ -22,6 +22,20 @@ pub fn osc_bytes(prefix: &str, bytes: &[u8]) -> Vec<u8> {
     }
     output
 }
+/// Flush complete OSC sequences independently. Large buffered console writes can
+/// split escape sequences at intermediate console/terminal buffer boundaries.
+pub fn write_output(writer: &mut impl std::io::Write, bytes: &[u8], windows: bool) -> Result<()> {
+    if windows {
+        for envelope in bytes.split_inclusive(|byte| *byte == 7) {
+            writer.write_all(envelope)?;
+            writer.flush()?;
+        }
+    } else {
+        writer.write_all(bytes)?;
+        writer.flush()?;
+    }
+    Ok(())
+}
 pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
     let bytes = encode(frame)?;
     crate::diagnostics::frame("tx", frame);
