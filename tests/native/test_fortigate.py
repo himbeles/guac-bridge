@@ -11,6 +11,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import shutil
 import tempfile
 import unittest
 from urllib.parse import parse_qs
@@ -18,7 +19,7 @@ from aiohttp import web
 
 ROOT = Path(__file__).resolve().parents[2]
 BINARY = ROOT/'target/release/guac-bridge'
-AGENT = ROOT/'target/x86_64-unknown-linux-musl/release/guac-bridge-agent'
+AGENT = ROOT/'crates/guac-bridge/assets/guac-bridge-agent-linux-x86_64'
 
 
 def parse(text):
@@ -52,6 +53,9 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.home = Path(self.temp.name)
+        self.agent = self.home/'fixture-agent'
+        shutil.copyfile(AGENT,self.agent)
+        self.agent.chmod(0o700)
         self.children, self.helpers, self.sockets, self.servers = [], [], [], []
         self.fail_login = False
         self.fail_server = False
@@ -162,7 +166,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         window = re.search(r'--window (\d+)', script)[1]
         frame_size = re.search(r'--frame-size (\d+)', script)[1]
         target_port = re.search(r'--target-port (\d+)', script)[1]
-        helper = await asyncio.create_subprocess_exec(str(AGENT), '--stdio', '--windows-console', '--target-port', target_port,
+        helper = await asyncio.create_subprocess_exec(str(self.agent), '--stdio', '--windows-console', '--target-port', target_port,
             '--window', window, '--frame-size', frame_size,
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         self.helpers.append(helper)
