@@ -468,8 +468,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
     Ok(result)
 }
 
-pub(crate) fn stop_all() -> Result<()> {
-    let bridges = bridges()?;
+fn stop_registered(bridges: Vec<Bridge>) -> Result<()> {
     #[cfg(windows)]
     let mut processes = Vec::new();
     for bridge in &bridges {
@@ -510,14 +509,32 @@ pub(crate) fn stop_all() -> Result<()> {
         if !active {
             break;
         }
-        ensure!(
-            Instant::now() < deadline,
-            "Some bridges did not exit; update cancelled"
-        );
+        ensure!(Instant::now() < deadline, "Some bridges did not exit");
         std::thread::sleep(Duration::from_millis(50));
     }
-    crate::tray::shutdown()?;
     Ok(())
+}
+
+/// Root-level bridge control does not need a preset or gateway credentials.
+pub(crate) fn stop(port: Option<u16>) -> Result<()> {
+    let selected: Vec<_> = bridges()?
+        .into_iter()
+        .filter(|bridge| port.is_none_or(|port| bridge.state.port == port))
+        .collect();
+    let running = selected.iter().filter(|bridge| bridge.online).count();
+    stop_registered(selected)?;
+    let message = match (port, running) {
+        (Some(port), 0) => format!("No managed bridge running on port {port}"),
+        (Some(port), _) => format!("Bridge stopped on port {port}"),
+        (None, _) => format!("All bridges stopped ({running})"),
+    };
+    crate::console::line(&message);
+    Ok(())
+}
+
+pub(crate) fn stop_all() -> Result<()> {
+    stop_registered(bridges()?)?;
+    crate::tray::shutdown()
 }
 
 #[cfg(test)]

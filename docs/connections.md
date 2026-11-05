@@ -35,7 +35,7 @@ This block acknowledgment applies **only to first-time Linux helper deployment**
 
 Guacamole login and the forwarded SSH/API authentication are separate. Saved Guacamole passwords use Windows Credential Manager or Linux Secret Service. Passwords are never stored in bridge state files. Managed startup passes the password to the child through an anonymous pipe.
 
-`tcp`, `ssh`, `llm` and `rdp` start or reuse a managed background client by default. Use `--foreground` for an attached bridge that stops with Ctrl+C. Background startup relays its startup progress to the calling console, and waits until its listener and helper are ready. It reuses a running bridge only when destination and transport settings match. Background clients remain running after SSH exits. `--stop` sends an authenticated command over a separate local loopback control socket and closes every active connection. It never kills a process merely because its PID appears in a stale state file. `--status` queries the same socket. Windows background startup creates no extra console.
+`tcp`, `ssh`, `llm` and `rdp` start or reuse a managed background client by default. Use `--foreground` for an attached bridge that stops with Ctrl+C. Background startup relays its startup progress to the calling console, and waits until its listener and helper are ready. It reuses a running bridge only when destination and transport settings match. Background clients remain running after SSH exits. `guac-bridge stop --port PORT` sends an authenticated command over a separate local loopback control socket and closes every active connection. It never kills a process merely because its PID appears in a stale state file. `--status` queries the same socket. Windows background startup creates no extra console.
 
 A connection failure ends the client and its helper session. Cached executables remain for later connections. New client releases carry their own helper; the server does not need a runtime installation, package index, root privileges or internet access.
 
@@ -58,7 +58,8 @@ and 33899/3389. All use the same wire framing and TCP engine.
 
 Each background bridge has a local tracking record for its preset and listening
 port. Multiple SSH bridges, for example, can run on ports 2222 and 2225, connect
-to different destinations and be stopped independently. Each opens its own
+to different destinations and be stopped independently with `guac-bridge stop --port PORT`. Use
+`guac-bridge stop all` for every registered running bridge. Each opens its own
 gateway/helper session. These records hold control metadata, not application
 protocol state or forwarded passwords. Old HTTP records remain discoverable so
 manager and update controls can stop bridges created before the HTTP command

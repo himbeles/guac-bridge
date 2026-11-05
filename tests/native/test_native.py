@@ -63,12 +63,20 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def child(self, *extra, mode='ssh', foreground=True):
         command = [str(BINARY), mode]
-        if foreground and not any(flag in extra for flag in ('--stop', '--status')):
+        if foreground and not any(flag in extra for flag in ('--status',)):
             command += ['--foreground']
         command += [self.url, '--user', 'test', '--no-keyring', '--startup-delay', '0', *map(str, extra)]
         child = await asyncio.create_subprocess_exec(*command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, env=self.env())
         self.children.append(child)
         return child
+
+    async def stop_bridge(self, port=None, all=False):
+        flags=['all'] if all else ['--port',str(port)]
+        process=await asyncio.create_subprocess_exec(str(BINARY),'stop',*flags,
+            stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=self.env())
+        out,error=await asyncio.wait_for(process.communicate(),30)
+        self.assertEqual(process.returncode,0,(out+error).decode())
+        return (out+error).decode()
 
     async def bridge(self, target, mode='ssh', *extra):
         child = await self.child('--port', '0', '--remote-port', str(target), '--benchmark-control', *extra, mode=mode)
@@ -666,8 +674,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(b'100%',output)
             self.assertIn(b'Bridge ready on',output)
         finally:
-            stop = await self.child('--stop','--port',port)
-            await asyncio.wait_for(stop.wait(),5)
+            await self.stop_bridge(port)
             os.close(master)
             if slave is not None:
                 os.close(slave)
@@ -720,7 +727,30 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('Bridge running',await command('--status','--remote-port',port))
             self.assertEqual(len(self.gateway.terminals),1)
         finally:
-            await command('--stop','--remote-port',port)
+            await self.stop_bridge(port)
+
+    async def test_root_stop_all_stops_multiple_presets(self):
+        import re
+        children=[]
+        for mode in ['ssh','llm','tcp']:
+            target=await self.target(self.echo)
+            child=await self.child('--port','0','--remote-port',target,mode=mode)
+            children.append(child)
+            while True:
+                line=await asyncio.wait_for(child.stderr.readline(),20)
+                self.assertTrue(line,'Registered bridge exited before ready')
+                match=re.search(rb'Bridge ready on 127.0.0.1:(\d+)',line)
+                if match:
+                    port=int(match[1])
+                    break
+            await self.roundtrip(port,b'root-level stop all')
+        self.assertEqual(len(list((self.home/'data'/'guac-bridge').glob('*.json'))),3)
+        self.assertIn('All bridges stopped',await self.stop_bridge(all=True))
+        for child in children:
+            await asyncio.wait_for(child.wait(),10)
+            self.assertEqual(child.returncode,0,(await child.stderr.read()).decode())
+        # Repeating stop-all is harmless and needs no gateway login.
+        self.assertIn('All bridges stopped',await self.stop_bridge(all=True))
 
     async def test_multiple_ssh_bridges_can_be_stopped_independently(self):
         ports=[]
@@ -743,13 +773,13 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             states=[json.loads((directory/f'ssh-{p}.json').read_text()) for p in ports]
             self.assertNotEqual(states[0]['pid'],states[1]['pid'])
             self.assertNotEqual(states[0]['instance'],states[1]['instance'])
-            await command(ports[0],'--stop')
+            await self.stop_bridge(ports[0])
             await self.roundtrip(ports[1],b'second SSH bridge still running')
             await command(ports[1],'--status')
         finally:
             for port in ports:
                 if (self.home/'data'/'guac-bridge'/f'ssh-{port}.json').exists():
-                    await command(port,'--stop')
+                    await self.stop_bridge(port)
 
     async def managed_lifetime(self, mode):
         target = await self.target(self.echo)
@@ -777,7 +807,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('different settings',await command(input_window=4,expected=1))
             self.assertIn('Bridge running',await command('--status'))
         finally:
-            await command('--stop')
+            await self.stop_bridge(port)
         for _ in range(50):
             try:
                 _,w = await asyncio.open_connection('127.0.0.1',port)

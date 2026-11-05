@@ -58,13 +58,8 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         && request(&s, "status").is_ok()
     {
         #[cfg(windows)]
-        if !args.stop && !args.status {
+        if !args.status {
             crate::tray::launch()?;
-        }
-        if args.stop {
-            request(&s, "stop")?;
-            crate::console::line(&format!("Bridge stopping on port {}", args.port()));
-            return Ok(());
         }
         if args.status {
             crate::console::line(&format!(
@@ -81,18 +76,11 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
                     .server_user
                     .as_ref()
                     .is_none_or(|u| Some(u) == s.server_user.as_ref()),
-            "A bridge with different settings already owns this port. Stop it first with --stop --port {}",
+            "A bridge with different settings already owns this port. Stop it first with guac-bridge stop --port {}",
             args.port()
         );
         crate::console::line(&format!(
             "Bridge already running on 127.0.0.1:{}",
-            args.port()
-        ));
-        return Ok(());
-    }
-    if args.stop {
-        crate::console::line(&format!(
-            "No managed bridge running on port {}",
             args.port()
         ));
         return Ok(());

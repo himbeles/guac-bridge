@@ -31,7 +31,7 @@ impl Gateway {
 #[derive(ClapArgs, Clone)]
 pub(crate) struct BridgeOptions {
     /// Gateway URL (Guacamole connection URL or FortiGate portal origin). Required when starting a bridge.
-    #[arg(value_name = "URL", required_unless_present_any=["stop","status"])]
+    #[arg(value_name = "URL", required_unless_present = "status")]
     pub url: Option<String>,
     /// Gateway login username (prompted when omitted).
     #[arg(long = "user", help_heading = "Connection")]
@@ -110,11 +110,8 @@ pub(crate) struct BridgeOptions {
     #[arg(skip)]
     pub background: bool,
     /// Run in this terminal until Ctrl+C instead of starting a background bridge.
-    #[arg(long, conflicts_with_all=["stop","status"], help_heading = "Lifecycle")]
-    pub foreground: bool,
-    /// Stop the managed bridge on --port, including its active connections.
     #[arg(long, conflicts_with = "status", help_heading = "Lifecycle")]
-    pub stop: bool,
+    pub foreground: bool,
     /// Show the managed bridge status on --port.
     #[arg(long, help_heading = "Lifecycle")]
     pub status: bool,
@@ -184,7 +181,6 @@ impl BridgeOptions {
             && !self.benchmark_control
             && !self.forget_password
             && !self.forget_server_password
-            && !self.stop
             && !self.status
         {
             self.background = true;
@@ -218,7 +214,7 @@ impl BridgeOptions {
             "Target port must be positive; use --remote-port with --port 0"
         );
         ensure!(
-            !(self.background || self.stop || self.status) || self.port() > 0,
+            !(self.background || self.status) || self.port() > 0,
             "Managed bridges require a fixed --port greater than zero"
         );
         ensure!(
@@ -230,7 +226,7 @@ impl BridgeOptions {
                 self.connection_id.is_none() && self.data_source.is_none(),
                 "--connection-id and --data-source apply only to Guacamole"
             );
-            if !self.stop && !self.status && !self.forget_password {
+            if !self.status && !self.forget_password {
                 ensure!(
                     self.server_host.as_ref().is_some_and(|h| !h.is_empty()
                         && !h.chars().any(|c| c.is_control() || c.is_whitespace())),

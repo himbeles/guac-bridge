@@ -22,11 +22,24 @@ enum Command {
     /// Stop all registered bridges and the tray before an external update.
     #[command(display_order = 10)]
     PrepareUpdate,
+    /// Stop a registered bridge by local port, or stop all registered bridges.
+    #[command(
+        display_order = 11,
+        after_help = "Stop one: guac-bridge stop --port 2222\nStop all: guac-bridge stop all\nApplies to TCP and all presets. Uses authenticated local control sockets; no gateway login is needed."
+    )]
+    Stop {
+        /// Stop every registered running bridge.
+        #[arg(value_name = "all", value_parser = ["all"], required_unless_present = "port", conflicts_with = "port")]
+        all: Option<String>,
+        /// Local listening port of the bridge to stop (1-65535).
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..), required_unless_present = "all")]
+        port: Option<u16>,
+    },
     /// List registered bridges, gateways and local listeners.
-    #[command(display_order = 11)]
+    #[command(display_order = 12)]
     List,
     /// Show the Windows tray and running bridge manager.
-    #[command(display_order = 12)]
+    #[command(display_order = 13)]
     Tray {
         #[arg(long, hide = true)]
         background: bool,
@@ -34,25 +47,25 @@ enum Command {
     /// Forward any TCP service (main command); supply either port, or both for different ports.
     #[command(
         display_order = 0,
-        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 5432\nA single --port or --remote-port value is used for both local and remote ports.\nDifferent ports: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nTCP bytes, binary protocols and TLS pass unchanged. The remote target must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 5432\nStop: guac-bridge tcp --stop --port 5432"
+        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 5432\nA single --port or --remote-port value is used for both local and remote ports.\nDifferent ports: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nTCP bytes, binary protocols and TLS pass unchanged. The remote target must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 5432\nStop: guac-bridge stop --port 5432"
     )]
     Tcp(BridgeOptions),
     /// TCP preset for SSH: local 2222 -> remote 22.
     #[command(
         display_order = 1,
-        after_help = "Example: guac-bridge ssh CONNECTION_URL\nConnect: ssh -p 2222 USER@127.0.0.1\nPreset ports can be overridden independently; --port 2225 keeps remote port 22.\nStop: guac-bridge ssh --stop"
+        after_help = "Example: guac-bridge ssh CONNECTION_URL\nConnect: ssh -p 2222 USER@127.0.0.1\nPreset ports can be overridden independently; --port 2225 keeps remote port 22.\nStop: guac-bridge stop --port 2222"
     )]
     Ssh(BridgeOptions),
     /// TCP preset for a model service: local 8000 -> remote 8000.
     #[command(
         display_order = 2,
-        after_help = "Example: guac-bridge llm CONNECTION_URL\nConnect your model client to 127.0.0.1:8000 using the service's application protocol.\nThis is the same TCP transport; endpoints and authentication pass unchanged.\nStop: guac-bridge llm --stop"
+        after_help = "Example: guac-bridge llm CONNECTION_URL\nConnect your model client to 127.0.0.1:8000 using the service's application protocol.\nThis is the same TCP transport; endpoints and authentication pass unchanged.\nStop: guac-bridge stop --port 8000"
     )]
     Llm(BridgeOptions),
     /// TCP preset for Remote Desktop: local 33899 -> remote 3389.
     #[command(
         display_order = 3,
-        after_help = "Example: guac-bridge rdp CONNECTION_URL\nConnect: mstsc /v:127.0.0.1:33899\nThe gateway SSH terminal runs the helper; no additional SSH tunnel is required.\nRDP security negotiation passes unchanged; UDP is not forwarded.\nStop: guac-bridge rdp --stop"
+        after_help = "Example: guac-bridge rdp CONNECTION_URL\nConnect: mstsc /v:127.0.0.1:33899\nThe gateway SSH terminal runs the helper; no additional SSH tunnel is required.\nRDP security negotiation passes unchanged; UDP is not forwarded.\nStop: guac-bridge stop --port 33899"
     )]
     Rdp(BridgeOptions),
 }
@@ -75,9 +88,10 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             })
         });
     let requested_hook = default_background
+        || arguments.get(1).is_some_and(|arg| arg == "stop")
         || arguments.iter().any(|arg| {
             arg.to_str()
-                .is_some_and(|value| matches!(value, "--stop" | "--status"))
+                .is_some_and(|value| matches!(value, "--status"))
         });
     let cli = match Cli::try_parse_from(arguments) {
         Ok(cli) => cli,
@@ -92,6 +106,15 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         }
     };
     let (mode, mut args) = match cli.command {
+        Command::Stop { all, port } => {
+            return match crate::background::stop(if all.is_some() { None } else { port }) {
+                Ok(()) => 0,
+                Err(error) => {
+                    crate::console::line(&format!("Cannot stop bridges: {error:#}"));
+                    1
+                }
+            };
+        }
         Command::List => {
             return match crate::background::list() {
                 Ok(()) => 0,
@@ -143,7 +166,6 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     };
     args.mode = mode.into();
     let hook_output = args.background
-        || args.stop
         || args.status
         || (!args.foreground
             && !args.managed_child
@@ -152,7 +174,7 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             && !args.forget_server_password);
     let result = (|| -> Result<()> {
         args.validate()?;
-        if !args.background && !args.stop && !args.status {
+        if !args.background && !args.status {
             crate::diagnostics::init(args.debug_log.as_deref())?;
             crate::diagnostics::event(&format!(
                 "transport window={} frame_size={} input_window={} input_chunk={} input_protocol=reliable-v1",
@@ -177,7 +199,7 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
                 args.resolved_server_password = Some(handoff.server_password);
             }
         }
-        if args.stop || args.status || args.background {
+        if args.status || args.background {
             return crate::background::handle(args);
         }
         if args.forget_password || args.forget_server_password {
@@ -238,9 +260,36 @@ mod tests {
             assert!(Cli::try_parse_from(["guac-bridge", mode]).is_err());
             let args = bridge(mode, &["--user", "alice", "--port", "5432"]);
             assert_eq!(args.username.as_deref(), Some("alice"));
-            for action in ["--stop", "--status"] {
-                assert!(Cli::try_parse_from(["guac-bridge", mode, action]).is_ok());
+            assert!(Cli::try_parse_from(["guac-bridge", mode, "--status"]).is_ok());
+        }
+    }
+    #[test]
+    fn stop_is_root_level_and_requires_port_or_all() {
+        assert!(Cli::try_parse_from(["guac-bridge", "stop"]).is_err());
+        assert!(matches!(
+            Cli::try_parse_from(["guac-bridge", "stop", "all"])
+                .unwrap()
+                .command,
+            Command::Stop { port: None, .. }
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["guac-bridge", "stop", "--port", "2222"])
+                .unwrap()
+                .command,
+            Command::Stop {
+                port: Some(2222),
+                ..
             }
+        ));
+        for flags in [
+            vec!["all", "--port", "2222"],
+            vec!["--port", "0"],
+            vec!["everything"],
+        ] {
+            assert!(Cli::try_parse_from(["guac-bridge", "stop"].into_iter().chain(flags)).is_err());
+        }
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
+            assert!(Cli::try_parse_from(["guac-bridge", mode, "--stop"]).is_err());
         }
     }
     #[test]
@@ -264,7 +313,6 @@ mod tests {
                 (vec!["--managed-child"], false),
                 (vec!["--benchmark-control"], false),
                 (vec!["--forget-password"], false),
-                (vec!["--stop"], false),
                 (vec!["--status"], false),
             ] {
                 let mut flags = vec!["--port", "5432"];
@@ -292,7 +340,6 @@ mod tests {
                 (0, 5432),
                 true,
             ),
-            (vec!["--remote-port", "5432", "--stop"], (5432, 5432), true),
             (
                 vec!["--remote-port", "5432", "--status"],
                 (5432, 5432),

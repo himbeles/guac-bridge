@@ -2,6 +2,9 @@
 
 ## 5.0.2
 
+- Move stop controls to `guac-bridge stop --port PORT` and `guac-bridge stop all`, independent of TCP/preset selection. Remove per-preset `--stop` flags.
+- Restructure the README around gateway choice, installation, TCP forwarding, presets and management. Keep detailed argument documentation in CLI help.
+
 - Make `tcp` the primary CLI command. If only `--port` or `--remote-port` is supplied, use that value for both endpoints; explicit pairs remain supported.
 - Keep `ssh`, `llm` and `rdp` as TCP presets with local/remote defaults 2222/22, 8000/8000 and 33899/3389. Preset port overrides remain independent, preserving SSH config hooks that set only the local port. Multiple bridges of any preset can run on distinct local ports.
 - Remove the public `http` command and `--https` option. HTTP, HTTPS and other application protocols continue to pass unchanged through `tcp`; select service ports explicitly. Keep old HTTP registrations discoverable so manager/update controls can close them.

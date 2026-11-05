@@ -87,6 +87,10 @@ bridges again afterwards. The CLI has no self-update command.
 
 ## Tracking and control
 
+The root CLI commands `guac-bridge stop --port PORT` and `guac-bridge stop all`
+use the same authenticated bridge controls. Stopping bridges leaves the tray
+available; `prepare-update` also exits the tray and manager.
+
 Each bridge registers in the existing per-user application data directory, using
 `tcp-PORT.json`, `ssh-PORT.json`, `llm-PORT.json` or `rdp-PORT.json`. A registration contains a random instance ID,
 PID, executable, version, sanitized jump-host URL, Guacamole username, target, and an authenticated loopback control endpoint.

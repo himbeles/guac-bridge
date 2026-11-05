@@ -1,64 +1,61 @@
 # 🐸 Guac Bridge
 
-TCP forwarding through Guacamole and FortiGate, with SSH, LLM and RDP presets.
+Forward TCP services through a gateway SSH terminal, then connect with your normal
+local application. SSH, HTTP, TLS, model APIs and Remote Desktop traffic pass
+through the same byte-transparent transport.
 
-Expose a TCP service on a remote server through its gateway SSH terminal. Connect
-your usual application to the local listener. The bridge forwards bytes unchanged,
-including SSH, HTTP, TLS and RDP security negotiation.
+## Gateways
+
+| Gateway | Connection URL | Setup |
+| --- | --- | --- |
+| **Guacamole** (default) | Full browser URL of the SSH terminal | Copy the connection URL from your browser |
+| **FortiGate** | SSL-VPN portal origin | Select `--gateway fortigate` and supply the server SSH settings |
+
+Both options start the matching helper inside the gateway's SSH terminal. The
+helper connects to a service on that server's loopback interface. See
+[Connections](docs/connections.md) and the [FortiGate setup guide](docs/fortinet-integration.md)
+for gateway-specific configuration.
 
 ## Install
 
-On Windows x86-64, use the installer from [Releases](https://github.com/himbeles/guac-bridge/releases).
-On Linux x86-64, extract the native archive. Alternatively:
+- **Windows x86-64:** run the installer from [Releases](https://github.com/himbeles/guac-bridge/releases).
+- **Linux x86-64:** extract the native release archive.
+- **Python/uv:** install the same native CLI with:
 
 ```shell
 uv tool install guac-bridge
 uv tool update-shell
 ```
 
-The client uploads the matching bundled helper and reuses it on later connections.
-Linux servers need a shell and core utilities. Windows servers need PowerShell
-5.1+ and a Windows SSH console. No remote runtime installation, administrator
-access or internet connection is required. The helper cache must allow execution.
+No manual installation is needed on the helper server. Linux servers need a shell
+and core utilities; Windows servers need PowerShell 5.1+ and a Windows SSH console.
+The helper requires no remote runtime installation, administrator access or
+internet connection. Its private cache must allow execution.
 
 ## TCP forwarding
-
-For Guacamole, copy the full browser URL of the desired SSH terminal and use it
-as `CONNECTION_URL`:
 
 ```shell
 guac-bridge tcp CONNECTION_URL --port 5432
 ```
 
-This forwards local `127.0.0.1:5432` to port 5432 on the helper server's loopback
-interface. For `tcp`, a single `--port` or `--remote-port` value selects both ends.
-For different local and remote ports:
+Connect your application to `127.0.0.1:5432`. The bridge forwards to port 5432 on
+the helper server's loopback interface. A single `--port` or `--remote-port` value
+selects both ends. For different ports:
 
 ```shell
 guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432
 ```
 
-TCP is the main command. No application protocol is parsed or translated. HTTP
-paths, streamed responses, arbitrary binary data and end-to-end TLS all pass
-through the same transport. For example, HTTPS can use a TCP bridge to remote
-port 443, while your HTTP client supplies the service hostname and certificate
-verification. UDP is not forwarded.
+The bridge starts or reuses a background process and returns when ready. Use
+`--foreground` to stay attached until Ctrl+C. TLS, authentication, application
+headers and streamed responses pass unchanged. UDP is not forwarded.
 
-The command starts or reuses a background bridge and returns when ready. Use the
-same local port to check or stop it:
+Every public argument and transport option is documented in
+`guac-bridge COMMAND --help`.
 
-```shell
-guac-bridge tcp --status --port 5432
-guac-bridge tcp --stop --port 5432
-```
+## Port presets
 
-Use `--foreground` to stay attached until Ctrl+C. Every public argument and tuning
-option is documented in `guac-bridge COMMAND --help`.
-
-## Presets
-
-These commands use the same TCP forwarding engine and select default ports and
-connection labels:
+Presets use the same TCP engine and select default ports and connection labels.
 
 | Preset | Local port | Remote port | Application connection |
 | --- | ---: | ---: | --- |
@@ -72,18 +69,31 @@ guac-bridge llm CONNECTION_URL
 guac-bridge rdp CONNECTION_URL
 ```
 
-Preset port overrides are independent: `ssh --port 2225` keeps remote port 22.
-Use `--remote-port` to change the service port. The `http` command and `--https`
-option have been removed; use `tcp` for those services. The RDP local default is
-now 33899; existing listeners on other ports can still be controlled by supplying
-their original `--port`.
+Preset overrides are independent: `ssh --port 2225` keeps remote port 22. Use
+`--remote-port` to change the service port. Multiple bridges of any preset can run
+on distinct local ports, with separate gateway/helper sessions and stop controls.
 
-Multiple bridges of any preset can run at once on distinct local ports. Each has
-its own gateway/helper session and can be stopped independently. RDP forwarding
-connects directly to the service through the helper, without an additional SSH
-client or `LocalForward`; the gateway SSH session still starts the helper.
+RDP forwarding connects your Remote Desktop client directly to the service through
+the helper. The gateway SSH session starts the helper; an additional SSH client
+or `LocalForward` is not needed.
 
-### SSH config integration
+## Manage bridges
+
+```shell
+guac-bridge list
+guac-bridge stop --port 5432
+guac-bridge stop all
+```
+
+`list` shows the preset, gateway, status, user and route. `stop --port` selects a
+bridge by its local listener, regardless of preset. `stop all` stops all registered
+running bridges. Neither stop command needs a gateway URL or login.
+
+On Windows, `guac-bridge tray` opens the manager with live counters and stop
+controls. Closing the manager leaves bridges running. See
+[Windows bridge manager](docs/tray.md).
+
+## SSH config integration
 
 ```sshconfig
 Host guac-server
@@ -96,57 +106,27 @@ Match all
 ```
 
 Connect with `ssh guac-server`. The hook starts or reuses the bridge and relays
-startup progress. The bridge remains running after SSH exits.
+startup progress. The bridge stays running after SSH exits. Each SSH alias can use
+a different local port while retaining remote port 22.
 
-## FortiGate gateway
+## Update
 
-Use the portal origin and identify the Windows SSH server opened by the gateway:
-
-```shell
-guac-bridge tcp https://gateway.example --port 5432 --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows
-```
-
-The presets accept the same gateway options. Portal and server SSH logins are
-separate from the forwarded application's login. Use command help for credential
-storage, environment variables and private-CA options. Passwords are not accepted
-as command-line arguments.
-
-FortiGate currently supports portal password login, custom SSH sessions and
-Windows x86-64 helper servers. MFA/SSO, compliance challenges, bookmarks and Linux
-servers through FortiGate are not implemented. See the [FortiGate guide](docs/fortinet-integration.md)
-for setup, protocol details and deployment validation.
-
-## Manage and update
-
-```shell
-guac-bridge list
-guac-bridge tray
-guac-bridge prepare-update
-```
-
-Connection lists show TCP or the preset name, gateway type, status, user and route.
-The Windows tray/manager provides live traffic counters and stop controls. Closing
-the manager leaves bridges running. See [Windows bridge manager](docs/tray.md).
-
-The Windows installer stops bridges before updating. Before a uv upgrade:
+The Windows installer stops bridges before updating. For a uv installation:
 
 ```shell
 guac-bridge prepare-update
 uv tool upgrade guac-bridge
 ```
 
-Run the upgrade after preparation succeeds, then restart bridges. Active sessions
-close during update preparation. Guac Bridge does not update itself.
+Upgrade after preparation succeeds, then restart bridges. Preparation closes
+active connections, the tray and manager. Guac Bridge does not update itself.
 
-The Windows installer includes a private WinUI runtime. The manager requires
-Windows 11 or Server 2025 or newer. CLI forwarding and the tray also work on older
-Windows versions. For uv or portable installations, the manager additionally needs
+The installer includes a private UI runtime. The Windows manager requires Windows
+11 or Server 2025 or newer. CLI forwarding and the tray also work on older Windows
+versions. For uv or portable installations, the manager additionally needs
 [Windows App Runtime 2.4+ x64](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
 
-Stable releases include native Windows/Linux archives, the Windows installer and
-Python packages. Beta releases contain only the Windows installer and checksums.
-
-## Development and documentation
+## Documentation and development
 
 Run `cargo xtask build` and `cargo xtask check` from the repository root.
 The application and helper live in [crates/guac-bridge](crates/guac-bridge).

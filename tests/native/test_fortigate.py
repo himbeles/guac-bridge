@@ -426,7 +426,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(child.returncode,0)
             self.assertIn(b'different settings',err)
         finally:
-            process, (_,err) = await command('ssh','--stop','--port',port)
+            process, (_,err) = await command('stop','--port',port)
             self.assertEqual(process.returncode,0,err.decode())
             for _ in range(100):
                 if not state_path.exists(): break
