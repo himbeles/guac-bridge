@@ -41,7 +41,7 @@ and the remote bootstrap; it does not orchestrate builds or packaging.
 
 ```sh
 cargo xtask portable                         # native ZIP or tar.gz in dist/
-cargo xtask installer                        # Windows, private UI runtime
+cargo xtask installer                        # Windows, bundled UI runtime
 cargo xtask python                           # Python/uv wheel, shared UI runtime
 cargo xtask python --sdist                   # Python source distribution
 cargo xtask portable --wheel dist/FILE.whl    # preserve the wheel's native binary
