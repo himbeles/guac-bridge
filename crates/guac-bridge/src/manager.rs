@@ -49,7 +49,9 @@ impl Manager {
         let Some(bridge) = self.selected() else {
             return StackPanel::new().spacing(12.0).children((
                 heading("No bridge selected", 22.0),
-                label("Start an SSH, RDP, HTTP or TCP bridge. It appears here when ready."),
+                label(
+                    "Start a TCP bridge or an SSH, LLM or RDP preset. It appears here when ready.",
+                ),
             ));
         };
         let mut sections = vec![

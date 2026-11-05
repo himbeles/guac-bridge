@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "guac-bridge"
 dynamic = ["version"]
-description = "SSH, RDP, HTTP(S) and TCP bridges through Guacamole and FortiGate, powered by Rust"
+description = "TCP forwarding with SSH, LLM and RDP presets through Guacamole and FortiGate, powered by Rust"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

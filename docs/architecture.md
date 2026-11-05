@@ -31,7 +31,7 @@ Python/uv only distribute and launch the native executable.
 
 ## Behavior to preserve
 
-A normal SSH, RDP, HTTP or TCP command starts or reuses a background bridge and returns only
+A normal TCP, SSH, LLM or RDP command starts or reuses a background bridge and returns only
 when its helper is ready. `--foreground` stays attached to the current terminal.
 The local listener binds before remote login so a busy port fails promptly.
 

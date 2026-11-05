@@ -127,10 +127,17 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('ssh://127.0.0.1:2222', text)
         self.assertNotIn('private-control-token', text)
         self.assertTrue((directory/'ssh-2222.json').exists())
+        old = json.loads((directory/'ssh-2222.json').read_text())
+        old.update(mode='http',port=8000,target='127.0.0.1:443',https=True,instance='old-http')
+        (directory/'http-8000.json').write_text(json.dumps(old))
+        text=await listing()
+        self.assertIn('tcp://127.0.0.1:8000',text)
+        self.assertIn('TCP',text)
+
 
     async def test_prepare_update_stops_all_foreground_bridges(self):
         target = await self.target(self.echo)
-        for mode in ('ssh', 'http', 'rdp', 'tcp', 'llm'):
+        for mode in ('tcp', 'ssh', 'llm', 'rdp'):
             child = await self.child('--port', '0', '--remote-port', target, mode=mode)
             while b'Bridge ready on ' not in await asyncio.wait_for(child.stderr.readline(), 20):
                 self.assertIsNone(child.returncode)
@@ -179,7 +186,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_tray_registration_usage_and_authenticated_stop(self):
         import re
         target = await self.target(self.echo)
-        for mode in ('ssh', 'http', 'rdp', 'tcp', 'llm'):
+        for mode in ('tcp', 'ssh', 'llm', 'rdp'):
             with self.subTest(mode=mode):
                 child = await self.child('--port', '0', '--remote-port', target, mode=mode)
                 while True:
@@ -201,7 +208,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
                 output, error = await asyncio.wait_for(listing.communicate(), 5)
                 self.assertEqual(listing.returncode, 0, error.decode())
                 text = output.decode()
-                self.assertIn(mode.upper() if mode in ('ssh', 'rdp', 'tcp') else 'HTTP', text)
+                self.assertIn(mode.upper(), text)
                 self.assertIn('Guacamole', text)
                 self.assertNotIn('[Guacamole]', text)
                 self.assertIn(self.url, text)
@@ -244,7 +251,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reliable_recovers_loss_corruption_and_duplicates_for_all_commands(self):
         target = await self.target(self.echo)
-        for mode in ('ssh', 'http', 'rdp', 'tcp', 'llm'):
+        for mode in ('tcp', 'ssh', 'llm', 'rdp'):
             with self.subTest(mode=mode):
                 child, port = await self.bridge(target, mode)
                 term = self.gateway.terminals[-1]
@@ -442,7 +449,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             writer.close()
         server=await asyncio.start_server(endpoint,'127.0.0.1',0,ssl=ssl_server)
         self.servers.append(server)
-        child,port=await self.bridge(server.sockets[0].getsockname()[1],'http',*(['--https'] if tls else []))
+        child,port=await self.bridge(server.sockets[0].getsockname()[1],'tcp')
         kwargs={'ssl':ssl_client,'server_hostname':'service.test'} if tls else {}
         reader,writer=await asyncio.open_connection('127.0.0.1',port,**kwargs)
         writer.write(b'PUT /arbitrary/path?item=42 HTTP/1.1\r\nHost: service.test\r\nContent-Length: '+str(len(body)).encode()+b'\r\n\r\n'+body)
@@ -487,7 +494,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         site = web.TCPSite(runner,'127.0.0.1',0)
         await site.start()
         try:
-            child, port = await self.bridge(site._server.sockets[0].getsockname()[1], 'http')
+            child, port = await self.bridge(site._server.sockets[0].getsockname()[1], 'tcp')
             async with aiohttp.ClientSession() as http:
                 async with http.post(f'http://127.0.0.1:{port}/events',data=data,headers={'Authorization':'Bearer example'}) as response:
                     self.assertEqual(response.status,200)
@@ -689,11 +696,60 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_rdp_defaults_to_background_and_reuses_bridge(self):
         await self.managed_lifetime('rdp')
 
-    async def test_http_defaults_to_background_and_reuses_bridge(self):
-        await self.managed_lifetime('http')
-
-    async def test_deprecated_http_command_preserves_background_reuse(self):
+    async def test_llm_preset_preserves_background_reuse(self):
         await self.managed_lifetime('llm')
+
+    async def test_tcp_single_port_forms_reuse_the_same_bridge(self):
+        dummy = await asyncio.start_server(lambda r,w:w.close(),'127.0.0.1',0)
+        port = dummy.sockets[0].getsockname()[1]
+        dummy.close()
+        await dummy.wait_closed()
+        async def command(*flags):
+            child = await self.child(*flags, foreground=False, mode='tcp')
+            await asyncio.wait_for(child.wait(),25)
+            text = (await child.stderr.read()).decode()
+            self.assertEqual(child.returncode,0,text)
+            return text
+        try:
+            self.assertIn('Bridge ready', await command('--port',port))
+            registration = self.home/'data'/'guac-bridge'/f'tcp-{port}.json'
+            original = json.loads(registration.read_text())
+            self.assertEqual(original['target'],f'127.0.0.1:{port}')
+            self.assertIn('already running',await command('--remote-port',port))
+            self.assertEqual(json.loads(registration.read_text())['pid'],original['pid'])
+            self.assertIn('Bridge running',await command('--status','--remote-port',port))
+            self.assertEqual(len(self.gateway.terminals),1)
+        finally:
+            await command('--stop','--remote-port',port)
+
+    async def test_multiple_ssh_bridges_can_be_stopped_independently(self):
+        ports=[]
+        async def command(port,*flags,**extra):
+            child = await self.child('--port',port,*flags,foreground=False,mode='ssh',**extra)
+            await asyncio.wait_for(child.wait(),25)
+            text = (await child.stderr.read()).decode()
+            self.assertEqual(child.returncode,0,text)
+        try:
+            for _ in range(2):
+                target=await self.target(self.echo)
+                dummy=await asyncio.start_server(lambda r,w:w.close(),'127.0.0.1',0)
+                port=dummy.sockets[0].getsockname()[1]
+                dummy.close()
+                await dummy.wait_closed()
+                ports.append(port)
+                await command(port,'--remote-port',target)
+                await self.roundtrip(port,b'independent SSH preset')
+            directory=self.home/'data'/'guac-bridge'
+            states=[json.loads((directory/f'ssh-{p}.json').read_text()) for p in ports]
+            self.assertNotEqual(states[0]['pid'],states[1]['pid'])
+            self.assertNotEqual(states[0]['instance'],states[1]['instance'])
+            await command(ports[0],'--stop')
+            await self.roundtrip(ports[1],b'second SSH bridge still running')
+            await command(ports[1],'--status')
+        finally:
+            for port in ports:
+                if (self.home/'data'/'guac-bridge'/f'ssh-{port}.json').exists():
+                    await command(port,'--stop')
 
     async def managed_lifetime(self, mode):
         target = await self.target(self.echo)

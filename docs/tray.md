@@ -1,6 +1,6 @@
 # Windows bridge manager
 
-A single native Windows tray icon starts automatically when an SSH, RDP, HTTP or TCP bridge
+A single native Windows tray icon starts automatically when an TCP, SSH, LLM or RDP bridge
 opens its local listener, including the default background startup and `--foreground` sessions.
 It also reappears when an existing background bridge is reused. Bridges enter
 the list once their remote helper is ready. The tray, manager and installer use
@@ -36,11 +36,11 @@ window keeps the tray and bridges running. Clicking the tray reopens the manager
 only one manager runs at a time. Exit tray and update preparation close the manager
 as well, waiting for both executables to exit before replacement.
 
-The responsive manager has a bridge sidebar, SSH/RDP/HTTP/TCP service tags, gateway type tags and activity labels,
+The responsive manager has a bridge sidebar, TCP/SSH/LLM/RDP service tags, gateway type tags and activity labels,
 live rate and cumulative usage cards, connection activity and explicit stop
 confirmations. It follows the Windows light/dark theme, with subtle frog-green selection and card accents.
 
-The sidebar shows SSH/RDP/HTTP/TCP service tags and gateway type tags, the gateway URL, username and local URL. Gateway details use `Gateway Type: …`.
+The sidebar shows TCP/SSH/LLM/RDP service tags and gateway type tags, the gateway URL, username and local URL. Gateway details use `Gateway Type: …`.
 Select a bridge to see the route **local URL → Guacamole jump host → remote server service**,
 with the server loopback endpoint labelled explicitly. URL credentials and authentication
 queries are omitted. The same route and user are available from `guac-bridge list` on Windows and Linux.
@@ -88,7 +88,7 @@ bridges again afterwards. The CLI has no self-update command.
 ## Tracking and control
 
 Each bridge registers in the existing per-user application data directory, using
-`ssh-PORT.json`, `rdp-PORT.json`, `http-PORT.json` or `tcp-PORT.json`. A registration contains a random instance ID,
+`tcp-PORT.json`, `ssh-PORT.json`, `llm-PORT.json` or `rdp-PORT.json`. A registration contains a random instance ID,
 PID, executable, version, sanitized jump-host URL, Guacamole username, target, and an authenticated loopback control endpoint.
 The authentication token stays out of the UI and status responses. Treat the
 registration directory as private, as with the existing background controls.

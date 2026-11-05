@@ -1,4 +1,4 @@
-use crate::options::{BridgeOptions, LEGACY_HTTP_COMMAND};
+use crate::options::BridgeOptions;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::{ffi::OsString, time::Duration};
@@ -8,8 +8,8 @@ use std::{ffi::OsString, time::Duration};
     name = "guac-bridge",
     version,
     propagate_version = true,
-    about = "🐸 Guac Bridge · SSH, RDP, HTTP(S) and TCP bridges through Guacamole or FortiGate",
-    after_help = "Bridge commands start or reuse a background helper by default; use --foreground to stay attached.\nPasswords: GUAC_BRIDGE_PASSWORD for the gateway; GUAC_BRIDGE_SERVER_PASSWORD for the FortiGate SSH server.\nUnspecified passwords use the native credential store or an interactive prompt.\nRun guac-bridge COMMAND --help for every argument and command examples."
+    about = "🐸 Guac Bridge · TCP forwarding through Guacamole or FortiGate, with SSH, LLM and RDP presets",
+    after_help = "Start with: guac-bridge tcp CONNECTION_URL --port SERVICE_PORT.\nSSH, LLM and RDP are TCP presets that select default ports and labels.\nBridge commands start or reuse a background helper by default; use --foreground to stay attached.\nPasswords: GUAC_BRIDGE_PASSWORD for the gateway; GUAC_BRIDGE_SERVER_PASSWORD for the FortiGate SSH server.\nUnspecified passwords use the native credential store or an interactive prompt.\nRun guac-bridge COMMAND --help for every argument and command examples."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -20,45 +20,50 @@ enum Command {
     #[command(hide = true)]
     Manager,
     /// Stop all registered bridges and the tray before an external update.
+    #[command(display_order = 10)]
     PrepareUpdate,
     /// List registered bridges, gateways and local listeners.
+    #[command(display_order = 11)]
     List,
     /// Show the Windows tray and running bridge manager.
+    #[command(display_order = 12)]
     Tray {
         #[arg(long, hide = true)]
         background: bool,
     },
-    /// Forward the remote SSH service.
+    /// Forward any TCP service (main command); supply either port, or both for different ports.
     #[command(
-        after_help = "Defaults: local 127.0.0.1:2222 -> remote loopback:22.\nExample: guac-bridge ssh CONNECTION_URL\nConnect: ssh -p 2222 USER@127.0.0.1\nStop: guac-bridge ssh --stop"
-    )]
-    Ssh(BridgeOptions),
-    /// Forward any HTTP service, including all paths, methods and streaming; use --https for TLS passthrough.
-    #[command(
-        after_help = "Defaults: local 127.0.0.1:8000 -> remote loopback:8000.\nExample: guac-bridge http CONNECTION_URL\nHTTPS: guac-bridge http CONNECTION_URL --https (remote port 443).\nTLS passes unchanged; configure service hostname/SNI and certificate trust in your HTTP client.\nStop: guac-bridge http --stop"
-    )]
-    Http(BridgeOptions),
-    /// Forward the remote RDP service directly to your Remote Desktop client.
-    #[command(
-        after_help = "Defaults: local 127.0.0.1:13389 -> remote loopback:3389.\nExample: guac-bridge rdp CONNECTION_URL\nConnect: mstsc /v:127.0.0.1:13389\nThe gateway SSH terminal still runs the helper; no additional SSH tunnel is required.\nRDP TCP traffic and its security negotiation pass unchanged; UDP is not forwarded.\nStop: guac-bridge rdp --stop"
-    )]
-    Rdp(BridgeOptions),
-    /// Forward any TCP service; specify --port and --remote-port.
-    #[command(
-        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nForwards local 127.0.0.1:15432 -> remote loopback:5432, preserving binary data and TLS.\nBoth ports are required at startup. The remote target must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 15432\nStop: guac-bridge tcp --stop --port 15432"
+        display_order = 0,
+        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 5432\nA single --port or --remote-port value is used for both local and remote ports.\nDifferent ports: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nTCP bytes, binary protocols and TLS pass unchanged. The remote target must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 5432\nStop: guac-bridge tcp --stop --port 5432"
     )]
     Tcp(BridgeOptions),
-    /// Deprecated: use http. Existing defaults are preserved.
-    #[command(name = LEGACY_HTTP_COMMAND)]
-    LegacyHttp(BridgeOptions),
+    /// TCP preset for SSH: local 2222 -> remote 22.
+    #[command(
+        display_order = 1,
+        after_help = "Example: guac-bridge ssh CONNECTION_URL\nConnect: ssh -p 2222 USER@127.0.0.1\nPreset ports can be overridden independently; --port 2225 keeps remote port 22.\nStop: guac-bridge ssh --stop"
+    )]
+    Ssh(BridgeOptions),
+    /// TCP preset for a model service: local 8000 -> remote 8000.
+    #[command(
+        display_order = 2,
+        after_help = "Example: guac-bridge llm CONNECTION_URL\nConnect your model client to 127.0.0.1:8000 using the service's application protocol.\nThis is the same TCP transport; endpoints and authentication pass unchanged.\nStop: guac-bridge llm --stop"
+    )]
+    Llm(BridgeOptions),
+    /// TCP preset for Remote Desktop: local 33899 -> remote 3389.
+    #[command(
+        display_order = 3,
+        after_help = "Example: guac-bridge rdp CONNECTION_URL\nConnect: mstsc /v:127.0.0.1:33899\nThe gateway SSH terminal runs the helper; no additional SSH tunnel is required.\nRDP security negotiation passes unchanged; UDP is not forwarded.\nStop: guac-bridge rdp --stop"
+    )]
+    Rdp(BridgeOptions),
 }
 
 pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let arguments: Vec<_> = arguments.into_iter().collect();
-    let default_background =
-        arguments.get(1).and_then(|a| a.to_str()).is_some_and(|s| {
-            matches!(s, "ssh" | "http" | "rdp" | "tcp") || s == LEGACY_HTTP_COMMAND
-        }) && !arguments.iter().any(|a| {
+    let default_background = arguments
+        .get(1)
+        .and_then(|a| a.to_str())
+        .is_some_and(|s| matches!(s, "tcp" | "ssh" | "llm" | "rdp"))
+        && !arguments.iter().any(|a| {
             a.to_str().is_some_and(|s| {
                 matches!(
                     s,
@@ -132,11 +137,7 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             };
         }
         Command::Ssh(a) => ("ssh", a),
-        Command::LegacyHttp(mut a) => {
-            a.legacy_http = true;
-            ("http", a)
-        }
-        Command::Http(a) => ("http", a),
+        Command::Llm(a) => ("llm", a),
         Command::Rdp(a) => ("rdp", a),
         Command::Tcp(a) => ("tcp", a),
     };
@@ -213,38 +214,50 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn start_requires_positional_url_and_user_names_the_guacamole_login() {
-        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
-            assert!(Cli::try_parse_from(["guac-bridge", mode]).is_err());
-            let cli = Cli::try_parse_from([
+    fn bridge(mode: &str, flags: &[&str]) -> BridgeOptions {
+        let cli = Cli::try_parse_from(
+            [
                 "guac-bridge",
                 mode,
-                "https://guac.example/",
-                "--user",
-                "alice",
-            ])
-            .unwrap();
-            let (Command::Ssh(args)
-            | Command::Http(args)
-            | Command::Rdp(args)
-            | Command::Tcp(args)
-            | Command::LegacyHttp(args)) = cli.command
-            else {
-                panic!("bridge expected")
-            };
-            assert_eq!(args.url.as_deref(), Some("https://guac.example/"));
+                "https://gateway.example/#/client/MQBjAG15c3Fs",
+            ]
+            .into_iter()
+            .chain(flags.iter().copied()),
+        )
+        .unwrap();
+        let mut args = match cli.command {
+            Command::Tcp(a) | Command::Ssh(a) | Command::Llm(a) | Command::Rdp(a) => a,
+            _ => panic!("Bridge command expected"),
+        };
+        args.mode = mode.into();
+        args
+    }
+    #[test]
+    fn supported_commands_require_start_url_and_allow_control_without_url() {
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
+            assert!(Cli::try_parse_from(["guac-bridge", mode]).is_err());
+            let args = bridge(mode, &["--user", "alice", "--port", "5432"]);
             assert_eq!(args.username.as_deref(), Some("alice"));
             for action in ["--stop", "--status"] {
                 assert!(Cli::try_parse_from(["guac-bridge", mode, action]).is_ok());
             }
         }
     }
-
     #[test]
-    fn background_is_default_with_explicit_foreground_and_internal_exceptions() {
-        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
+    fn removed_http_commands_and_https_flag_are_rejected() {
+        for mode in ["http", "https"] {
+            assert!(Cli::try_parse_from(["guac-bridge", mode, "https://gateway.example"]).is_err());
+        }
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
+            assert!(
+                Cli::try_parse_from(["guac-bridge", mode, "https://gateway.example", "--https"])
+                    .is_err()
+            );
+        }
+    }
+    #[test]
+    fn background_is_default_with_explicit_foreground_and_control_exceptions() {
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
             for (extra, managed) in [
                 (vec![], true),
                 (vec!["--foreground"], false),
@@ -254,87 +267,85 @@ mod tests {
                 (vec!["--stop"], false),
                 (vec!["--status"], false),
             ] {
-                let cli = Cli::try_parse_from(
-                    ["guac-bridge", mode, "https://example.invalid"]
-                        .into_iter()
-                        .chain(extra),
-                )
-                .unwrap();
-                let (Command::Ssh(mut args)
-                | Command::Http(mut args)
-                | Command::Rdp(mut args)
-                | Command::Tcp(mut args)
-                | Command::LegacyHttp(mut args)) = cli.command
-                else {
-                    panic!("bridge expected")
-                };
+                let mut flags = vec!["--port", "5432"];
+                flags.extend(extra);
+                let mut args = bridge(mode, &flags);
                 args.validate().unwrap();
                 assert_eq!(args.background, managed);
             }
         }
     }
-
+    #[test]
+    fn tcp_mirrors_a_single_port_and_preserves_explicit_pairs() {
+        for (flags, ports, valid) in [
+            (vec![], (0, 0), false),
+            (vec!["--port", "5432"], (5432, 5432), true),
+            (vec!["--remote-port", "5432"], (5432, 5432), true),
+            (
+                vec!["--port", "15432", "--remote-port", "5432"],
+                (15432, 5432),
+                true,
+            ),
+            (vec!["--port", "0", "--foreground"], (0, 0), false),
+            (
+                vec!["--port", "0", "--remote-port", "5432", "--foreground"],
+                (0, 5432),
+                true,
+            ),
+            (vec!["--remote-port", "5432", "--stop"], (5432, 5432), true),
+            (
+                vec!["--remote-port", "5432", "--status"],
+                (5432, 5432),
+                true,
+            ),
+            (vec!["--forget-password"], (0, 0), true),
+        ] {
+            let mut args = bridge("tcp", &flags);
+            assert_eq!((args.port(), args.target_port()), ports, "{flags:?}");
+            assert_eq!(args.validate().is_ok(), valid, "{flags:?}");
+        }
+    }
+    #[test]
+    fn presets_keep_defaults_and_independent_overrides() {
+        for (mode, local, remote) in [("ssh", 2222, 22), ("llm", 8000, 8000), ("rdp", 33899, 3389)]
+        {
+            let mut args = bridge(mode, &[]);
+            args.validate().unwrap();
+            assert_eq!((args.port(), args.target_port()), (local, remote));
+            let args = bridge(mode, &["--port", "2225"]);
+            assert_eq!((args.port(), args.target_port()), (2225, remote));
+            let args = bridge(mode, &["--remote-port", "2227"]);
+            assert_eq!((args.port(), args.target_port()), (local, 2227));
+        }
+    }
     #[test]
     fn tcp_and_gateway_windows_are_independent() {
-        for (flags, expected) in [
-            (vec![], (4, 8)),
-            (vec!["--window", "32"], (32, 8)),
-            (vec!["--input-window", "64"], (4, 64)),
-            (vec!["--window", "1", "--input-window", "128"], (1, 128)),
-        ] {
-            for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
-                let cli = Cli::try_parse_from(
-                    ["guac-bridge", mode, "http://example.invalid"]
-                        .into_iter()
-                        .chain(flags.iter().copied()),
-                )
-                .unwrap();
-                let (Command::Ssh(mut args)
-                | Command::Http(mut args)
-                | Command::Rdp(mut args)
-                | Command::Tcp(mut args)
-                | Command::LegacyHttp(mut args)) = cli.command
-                else {
-                    panic!("Expected bridge command")
-                };
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
+            for (flags, expected) in [
+                (vec![], (4, 8)),
+                (vec!["--window", "32"], (32, 8)),
+                (vec!["--input-window", "64"], (4, 64)),
+                (vec!["--window", "1", "--input-window", "128"], (1, 128)),
+            ] {
+                let mut extra = vec!["--port", "5432"];
+                extra.extend(flags);
+                let mut args = bridge(mode, &extra);
                 args.validate().unwrap();
                 assert_eq!((args.window, args.input_window), expected);
                 assert_eq!(args.frame_size, 65536);
             }
-        }
-    }
-
-    #[test]
-    fn protocol_selection_options_are_not_exposed() {
-        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
             for option in ["--reliable-input", "--reliable-window"] {
                 assert!(
-                    Cli::try_parse_from(["guac-bridge", mode, "http://example.invalid", option])
+                    Cli::try_parse_from(["guac-bridge", mode, "https://gateway.example", option])
                         .is_err()
                 );
             }
         }
     }
-
     #[test]
     fn gateway_window_bounds_reject_zero_and_excessive_queues() {
         for value in ["0", "129"] {
-            let cli = Cli::try_parse_from([
-                "guac-bridge",
-                "ssh",
-                "http://example.invalid",
-                "--input-window",
-                value,
-            ])
-            .unwrap();
-            let (Command::Ssh(mut args)
-            | Command::Http(mut args)
-            | Command::Rdp(mut args)
-            | Command::Tcp(mut args)
-            | Command::LegacyHttp(mut args)) = cli.command
-            else {
-                panic!("Expected bridge command")
-            };
+            let mut args = bridge("ssh", &["--input-window", value]);
             assert!(
                 args.validate()
                     .unwrap_err()
@@ -344,46 +355,26 @@ mod tests {
         }
     }
     #[test]
-    fn gateway_options_are_shared_by_bridges_and_preserve_guacamole_default() {
-        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
-            let cli = Cli::try_parse_from([
-                "guac-bridge",
+    fn gateway_options_are_shared_and_preserve_guacamole_default() {
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
+            let mut args = bridge(mode, &["--port", "5432"]);
+            args.validate().unwrap();
+            assert_eq!(args.gateway, crate::options::Gateway::Guacamole);
+            let mut args = bridge(
                 mode,
-                "https://guac.example/#/client/MQBjAG15c3Fs",
-            ])
-            .unwrap();
-            let (Command::Ssh(mut old)
-            | Command::Http(mut old)
-            | Command::Rdp(mut old)
-            | Command::Tcp(mut old)
-            | Command::LegacyHttp(mut old)) = cli.command
-            else {
-                panic!()
-            };
-            old.validate().unwrap();
-            assert_eq!(old.gateway, crate::options::Gateway::Guacamole);
-            let cli = Cli::try_parse_from([
-                "guac-bridge",
-                mode,
-                "https://gateway.example",
-                "--gateway",
-                "fortigate",
-                "--server-host",
-                "server.internal",
-                "--server-user",
-                "server-user",
-                "--server-os",
-                "windows",
-            ])
-            .unwrap();
-            let (Command::Ssh(mut args)
-            | Command::Http(mut args)
-            | Command::Rdp(mut args)
-            | Command::Tcp(mut args)
-            | Command::LegacyHttp(mut args)) = cli.command
-            else {
-                panic!()
-            };
+                &[
+                    "--port",
+                    "5432",
+                    "--gateway",
+                    "fortigate",
+                    "--server-host",
+                    "server.internal",
+                    "--server-user",
+                    "alice",
+                    "--server-os",
+                    "windows",
+                ],
+            );
             args.validate().unwrap();
             assert_eq!(args.server_port, 22);
             args.server_os = "linux".into();
@@ -391,83 +382,6 @@ mod tests {
             args.server_os = "windows".into();
             args.connection_id = Some("guac-only".into());
             assert!(args.validate().is_err());
-        }
-    }
-    #[test]
-    fn tcp_requires_explicit_endpoints_and_preserves_management_actions() {
-        for (flags, valid) in [
-            (vec![], false),
-            (vec!["--port", "5432"], false),
-            (vec!["--remote-port", "5432"], false),
-            (vec!["--port", "5432", "--remote-port", "5432"], true),
-            (
-                vec!["--port", "0", "--remote-port", "5432", "--foreground"],
-                true,
-            ),
-            (vec!["--port", "5432", "--stop"], true),
-            (vec!["--port", "5432", "--status"], true),
-            (vec!["--stop"], false),
-            (vec!["--forget-password"], true),
-        ] {
-            let cli = Cli::try_parse_from(
-                [
-                    "guac-bridge",
-                    "tcp",
-                    "https://gateway.example/#/client/MQBjAG15c3Fs",
-                ]
-                .into_iter()
-                .chain(flags.iter().copied()),
-            )
-            .unwrap();
-            let Command::Tcp(mut args) = cli.command else {
-                panic!()
-            };
-            args.mode = "tcp".into();
-            assert_eq!(args.validate().is_ok(), valid, "{flags:?}");
-            if args.background {
-                assert_eq!(args.port(), 5432);
-                assert_eq!(args.target_port(), 5432);
-            }
-        }
-    }
-    #[test]
-    fn service_defaults_and_https_validation_preserve_legacy_compatibility() {
-        for (mode, local, remote) in [
-            ("ssh", 2222, 22),
-            ("http", 8000, 8000),
-            ("rdp", 13389, 3389),
-            (LEGACY_HTTP_COMMAND, 8000, 8000),
-        ] {
-            for https in [false, true] {
-                let mut argv = vec![
-                    "guac-bridge",
-                    mode,
-                    "https://gateway.example/#/client/MQBjAG15c3Fs",
-                ];
-                if https {
-                    argv.push("--https");
-                }
-                let cli = Cli::try_parse_from(argv).unwrap();
-                let mut args = match cli.command {
-                    Command::Ssh(a)
-                    | Command::Http(a)
-                    | Command::Rdp(a)
-                    | Command::Tcp(a)
-                    | Command::LegacyHttp(a) => a,
-                    _ => panic!(),
-                };
-                args.legacy_http = mode == LEGACY_HTTP_COMMAND;
-                args.mode = if args.legacy_http { "http" } else { mode }.into();
-                if mode != "http" && !args.legacy_http && https {
-                    assert!(args.validate().is_err());
-                    continue;
-                }
-                args.validate().unwrap();
-                assert_eq!(args.port(), local);
-                assert_eq!(args.target_port(), if https { 443 } else { remote });
-                args.target_port = Some(8443);
-                assert_eq!(args.target_port(), 8443);
-            }
         }
     }
 }
