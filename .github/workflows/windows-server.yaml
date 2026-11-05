@@ -1,8 +1,10 @@
 name: Windows server helper
 on:
   pull_request:
+    paths-ignore: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
   push:
     branches: [main]
+    paths-ignore: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
     tags: ["v*"]
   workflow_dispatch:
 concurrency:
