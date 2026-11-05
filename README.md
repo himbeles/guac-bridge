@@ -109,4 +109,4 @@ and validation workflows.
 
 ## License
 
-© 2026 Luis Riegger. [MIT](LICENSE). See [Licensing](docs/licensing.md) for third-party notices and distribution details.
+© 2026 Luis Riegger. [MIT](https://github.com/himbeles/guac-bridge/blob/main/LICENSE). See [Licensing](https://github.com/himbeles/guac-bridge/blob/main/docs/licensing.md) for third-party notices and distribution details.
