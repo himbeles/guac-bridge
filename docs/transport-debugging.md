@@ -1,4 +1,4 @@
-# Diagnosing SSH disconnects
+# Diagnosing bridge disconnects
 
 Stop the managed bridge first so it does not retain the listener.
 
@@ -20,16 +20,24 @@ is limited to approximately 2 MiB. Unix log files are mode 600; on Windows keep 
 in your private user directory. A custom `--server-command` helper must support the
 new `--debug-log` option.
 
-Both options are optional and also work with the default background startup . Adding them changes
+Both options are optional and also work with the default background startup. Adding them changes
 the managed bridge configuration; stop the existing bridge before restarting it.
+
+No client or server log file is created by default. For a Windows helper, use:
+
+```powershell
+--debug-log client-debug.log --server-debug-log 'C:\Users\REMOTE_USER\server-debug.log'
+```
+
+After reproducing, read the client log locally and the server log on the remote
+machine with `Get-Content PATH -Tail 80`.
 
 ## What to collect
 
 Keep the foreground error and both logs from the same reproduction. Note whether
 all sessions on the bridge close together. Include the bridge version and the time
 relative to startup. The log timestamps are elapsed seconds per process; channel IDs
-correlate the client and helper. Logs do not contain URLs, credentials, or traffic
-payloads. Error messages can include operating-system details and file paths.
+correlate the client and helper. Logs do not record passwords or traffic payloads. Error messages can include operating-system details and file paths.
 
 A helper fatal error now arrives through short printable terminal envelopes,
 independently of the binary frame decoder. It includes the error chain and the
@@ -48,14 +56,13 @@ preserve existing SSH sessions.
 ## Performance and limits
 
 Logging does not change frame encoding, frame sizes, credits or flow control.
-It adds no acknowledgements or diagnostic packets. Data, Credit and InputAck
-frames never allocate log messages, acquire logging
-locks, or write files. When logging is disabled their diagnostic hook only checks
-a flag. When enabled it increments relaxed atomic aggregate counters. Lifecycle
-records and periodic heartbeat summaries are offered to a bounded nonblocking
-queue. A separate thread writes/rotates files. When that queue fills, records are
-dropped and counted instead of delaying forwarding. Disk errors disable file
-logging. Pending log records are drained only after forwarding stops.
+It adds no diagnostic packets. Data and Credit hooks update aggregate counters
+without logging their contents. With debug logging enabled, reliable records and
+InputAck/OutputAck messages include sequence numbers, selective bitmaps, rejection
+counts, lengths and retry state. They do not include application payloads.
+A bounded nonblocking queue feeds a separate writer thread. When full, records
+are dropped and counted instead of delaying forwarding. Disk errors disable file
+logging. Pending records are drained after forwarding stops.
 
 Client debug logs record `window`, `frame_size`, `input_window`, and `input_chunk`
 on startup. Use those values to verify which
@@ -64,7 +71,7 @@ configuration a foreground or managed bridge actually started with.
 Counters show aggregate sent/received frames and payload bytes, and dropped log
 records. Compare their progress across heartbeat summaries to investigate stalls.
 The always-on in-memory history records only lifecycle/control events, not every
-Data, Credit or InputAck frame. Logging is not a packet capture. The reliable
+Data or Credit frame. Logging is not a packet capture. The reliable
 input transport checks record integrity and reports recovery counters separately. A blocked OS stdout write can also prevent a fatal report from being sent.
 EOF/decoder failures report partial frame state; silence alone is not proof of
 corruption.

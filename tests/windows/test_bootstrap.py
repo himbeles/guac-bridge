@@ -194,7 +194,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
             for i in range(3):
                 if i == 2:
                     cache.write_bytes(b"corrupted")
-                c, port = await bridge("ssh", target.sockets[0].getsockname()[1])
+                c, port = await bridge("rdp" if i == 2 else "ssh", target.sockets[0].getsockname()[1])
                 self.assertEqual(cache.read_bytes(), helper.read_bytes())
 
                 async def roundtrip(seed):

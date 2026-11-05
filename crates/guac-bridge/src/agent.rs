@@ -14,7 +14,7 @@ use tokio::{
 #[derive(Parser)]
 #[command(
     version,
-    about = "Guac Bridge session helper for SSH and HTTP endpoints"
+    about = "Guac Bridge session helper for TCP services, including SSH, RDP and HTTP"
 )]
 struct Args {
     #[arg(long)]

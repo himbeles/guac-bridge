@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SSH and HTTP(S) bridges through Guacamole and FortiGate, with automatic helper deployment"
+description = "SSH, RDP, HTTP(S) and TCP bridges through Guacamole and FortiGate, with automatic helper deployment"
 build = "build.rs"
 include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 

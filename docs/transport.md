@@ -1,6 +1,6 @@
 # Transport
 
-Each SSH or HTTP bridge opens a Guacamole WebSocket connection, checks or uploads
+Each SSH, RDP, HTTP or TCP bridge opens a gateway terminal WebSocket connection, checks or uploads
 its bundled helper, and runs it inside the remote terminal. TCP connections share
 numbered channels with bounded flow control. HTTP headers, bodies and streaming
 responses pass through unchanged. The helper exits with the session; its cached
@@ -41,5 +41,6 @@ unchecked TCP bytes; the receiver requests replay of the damaged record.
 
 Output acknowledgements travel through reliable input. Input acknowledgements
 are independent, checksummed feedback messages that do not themselves require
-output acknowledgements, avoiding an acknowledgement loop. The existing Guacamole
-output carrier stays unchanged. Client and helper must come from the same build.
+output acknowledgements, avoiding an acknowledgement loop. Windows output flushes each complete OSC sequence separately to avoid large
+buffered writes through the terminal. The Guacamole binary output protocol remains
+unchanged. Client and helper must come from the same build.

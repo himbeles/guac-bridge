@@ -1,5 +1,17 @@
 # Changelog
 
+## 5.0.0
+
+- Add FortiGate SSL-VPN portal password login and custom Windows SSH sessions alongside the existing Guacamole gateway. Keep portal and server credentials separate and show gateway types in CLI and Windows UI connections.
+- Forward arbitrary HTTP paths, methods, streaming and upgrades, with end-to-end HTTPS passthrough. Keep the deprecated legacy command compatible.
+- Protect FortiGate output using CRC32, selective acknowledgements, retries and duplicate suppression. Flush complete Windows OSC sequences separately; this passed controlled transfers with default settings on the reported FortiGate deployment.
+- Preserve Windows helper fatal reports, shorten PowerShell bootstrap commands and add metadata-only record/ACK/retry diagnostics.
+- Document every public argument in CLI help, and update gateway, deployment and troubleshooting guides. Stable releases include Windows installers, native portable distributions and Python packages.
+
+- Add `rdp` for direct Remote Desktop TCP forwarding through the existing gateway helper, with local port 13389 and remote port 3389 by default. Include managed startup, status, stop and RDP connection labels. The gateway SSH session still starts the helper; an additional SSH forwarding client is not required.
+- Add `tcp` for arbitrary binary TCP services, with explicit local and remote ports, managed controls and TCP connection labels.
+- Default HTTP listeners and remote HTTP services to port 8000. HTTPS retains remote port 443.
+
 ## 5.0.0-beta.4
 
 - Flush complete Windows OSC terminal sequences separately for helper output, retries and fatal reports. Avoid sending concatenated envelopes through one large buffered console write.
