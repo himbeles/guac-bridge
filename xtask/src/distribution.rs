@@ -1,7 +1,7 @@
 //! Portable archives contain exactly one CLI, the README and the license.
 //! Wheel extraction preserves the manylinux binary instead of rebuilding on the host.
 use crate::project::Project;
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use flate2::{Compression, write::GzEncoder};
 use std::{
     fs::{self, File},
@@ -9,6 +9,24 @@ use std::{
     path::Path,
 };
 use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
+
+// Maturin normalizes Cargo prereleases to PEP 440 in distribution filenames.
+fn wheel_version(version: &str) -> Result<String> {
+    let Some((base, prerelease)) = version.split_once('-') else {
+        return Ok(version.into());
+    };
+    let (phase, number) = prerelease
+        .split_once('.')
+        .context("Use alpha.N, beta.N or rc.N for Python prereleases")?;
+    let phase = match phase {
+        "alpha" => "a",
+        "beta" => "b",
+        "rc" => "rc",
+        _ => bail!("Unsupported Python prerelease phase"),
+    };
+    let number: u64 = number.parse().context("Invalid prerelease number")?;
+    Ok(format!("{base}{phase}{number}"))
+}
 
 pub(crate) fn portable(
     project: &Project,
@@ -29,7 +47,10 @@ pub(crate) fn portable(
                 path.file_name()
                     .context("Missing wheel filename")?
                     .to_string_lossy()
-                    .starts_with(&format!("guac_bridge-{}-", project.version)),
+                    .starts_with(&format!(
+                        "guac_bridge-{}-",
+                        wheel_version(&project.version)?
+                    )),
                 "Wheel version must match Cargo workspace version"
             );
             let mut archive = ZipArchive::new(File::open(path)?)?;
@@ -128,6 +149,19 @@ mod tests {
             writer.write_all(data).unwrap();
         }
         ZipArchive::new(writer.finish().unwrap()).unwrap()
+    }
+    #[test]
+    fn wheel_versions_match_maturin_prerelease_normalization() {
+        for (cargo, python) in [
+            ("4.0.2", "4.0.2"),
+            ("5.0.0-beta.1", "5.0.0b1"),
+            ("5.0.0-alpha.2", "5.0.0a2"),
+            ("5.0.0-rc.3", "5.0.0rc3"),
+        ] {
+            assert_eq!(wheel_version(cargo).unwrap(), python);
+        }
+        assert!(wheel_version("5.0.0-preview.1").is_err());
+        assert!(wheel_version("5.0.0-beta.invalid").is_err());
     }
     #[test]
     fn wheel_extraction_preserves_binary_and_rejects_ambiguous_or_bundled_payloads() {

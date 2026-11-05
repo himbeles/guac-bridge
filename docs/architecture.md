@@ -16,7 +16,9 @@ Python/uv only distribute and launch the native executable.
 | `src/cli.rs` | Parse application commands and own runtime/exit-code dispatch |
 | `src/options.rs` | Bridge options, defaults and validation |
 | `src/client.rs` | Forwarding lifecycle, channels, backpressure and shutdown |
-| `src/client/guacamole.rs` | Named destination, URL parsing, login, TLS and session refresh |
+| `src/client/guacamole.rs` | Guacamole destination, login and session refresh |
+| `src/client/fortigate.rs` | Experimental FortiGate portal login, hterm sessions and bounded OSC decoding |
+| `src/client/tls.rs` | Shared gateway HTTP/TLS trust configuration |
 | `src/background.rs` | Authenticated registrations, inspection and stop controls |
 | `src/background/startup.rs` | Child launch, password pipe and startup progress relay |
 | `src/deploy.rs`, `windows_bootstrap.ps1` | Remote helper deployment and checksum verification |

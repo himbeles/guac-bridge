@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.0.0-beta.1
+
+- Add an experimental FortiGate SSL-VPN web-SSH gateway for both SSH and LLM bridges, with portal password login, scoped session cookies, hterm custom SSH sessions and the existing Windows printable helper carrier. Existing commands continue to default to Guacamole.
+- Add server-host, server-port and server-user options, separately stored server credentials and private background credential handoff. Keep the local listener and helper service destination independent of the gateway SSH server.
+- Label gateway types in CLI connection lists and the Windows manager, and include FortiGate server identity in managed bridge reuse checks.
+- Add simulated FortiGate tests using the real helper for binary transfer, concurrency, half-closes, streamed HTTP and managed lifecycle behavior. Real FortiGate deployment validation, MFA/SSO, bookmarks and Linux server support remain outside this first beta.
+- Publish beta builds as GitHub prereleases and preserve prerelease text in Windows installer version metadata.
+
 ## 4.0.2
 
 - Restrict Windows background bridge, tray and manager child processes to explicitly supplied input and output handles. Prevent inherited SSH config file handles from being retained after a Match exec hook returns.

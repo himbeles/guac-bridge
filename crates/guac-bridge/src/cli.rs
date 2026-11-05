@@ -8,7 +8,7 @@ use std::{ffi::OsString, time::Duration};
     name = "guac-bridge",
     version,
     propagate_version = true,
-    about = "🐸 Guac Bridge · SSH and OpenAI-compatible endpoints through Guacamole"
+    about = "🐸 Guac Bridge · SSH and OpenAI-compatible endpoints through Guacamole or FortiGate"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -122,7 +122,8 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         || (!args.foreground
             && !args.managed_child
             && !args.benchmark_control
-            && !args.forget_password);
+            && !args.forget_password
+            && !args.forget_server_password);
     let result = (|| -> Result<()> {
         args.validate()?;
         if !args.background && !args.stop && !args.status {
@@ -136,12 +137,24 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             use std::io::BufRead;
             let mut line = String::new();
             std::io::stdin().lock().read_line(&mut line)?;
-            args.resolved_password = Some(serde_json::from_str(&line)?);
+            if args.gateway == crate::options::Gateway::Guacamole {
+                args.resolved_password = Some(serde_json::from_str(&line)?);
+            } else {
+                #[derive(serde::Deserialize)]
+                struct Handoff {
+                    gateway_password: String,
+                    server_password: String,
+                }
+                let handoff: Handoff = serde_json::from_str(&line)
+                    .map_err(|_| anyhow::anyhow!("Invalid private credential handoff"))?;
+                args.resolved_password = Some(handoff.gateway_password);
+                args.resolved_server_password = Some(handoff.server_password);
+            }
         }
         if args.stop || args.status || args.background {
             return crate::background::handle(args);
         }
-        if args.forget_password {
+        if args.forget_password || args.forget_server_password {
             return crate::credentials::forget(&args);
         }
         if !args.benchmark_control {
@@ -283,6 +296,46 @@ mod tests {
                     .to_string()
                     .contains("--input-window")
             );
+        }
+    }
+    #[test]
+    fn gateway_options_are_shared_by_ssh_and_llm_and_preserve_guacamole_default() {
+        for mode in ["ssh", "llm"] {
+            let cli = Cli::try_parse_from([
+                "guac-bridge",
+                mode,
+                "https://guac.example/#/client/MQBjAG15c3Fs",
+            ])
+            .unwrap();
+            let (Command::Ssh(mut old) | Command::Llm(mut old)) = cli.command else {
+                panic!()
+            };
+            old.validate().unwrap();
+            assert_eq!(old.gateway, crate::options::Gateway::Guacamole);
+            let cli = Cli::try_parse_from([
+                "guac-bridge",
+                mode,
+                "https://gateway.example",
+                "--gateway",
+                "fortigate",
+                "--server-host",
+                "server.internal",
+                "--server-user",
+                "server-user",
+                "--server-os",
+                "windows",
+            ])
+            .unwrap();
+            let (Command::Ssh(mut args) | Command::Llm(mut args)) = cli.command else {
+                panic!()
+            };
+            args.validate().unwrap();
+            assert_eq!(args.server_port, 22);
+            args.server_os = "linux".into();
+            assert!(args.validate().is_err());
+            args.server_os = "windows".into();
+            args.connection_id = Some("guac-only".into());
+            assert!(args.validate().is_err());
         }
     }
 }

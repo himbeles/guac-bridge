@@ -2,16 +2,61 @@
 //! Validation resolves the default background lifecycle before any process is started.
 use crate::{FRAME, WINDOW};
 use anyhow::{Result, ensure};
-use clap::Args as ClapArgs;
+use clap::{Args as ClapArgs, ValueEnum};
 
-#[derive(ClapArgs, Clone, Debug)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Gateway {
+    #[default]
+    Guacamole,
+    Fortigate,
+}
+impl Gateway {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Guacamole => "Guacamole",
+            Self::Fortigate => "FortiGate",
+        }
+    }
+    pub fn argument(self) -> &'static str {
+        match self {
+            Self::Guacamole => "guacamole",
+            Self::Fortigate => "fortigate",
+        }
+    }
+}
+
+#[derive(ClapArgs, Clone)]
 pub(crate) struct BridgeOptions {
-    /// Guacamole connection URL. Required when starting a bridge.
+    /// Gateway URL (Guacamole connection URL or FortiGate portal origin). Required when starting a bridge.
     #[arg(value_name = "URL", required_unless_present_any=["stop","status"])]
     pub url: Option<String>,
-    /// Guacamole login username (prompted when omitted).
+    /// Gateway login username (prompted when omitted).
     #[arg(long = "user", help_heading = "Connection")]
     pub username: Option<String>,
+    /// Gateway type. Existing commands default to Guacamole.
+    #[arg(
+        long,
+        value_enum,
+        default_value = "guacamole",
+        help_heading = "Gateway"
+    )]
+    pub gateway: Gateway,
+    /// SSH server opened by FortiGate, distinct from the helper's loopback target.
+    #[arg(long, help_heading = "Server")]
+    pub server_host: Option<String>,
+    #[arg(long, default_value_t = 22, value_parser = clap::value_parser!(u16).range(1..), help_heading = "Server")]
+    pub server_port: u16,
+    #[arg(long, help_heading = "Server")]
+    pub server_user: Option<String>,
+    #[arg(long, conflicts_with_all=["forget_server_password", "no_keyring"], help_heading = "Server")]
+    pub save_server_password: bool,
+    #[arg(long, conflicts_with_all=["forget_password", "no_keyring"], help_heading = "Server")]
+    pub forget_server_password: bool,
+    #[arg(skip)]
+    pub resolved_server_password: Option<String>,
     #[arg(long)]
     pub connection_id: Option<String>,
     #[arg(long)]
@@ -104,6 +149,7 @@ impl BridgeOptions {
             && !self.managed_child
             && !self.benchmark_control
             && !self.forget_password
+            && !self.forget_server_password
             && !self.stop
             && !self.status
         {
@@ -142,6 +188,34 @@ impl BridgeOptions {
             (1..=128).contains(&self.input_window),
             "--input-window must be between 1 and 128"
         );
+        if self.gateway == Gateway::Fortigate {
+            ensure!(
+                self.connection_id.is_none() && self.data_source.is_none(),
+                "--connection-id and --data-source apply only to Guacamole"
+            );
+            if !self.stop && !self.status && !self.forget_password {
+                ensure!(
+                    self.server_host.as_ref().is_some_and(|h| !h.is_empty()
+                        && !h.chars().any(|c| c.is_control() || c.is_whitespace())),
+                    "FortiGate requires --server-host HOST"
+                );
+                ensure!(
+                    self.forget_password
+                        || self.forget_server_password
+                        || self.server_os == "windows",
+                    "The initial FortiGate adapter requires --server-os windows; Linux carrier support has not been validated"
+                );
+            }
+        } else {
+            ensure!(
+                self.server_host.is_none()
+                    && self.server_user.is_none()
+                    && self.server_port == 22
+                    && !self.save_server_password
+                    && !self.forget_server_password,
+                "--server-host, --server-port, --server-user and server password options require --gateway fortigate"
+            );
+        }
         self.input_chunk = 6048;
         Ok(())
     }

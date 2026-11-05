@@ -54,7 +54,8 @@ impl Manager {
         };
         let mut sections = vec![
             ("title", heading(endpoint(bridge), 22.0)),
-            ("user", label(format!("Guacamole user: {}", bridge.user()))),
+            ("gateway", heading(bridge.gateway(), 16.0)),
+            ("user", label(format!("Gateway user: {}", bridge.user()))),
             ("route", label(bridge.route())),
             ("status", label(activity(bridge))),
         ];
@@ -331,7 +332,7 @@ fn label(text: impl Into<String>) -> View {
         .into()
 }
 fn endpoint(bridge: &Bridge) -> String {
-    bridge.destination()
+    format!("[{}] {}", bridge.gateway(), bridge.destination())
 }
 fn activity(bridge: &Bridge) -> &'static str {
     if let Some(s) = &bridge.usage {

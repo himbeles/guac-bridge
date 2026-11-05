@@ -244,4 +244,9 @@ jobs:
         run: cargo xtask release-notes
       - name: Publish release artifacts
         env: {GH_TOKEN: "${{ github.token }}"}
-        run: gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md
+        run: |
+          release_args=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            release_args+=(--prerelease --latest=false)
+          fi
+          gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md "${release_args[@]}"

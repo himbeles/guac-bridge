@@ -120,6 +120,10 @@ mod windows {
         run(project
             .command(iscc)
             .arg(format!("/DVersion={}", project.version))
+            .arg(format!(
+                "/DNumericVersion={}",
+                project.version.split('-').next().unwrap()
+            ))
             .arg(format!("/DPayloadDir={}", payload.display()))
             .arg("installer/guac-bridge.iss"))?;
         let setup = project.dist()?.join(format!(

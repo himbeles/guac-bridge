@@ -74,6 +74,38 @@ The bridge runs in the background by default. Stop it with `guac-bridge llm --st
 
 `guac-bridge` is the CLI entry point. Use its `ssh` and `llm` subcommands. Run `guac-bridge --help` or a subcommand with `--help` for credential storage, certificates, background operation and transport tuning.
 
+## FortiGate gateway (v5 beta)
+
+The experimental FortiGate adapter opens a custom SSH terminal through the SSL-VPN
+web portal. Both SSH and LLM bridges use this same connection path. Existing
+Guacamole commands are unchanged; `--gateway` defaults to `guacamole`.
+
+```sh
+guac-bridge ssh https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-port 22 --server-user SERVER_USER --server-os windows
+
+guac-bridge llm https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows --remote-port 8000
+```
+
+`--server-host`, `--server-port` (default 22), `--server-user`, and `--server-os`
+describe the SSH server opened by the gateway. `--port` remains the local listener;
+`--target-host` and `--remote-port` remain the loopback service reached by the helper
+on that server. Portal and server passwords are prompted separately. Use
+`--save-password` / `--forget-password` for gateway credentials and
+`--save-server-password` / `--forget-server-password` for server credentials.
+`--no-keyring` disables credential-store access for both stages. Automation may
+supply `GUAC_BRIDGE_PASSWORD` and `GUAC_BRIDGE_SERVER_PASSWORD`; passwords are never
+accepted as command-line arguments or included in bridge registrations.
+
+The first beta supports the captured portal password-login flow, custom SSH
+sessions and Windows x86-64/PowerShell servers. MFA/SSO, endpoint compliance
+challenges, bookmark selection and Linux servers through FortiGate are not yet
+supported. Simulator tests use the real helper carrier and verify forwarding;
+no deployed FortiGate session has been tested. Gateway firmware may handle the
+terminal envelopes differently. See [the integration assessment](docs/fortinet-integration.md).
+
+CLI connection lists and the Windows manager label each bridge **Guacamole** or
+**FortiGate**, including older Guacamole registrations.
+
 ## List bridges
 
 ```shell
@@ -81,7 +113,7 @@ guac-bridge list
 ```
 
 Lists registered SSH and LLM bridges with status, Guacamole username and the route
-**local URL → Guacamole jump-host URL → service on the remote server**.
+**local URL → gateway → service on the remote server**.
 The server endpoint is loopback on the remote machine. Unresponsive registrations
 are marked explicitly. URL credentials and authentication queries are omitted.
 

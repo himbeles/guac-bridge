@@ -127,6 +127,18 @@ pub(crate) fn integration(project: &Project, suite: Suite) -> Result<()> {
             "-v",
         ])?;
     }
+    if matches!(suite, Suite::All | Suite::Native) && cfg!(unix) {
+        project.python(&[
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests/native",
+            "-p",
+            "test_fortigate.py",
+            "-v",
+        ])?;
+    }
     if matches!(suite, Suite::All | Suite::Console) && cfg!(windows) {
         project.python(&["tests/windows/probe.py"])?;
         project.python(&[
