@@ -89,6 +89,31 @@ class Frames:
 
 
 class AgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fatal_report_survives_console_session_teardown(self):
+        t = Terminal([
+            str(ROOT / "target/release/guac-bridge-agent.exe"),
+            "--stdio", "--windows-console",
+        ])
+        try:
+            self.assertEqual((await Frames(t).next())[:2], (1, 0))
+            # A valid reliable record with an invalid channel ID fails inside
+            # serve(), after console handles and the output carrier are opened.
+            t.write(Encoder().encode(2, 0))
+            async def report():
+                while b"GBERR:END" not in t.data:
+                    await asyncio.sleep(0.005)
+                return bytes(t.data)
+            data = await asyncio.wait_for(report(), 15)
+            chunks = re.findall(
+                rb"\x1b\]482202;2;GBERR:([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)", data
+            )
+            message = b"".join(base64.b64decode(chunk) for chunk in chunks if chunk != b"END")
+            self.assertIn(b"Invalid or duplicate channel ID", message)
+            self.assertIn(b"Recent remote events:", message)
+            self.assertEqual(await asyncio.to_thread(t.wait), 1)
+        finally:
+            t.close()
+
     async def test_windows_console_binary_echo_and_half_close(self):
         async def echo(reader, writer):
             data = await reader.read()

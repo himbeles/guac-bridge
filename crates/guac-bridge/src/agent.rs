@@ -236,12 +236,6 @@ fn write_frame(
 async fn serve(args: Arc<Args>) -> Result<()> {
     #[cfg(unix)]
     let _terminal = guac_bridge::RawTerminal::enter()?;
-    #[cfg(windows)]
-    let _windows_terminal = if args.windows_console {
-        Some(WindowsTerminal::enter()?)
-    } else {
-        None
-    };
     let mut stdout = std::io::stdout().lock();
     let mut reliable_output = args.reliable_output.then(|| {
         guac_bridge::terminal_wire::ReliableOutput::new(Duration::from_secs(args.connect_timeout))
@@ -425,7 +419,15 @@ fn main() -> Result<()> {
     } else {
         None
     };
+    // Keep redirected console handles alive until fatal reporting is complete.
+    // serve() returning must not close the process's current standard handles.
+    #[cfg(windows)]
+    let mut windows_terminal = None;
     let result = (|| -> Result<()> {
+        #[cfg(windows)]
+        if args.windows_console {
+            windows_terminal = Some(WindowsTerminal::enter()?);
+        }
         diagnostics::init(args.debug_log.as_deref())
             .context("Cannot initialize remote debug log")?;
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -439,6 +441,8 @@ fn main() -> Result<()> {
         let _ = report_fatal(error);
     }
     diagnostics::shutdown();
+    #[cfg(windows)]
+    drop(windows_terminal);
     #[cfg(unix)]
     if let (Some(start), Some(path)) = (cpu_start, cpu_path) {
         let _ = std::fs::write(path, format!("{}", cpu_seconds() - start));
@@ -467,6 +471,8 @@ struct WindowsTerminal {
     output: std::fs::File,
     input_mode: u32,
     output_mode: u32,
+    standard_input: windows_sys::Win32::Foundation::HANDLE,
+    standard_output: windows_sys::Win32::Foundation::HANDLE,
 }
 #[cfg(windows)]
 impl WindowsTerminal {
@@ -482,7 +488,10 @@ impl WindowsTerminal {
             .write(true)
             .open("CONOUT$")?;
         let (mut input_mode, mut output_mode) = (0, 0);
+        let (standard_input, standard_output);
         unsafe {
+            standard_input = GetStdHandle(STD_INPUT_HANDLE);
+            standard_output = GetStdHandle(STD_OUTPUT_HANDLE);
             ensure!(
                 GetConsoleMode(input.as_raw_handle(), &mut input_mode) != 0
                     && GetConsoleMode(output.as_raw_handle(), &mut output_mode) != 0,
@@ -504,6 +513,8 @@ impl WindowsTerminal {
             output,
             input_mode,
             output_mode,
+            standard_input,
+            standard_output,
         })
     }
 }
@@ -511,10 +522,14 @@ impl WindowsTerminal {
 impl Drop for WindowsTerminal {
     fn drop(&mut self) {
         use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::System::Console::SetConsoleMode;
+        use windows_sys::Win32::System::Console::{
+            STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, SetConsoleMode, SetStdHandle,
+        };
         unsafe {
             SetConsoleMode(self.input.as_raw_handle(), self.input_mode);
             SetConsoleMode(self.output.as_raw_handle(), self.output_mode);
+            SetStdHandle(STD_INPUT_HANDLE, self.standard_input);
+            SetStdHandle(STD_OUTPUT_HANDLE, self.standard_output);
         }
     }
 }
