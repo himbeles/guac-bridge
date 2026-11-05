@@ -3,9 +3,9 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
+    paths: ["site/**", "tests/site/**", ".github/workflows/pages.yaml", "LICENSE", "crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt"]
   pull_request:
-    paths: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
+    paths: ["site/**", "tests/site/**", ".github/workflows/pages.yaml", "LICENSE", "crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt"]
   release:
     types: [published]
   workflow_run:

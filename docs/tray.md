@@ -14,6 +14,9 @@ guac-bridge tray
 The installer also adds **Guac Bridge Manager** to the Start menu. The portable
 and Python installations use the same command.
 
+Select **Licenses…** in the manager or tray to view the project and dependency
+terms, including installed Microsoft runtime notices. See [Licensing](licensing.md).
+
 ## Windows UI runtime
 
 The manager is written in Rust with `windows-reactor` and renders native WinUI 3

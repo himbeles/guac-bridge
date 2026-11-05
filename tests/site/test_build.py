@@ -29,6 +29,17 @@ class WebsiteTests(unittest.TestCase):
         for asset in release["assets"]:
             self.assertIn('href="' + asset["url"] + '"', page)
 
+    def test_header_and_footer_license_navigation(self):
+        page = website.render(self.release())
+        header = page.split("<header>")[1].split("</header>")[0]
+        footer = page.split("<footer>")[1].split("</footer>")[0]
+        self.assertIn("Documentation", header)
+        self.assertNotIn("<img", header)
+        self.assertNotIn("Documentation", footer)
+        self.assertIn("© 2026 Luis Riegger", footer)
+        self.assertIn('href="license.txt"', footer)
+        self.assertIn('href="third-party-notices.txt"', footer)
+
     def test_older_release_only_links_to_existing_assets(self):
         release = self.release()
         release["assets"] = release["assets"][:1]

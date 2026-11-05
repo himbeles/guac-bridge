@@ -53,6 +53,9 @@ def main():
     page = render(json.loads(args.release_json.read_text()))
     args.output.mkdir(parents=True, exist_ok=True)
     (args.output / "index.html").write_text(page)
+    root = Path(__file__).resolve().parents[1]
+    shutil.copyfile(root / "LICENSE", args.output / "license.txt")
+    shutil.copyfile(root / "crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt", args.output / "third-party-notices.txt")
     for name in ("style.css", "frog.svg"):
         shutil.copyfile(Path(__file__).with_name(name), args.output / name)
 

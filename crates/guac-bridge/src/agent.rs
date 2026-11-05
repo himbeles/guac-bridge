@@ -17,6 +17,9 @@ use tokio::{
     about = "Guac Bridge session helper for TCP services, including SSH, RDP and HTTP"
 )]
 struct Args {
+    /// Print the project license and bundled third-party notices, then exit.
+    #[arg(long)]
+    licenses: bool,
     #[arg(long)]
     stdio: bool,
     #[arg(long)]
@@ -413,6 +416,10 @@ impl Write for Output {
 
 fn main() -> Result<()> {
     let args = Args::parse();
+    if args.licenses {
+        print!("{}", guac_bridge::licensing::text());
+        return Ok(());
+    }
     ensure!(
         args.stdio,
         "Started automatically by native client; --stdio is required"

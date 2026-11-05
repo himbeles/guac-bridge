@@ -30,3 +30,6 @@ If repository policy blocks that setup, select **GitHub Actions** under
 
 To link the deployed site on GitHub, open the repository's **About** gear and set
 **Website** to `https://himbeles.github.io/guac-bridge/`.
+
+The build copies the root MIT license and third-party report into the site.
+The footer copyright year and author match `LICENSE`; the hero retains the frog.

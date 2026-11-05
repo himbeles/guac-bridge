@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Include project and third-party notices in standalone clients/helpers, portable archives, Python wheels/source packages and the Windows installer. Add CLI, helper, manager and tray license views.
+- Preserve the Microsoft runtime packages' original LICENSE and NOTICE files and verify license payloads in CI.
+- Add project copyright, author and license links to package metadata and documentation.
+- Replace the website's upper-left brand with Documentation and show copyright, year and license links in the footer.
+
 ## 5.0.3
 
 - Add an Apple Silicon macOS client with native Keychain password storage, a portable archive and a Python/uv wheel. Stable releases build and test the client on a native macOS runner.

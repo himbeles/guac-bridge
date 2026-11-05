@@ -1,0 +1,24 @@
+THIRD-PARTY SOFTWARE NOTICES
+
+Guac Bridge dependencies retain their own licenses. This report covers the
+resolved Cargo workspace across supported client/helper targets, including
+optional and build dependencies; not every component is present in every binary.
+Project source, documentation, website and frog artwork: see LICENSE (MIT).
+
+For components under MPL-2.0, the unmodified corresponding source can be obtained
+from the exact crates.io package download links below. No dependency source has
+been modified by Guac Bridge.
+
+{{#each licenses}}
+===============================================================================
+{{name}} ({{id}})
+
+Used by:
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}
+  Source: https://crates.io/api/v1/crates/{{crate.name}}/{{crate.version}}/download
+{{/each}}
+
+{{{text}}}
+
+{{/each}}

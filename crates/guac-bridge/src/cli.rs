@@ -17,6 +17,9 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Print the MIT license and bundled third-party notices.
+    #[command(display_order = 14)]
+    Licenses,
     #[command(hide = true)]
     Manager,
     /// Stop all registered bridges and the tray before an external update.
@@ -106,6 +109,10 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
         }
     };
     let (mode, mut args) = match cli.command {
+        Command::Licenses => {
+            print!("{}", crate::licensing::text());
+            return 0;
+        }
         Command::Stop { all, port } => {
             return match crate::background::stop(if all.is_some() { None } else { port }) {
                 Ok(()) => 0,
