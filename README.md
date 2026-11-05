@@ -96,6 +96,10 @@ on that server. Portal and server passwords are prompted separately. Use
 supply `GUAC_BRIDGE_PASSWORD` and `GUAC_BRIDGE_SERVER_PASSWORD`; passwords are never
 accepted as command-line arguments or included in bridge registrations.
 
+Beta releases distribute the Windows installer only, through GitHub prereleases.
+They do not publish Python wheels, Linux clients or portable archives. Stable releases
+retain the existing distribution formats.
+
 The first beta supports the captured portal password-login flow, custom SSH
 sessions and Windows x86-64/PowerShell servers. MFA/SSO, endpoint compliance
 challenges, bookmark selection and Linux servers through FortiGate are not yet

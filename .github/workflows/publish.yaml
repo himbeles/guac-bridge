@@ -14,6 +14,24 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Select release targets
+    runs-on: ubuntu-latest
+    outputs:
+      beta: ${{ steps.version.outputs.beta }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - id: version
+        shell: bash
+        run: |
+          python - <<'PYTHON'
+          import os, tomllib
+          with open('Cargo.toml', 'rb') as manifest:
+              version = tomllib.load(manifest)['workspace']['package']['version']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print('beta=' + str('-' in version).lower(), file=output)
+          PYTHON
   agent:
     name: Static Linux x86-64 helper
     runs-on: ubuntu-latest
@@ -52,7 +70,8 @@ jobs:
 
   test-linux:
     name: Native Linux integration
-    needs: [agent, windows-agent]
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -91,7 +110,8 @@ jobs:
 
   windows:
     name: Windows x86-64 executable, installer and uv package
-    needs: [agent, windows-agent]
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -165,7 +185,8 @@ jobs:
 
   linux-distribution:
     name: Linux x86-64 portable and Python packages
-    needs: [agent, windows-agent]
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -203,8 +224,8 @@ jobs:
 
   publish:
     name: Publish to PyPI
-    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v'))
-    needs: [test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
+    if: needs.plan.outputs.beta != 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
+    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -229,8 +250,8 @@ jobs:
 
   release:
     name: GitHub release
-    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v'))
-    needs: [test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
+    if: needs.plan.outputs.beta != 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
+    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
     runs-on: ubuntu-latest
     permissions: {contents: write}
     steps:
@@ -250,3 +271,26 @@ jobs:
             release_args+=(--prerelease --latest=false)
           fi
           gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md "${release_args[@]}"
+
+  beta-release:
+    name: Windows installer beta release
+    needs: [plan, cargo-windows, bundled-installer]
+    if: needs.plan.outputs.beta == 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v8
+        with: {name: windows-installer-distributions, path: installer-artifacts}
+      - name: Collect only the Windows installer
+        run: |
+          mkdir -p dist
+          cp installer-artifacts/*-setup.exe dist/
+      - name: Build installer checksum and release notes
+        env: {RELEASE_TAG: "${{ github.ref_name }}"}
+        run: cargo xtask release-notes
+      - name: Publish Windows installer prerelease
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: gh release create "$RELEASE_TAG" dist/*-setup.exe dist/SHA256SUMS --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md --prerelease --latest=false

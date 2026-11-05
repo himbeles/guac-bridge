@@ -6,7 +6,7 @@
 - Add server-host, server-port and server-user options, separately stored server credentials and private background credential handoff. Keep the local listener and helper service destination independent of the gateway SSH server.
 - Label gateway types in CLI connection lists and the Windows manager, and include FortiGate server identity in managed bridge reuse checks.
 - Add simulated FortiGate tests using the real helper for binary transfer, concurrency, half-closes, streamed HTTP and managed lifecycle behavior. Real FortiGate deployment validation, MFA/SSO, bookmarks and Linux server support remain outside this first beta.
-- Publish beta builds as GitHub prereleases and preserve prerelease text in Windows installer version metadata.
+- Publish beta builds as Windows-installer-only GitHub prereleases with a checksum; skip Python/PyPI, Linux client and portable distributions. Preserve prerelease text in Windows installer version metadata.
 
 ## 4.0.2
 
