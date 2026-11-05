@@ -106,3 +106,7 @@ cargo xtask check
 The application and helper live in [crates/guac-bridge](crates/guac-bridge).
 See [Building](docs/building.md) and [Testing](docs/testing.md) for requirements
 and validation workflows.
+
+## License
+
+© 2026 Luis Riegger. [MIT](LICENSE). See [Licensing](docs/licensing.md) for third-party notices and distribution details.

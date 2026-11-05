@@ -1,4 +1,4 @@
-//! Portable archives contain exactly one CLI, the README and the license.
+//! Portable archives contain exactly one CLI, the README and applicable license notices.
 //! Wheel extraction preserves the manylinux binary instead of rebuilding on the host.
 use crate::project::Project;
 use anyhow::{Context, Result, bail, ensure};
@@ -82,6 +82,10 @@ pub(crate) fn portable(
         (executable, bytes),
         ("README.md", fs::read(project.root.join("README.md"))?),
         ("LICENSE", fs::read(project.root.join("LICENSE"))?),
+        (
+            "THIRD-PARTY-NOTICES.txt",
+            fs::read(project.assets().join("THIRD-PARTY-NOTICES.txt"))?,
+        ),
     ];
     let output = project
         .dist()?

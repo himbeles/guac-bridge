@@ -24,6 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python scripts/licenses.py --check
       - id: version
         shell: bash
         run: |
@@ -95,6 +97,7 @@ jobs:
           cargo package  -p guac-bridge --allow-dirty --no-verify
           tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-linux-x86_64
           tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-windows-x86_64.exe
+          python scripts/check_license_packages.py target/package
       - uses: actions/upload-artifact@v7
         with: {name: benchmark-smoke, path: benchmark-smoke.json}
 
@@ -160,6 +163,7 @@ jobs:
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo xtask portable --wheel $wheel
+      - run: python scripts/check_license_packages.py dist
       - uses: actions/upload-artifact@v7
         with: {name: windows-distributions, path: dist/, if-no-files-found: error}
 
@@ -225,6 +229,7 @@ jobs:
         run: |
           tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
           tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-windows-x86_64.exe'
+      - run: python scripts/check_license_packages.py dist
       - uses: actions/upload-artifact@v7
         with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 
@@ -269,6 +274,7 @@ jobs:
           "$RUNNER_TEMP/portable/guac-bridge" --version
           "$RUNNER_TEMP/portable/guac-bridge" tcp --help
           file "$RUNNER_TEMP/portable/guac-bridge" | grep 'Mach-O'
+      - run: python scripts/check_license_packages.py dist
       - uses: actions/upload-artifact@v7
         with: {name: macos-aarch64-distributions, path: dist/, if-no-files-found: error}
 

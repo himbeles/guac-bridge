@@ -78,3 +78,5 @@ macOS 11 or newer is the deployment target. Beta releases remain Windows-install
 
 The [website](../site/README.md) is hand-edited HTML/CSS. Its Pages action refreshes
 direct download links from the latest stable GitHub release.
+
+See [Licensing](licensing.md) for notice regeneration and package checks.

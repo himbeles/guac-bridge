@@ -16,7 +16,6 @@ a:hover { text-decoration: underline; }
 a:focus-visible { outline: 3px solid var(--green); outline-offset: 5px; border-radius: 4px; }
 header, footer, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 header { font-size: .9rem; }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 1.1rem; font-weight: 750; }
 .hero { padding: 36px 0 28px; text-align: center; }
 .frog { display: block; margin: auto auto 12px; }
 .eyebrow { color: var(--green); font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }

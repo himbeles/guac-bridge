@@ -18,6 +18,7 @@ enum Message {
     Confirm,
     Stopped(Result<(), String>),
     Log,
+    Licenses,
 }
 struct Manager {
     bridges: Vec<Bridge>,
@@ -215,6 +216,11 @@ impl Component for Manager {
                 self.busy = false;
                 self.error = result.err();
             }
+            Message::Licenses => {
+                if let Err(error) = crate::licensing::open() {
+                    self.error = Some(format!("Cannot open licenses: {error:#}"));
+                }
+            }
             Message::Log => {
                 if let Some(path) = self.selected().and_then(|b| b.log_path())
                     && let Err(e) = std::process::Command::new("notepad.exe").arg(path).spawn()
@@ -341,7 +347,10 @@ impl Component for Manager {
         Grid::new().margin(24.0).rows([GridLength::Auto, GridLength::STAR, GridLength::Auto]).row_spacing(20.0).children((
             Grid::new().grid_row(0).columns([GridLength::STAR, GridLength::Auto]).children((
                 StackPanel::new().grid_column(0).spacing(6.0).children((heading("🐸 Running bridges",28.0), label("Connections, activity and data transferred since startup"))),
-                Button::new().grid_column(1).vertical_alignment(VerticalAlignment::Center).is_enabled(!self.busy && !self.bridges.is_empty()).on_click(context.message(Message::AskStop(true))).content("Stop all…"),
+                StackPanel::new().grid_column(1).orientation(Orientation::Horizontal).spacing(8.0).vertical_alignment(VerticalAlignment::Center).children((
+                    Button::new().on_click(context.message(Message::Licenses)).content("Licenses…"),
+                    Button::new().is_enabled(!self.busy && !self.bridges.is_empty()).on_click(context.message(Message::AskStop(true))).content("Stop all…"),
+                )),
             )),
             Grid::new().grid_row(1).columns([GridLength::Pixel(290.0), GridLength::STAR]).column_spacing(24.0).children((
                 ScrollViewer::new().grid_column(0).horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled).content(StackPanel::new().spacing(8.0).keyed_children(rows)),

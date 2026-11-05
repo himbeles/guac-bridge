@@ -2,6 +2,7 @@
 name = "guac-bridge"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -33,6 +34,7 @@ unicode-width = { version = "0.2", optional = true }
 anyhow = "1"
 base64 = "0.22"
 crc32fast = "1.5"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 memchr = "2"
 clap = { version = "4", features = ["derive"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"], optional = true }
