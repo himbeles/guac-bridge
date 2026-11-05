@@ -101,6 +101,9 @@ fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
     if args.benchmark_control {
         options.push_str(" --benchmark-control");
     }
+    if args.gateway == crate::options::Gateway::Fortigate {
+        options.push_str(" --reliable-output");
+    }
     if let Some(path) = &args.server_debug_log {
         options.push_str(&format!(" --debug-log {}", powershell_quote(path)));
     }

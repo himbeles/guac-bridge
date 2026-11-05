@@ -7,7 +7,7 @@ use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    sync::{Semaphore, mpsc},
+    sync::{Semaphore, mpsc, watch},
     task::JoinHandle,
 };
 
@@ -26,6 +26,8 @@ struct Args {
     /// Use the printable Windows console carrier.
     #[arg(long)]
     windows_console: bool,
+    #[arg(long, hide = true, requires = "windows_console")]
+    reliable_output: bool,
     #[arg(long, default_value = "127.0.0.1")]
     target_host: String,
     #[arg(long, default_value_t = 22)]
@@ -103,7 +105,7 @@ async fn connection(
 }
 async fn read_input(
     sender: mpsc::Sender<Frame>,
-    output: mpsc::Sender<Frame>,
+    output: watch::Sender<Option<Frame>>,
     windows: bool,
 ) -> Result<()> {
     #[cfg(windows)]
@@ -131,7 +133,7 @@ async fn read_input(
             .feed(&chunk[..n], windows)
             .with_context(|| format!("Remote console decode failed: {}", decoder.status()))?;
         if let Some(ack) = decoder.take_ack() {
-            output.send(ack).await?;
+            output.send_replace(Some(ack));
         }
         for frame in frames {
             diagnostics::frame("rx", &frame);
@@ -144,7 +146,10 @@ async fn read_input(
     }
 }
 #[cfg(windows)]
-fn read_console_input(sender: mpsc::Sender<Frame>, output: mpsc::Sender<Frame>) -> Result<()> {
+fn read_console_input(
+    sender: mpsc::Sender<Frame>,
+    output: watch::Sender<Option<Frame>>,
+) -> Result<()> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::System::Console::{INPUT_RECORD, KEY_EVENT, ReadConsoleInputW};
     let input = std::fs::OpenOptions::new()
@@ -184,7 +189,7 @@ fn read_console_input(sender: mpsc::Sender<Frame>, output: mpsc::Sender<Frame>) 
                     format!("Remote console decode failed: {}", decoder.status())
                 })?;
                 if let Some(ack) = decoder.take_ack() {
-                    output.blocking_send(ack)?;
+                    output.send_replace(Some(ack));
                 }
                 for frame in frames {
                     diagnostics::frame("rx", &frame);
@@ -212,6 +217,22 @@ async fn termination() {
         let _ = tokio::signal::ctrl_c().await;
     }
 }
+fn write_frame(
+    stdout: &mut impl Write,
+    reliable: &mut Option<guac_bridge::terminal_wire::ReliableOutput>,
+    frame: &Frame,
+    windows: bool,
+) -> Result<()> {
+    let bytes = if let Some(output) = reliable {
+        output.send(frame, std::time::Instant::now())?
+    } else {
+        guac_bridge::terminal_wire::output(frame, windows)?
+    };
+    stdout.write_all(&bytes)?;
+    stdout.flush()?;
+    Ok(())
+}
+
 async fn serve(args: Arc<Args>) -> Result<()> {
     #[cfg(unix)]
     let _terminal = guac_bridge::RawTerminal::enter()?;
@@ -222,23 +243,28 @@ async fn serve(args: Arc<Args>) -> Result<()> {
         None
     };
     let mut stdout = std::io::stdout().lock();
+    let mut reliable_output = args.reliable_output.then(|| {
+        guac_bridge::terminal_wire::ReliableOutput::new(Duration::from_secs(args.connect_timeout))
+    });
     if !args.windows_console {
         stdout.write_all(b"\x1b]482202;2;LLM\x07")?;
     }
     let ready = serde_json::to_vec(
-        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"input_protocol":"reliable-v1"}),
+        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"input_protocol":"reliable-v1","output_protocol":if args.reliable_output {"reliable-v1"} else {"plain"}}),
     )?;
-    stdout.write_all(&guac_bridge::terminal_wire::output(
+    write_frame(
+        &mut stdout,
+        &mut reliable_output,
         &Frame::payload(Kind::Ready, 0, ready),
         args.windows_console,
-    )?)?;
+    )?;
     stdout.flush()?;
     let (input_tx, mut input_rx) = mpsc::channel(64);
     let (output_tx, mut output_rx) = mpsc::channel::<Frame>(64);
     // Reader sends a fatal error via a separate channel rather than losing queued frames.
     let (error_tx, mut error_rx) = mpsc::channel(1);
     let windows = args.windows_console;
-    let input_output = output_tx.clone();
+    let (input_output, mut input_acks) = watch::channel(None);
     let stdin_task = tokio::spawn(async move {
         if let Err(error) = read_input(input_tx, input_output, windows).await {
             let _ = error_tx.send(error).await;
@@ -247,17 +273,30 @@ async fn serve(args: Arc<Args>) -> Result<()> {
     let mut channels: HashMap<u32, Channel> = HashMap::new();
     let mut heartbeat = tokio::time::interval(Duration::from_secs(10));
     heartbeat.tick().await;
+    let mut input_acks_open = true;
+    let mut output_tick = tokio::time::interval(Duration::from_millis(25));
     let stop = termination();
     tokio::pin!(stop);
     let result:Result<()>=async {
         loop {
+            let output_available=reliable_output.as_ref().is_none_or(|o|o.has_capacity());
             tokio::select!{
                 _=&mut stop=>break,
+                _=output_tick.tick(),if reliable_output.is_some()=>{
+                    stdout.write_all(&reliable_output.as_mut().unwrap().retry(std::time::Instant::now()).context("Reliable helper output delivery stalled")?)?;
+                    stdout.flush()?;
+                },
+                changed=input_acks.changed(),if input_acks_open=>{
+                    if changed.is_ok() {
+                        let ack=input_acks.borrow_and_update().clone();
+                        if let Some(ack)=ack {write_frame(&mut stdout,&mut reliable_output,&ack,args.windows_console)?;}
+                    } else {input_acks_open=false;}
+                },
                 Some(error)=error_rx.recv()=>return Err(error),
-                _=heartbeat.tick()=>{stdout.write_all(&guac_bridge::terminal_wire::output(&Frame::control(Kind::Heartbeat,0),args.windows_console)?)?;stdout.flush()?;},
-                Some(frame)=output_rx.recv()=>{
+                _=heartbeat.tick(),if output_available=>{write_frame(&mut stdout,&mut reliable_output,&Frame::control(Kind::Heartbeat,0),args.windows_console)?;},
+                Some(frame)=output_rx.recv(),if output_available=>{
                     if matches!(frame.kind,Kind::Closed|Kind::Error){channels.remove(&frame.id);}
-                    stdout.write_all(&guac_bridge::terminal_wire::output(&frame,args.windows_console)?)?;stdout.flush()?;
+                    write_frame(&mut stdout,&mut reliable_output,&frame,args.windows_console)?;
                 },
                 frame=input_rx.recv()=>{
                     let Some(frame)=frame else {
@@ -268,11 +307,15 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                     };
                     let id=frame.id;
                     match frame.kind {
+                        Kind::OutputAck=>{
+                            ensure!(args.reliable_output,"Unexpected output acknowledgement");
+                            reliable_output.as_mut().unwrap().ack(&frame.data,std::time::Instant::now())?;
+                        },
                         Kind::Shutdown=>break,
                         Kind::Open=>{
                             ensure!(id>0&&!channels.contains_key(&id),"Invalid or duplicate channel ID");
                             if channels.len()>=args.max_connections {
-                                stdout.write_all(&guac_bridge::terminal_wire::output(&Frame::payload(Kind::Error,id,b"Connection limit reached".to_vec()),args.windows_console)?)?;
+                                write_frame(&mut stdout,&mut reliable_output,&Frame::payload(Kind::Error,id,b"Connection limit reached".to_vec()),args.windows_console)?;
                                 stdout.flush()?;continue;
                             }
                             let (tx,rx)=mpsc::channel(args.window+1);
@@ -288,7 +331,7 @@ async fn serve(args: Arc<Args>) -> Result<()> {
                         },
                         Kind::Close=>{
                             if let Some(channel)=channels.remove(&id){channel.task.abort();let _=channel.task.await;}
-                            stdout.write_all(&guac_bridge::terminal_wire::output(&Frame::control(Kind::Closed,id),args.windows_console)?)?;stdout.flush()?;
+                            write_frame(&mut stdout,&mut reliable_output,&Frame::control(Kind::Closed,id),args.windows_console)?;
                         },
                         _=>if let Some(channel)=channels.get_mut(&id){match frame.kind {
                             Kind::Data=>{

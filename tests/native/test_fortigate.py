@@ -66,6 +66,10 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         self.target_port = 22
         self.manual = True
         self.upload_digest = None
+        self.output_fault = None
+        self.faults_applied = 0
+        self.drop_input_ack = False
+        self.blackhole_output = False
         app = web.Application()
         app.router.add_post('/remote/logincheck', self.login)
         app.router.add_get('/remote/hostcheck_install', self.hostcheck)
@@ -166,16 +170,44 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         window = re.search(r'--window (\d+)', script)[1]
         frame_size = re.search(r'--frame-size (\d+)', script)[1]
         target_port = re.search(r'--target-port (\d+)', script)[1]
-        helper = await asyncio.create_subprocess_exec(str(self.agent), '--stdio', '--windows-console', '--target-port', target_port,
-            '--window', window, '--frame-size', frame_size,
+        helper = await asyncio.create_subprocess_exec(str(self.agent), '--stdio', '--windows-console', '--reliable-output', '--target-port', target_port,
+            '--window', window, '--frame-size', frame_size, '--connect-timeout','3',
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         self.helpers.append(helper)
 
         async def output():
+            pending = b''
             while data := await helper.stdout.read(65536):
-                # Real helper's printable carrier, fragmented at arbitrary WebSocket boundaries.
-                await ws.send_str(data[:7].decode('ascii'))
-                await ws.send_str(data[7:].decode('ascii'))
+                pending += data
+                packets = []
+                while b'\x07' in pending:
+                    envelope, pending = pending.split(b'\x07',1)
+                    envelope += b'\x07'
+                    if self.blackhole_output and envelope.startswith(b'\x1b]482202;2;GBR1:'):
+                        self.faults_applied += 1
+                        continue
+                    if self.drop_input_ack and envelope.startswith(b'\x1b]482202;2;GBIA:'):
+                        self.drop_input_ack = False
+                        self.faults_applied += 1
+                        continue
+                    if (self.output_fault and envelope.startswith(b'\x1b]482202;2;GBR1:')
+                            and len(envelope) > 150
+                            and base64.b64decode(envelope[len(b'\x1b]482202;2;GBR1:'):-1])[0] != 0):
+                        fault, self.output_fault = self.output_fault, None
+                        self.faults_applied += 1
+                        if fault == 'drop':
+                            continue
+                        if fault == 'duplicate':
+                            packets.append(envelope)
+                        if fault == 'corrupt':
+                            index = len(b'\x1b]482202;2;GBR1:')+8
+                            replacement = b'A' if envelope[index:index+1] != b'A' else b'B'
+                            envelope = envelope[:index]+replacement+envelope[index+1:]
+                    packets.append(envelope)
+                data = b''.join(packets)
+                if data:
+                    await ws.send_str(data[:7].decode('ascii'))
+                    await ws.send_str(data[7:].decode('ascii'))
         pump = asyncio.create_task(output())
         pending = ''
         try:
@@ -184,8 +216,11 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
                     break
                 op, value = parse(message.data)
                 self.assertEqual(op, 'str')
-                helper.stdin.write(value.encode('ascii'))
-                await helper.stdin.drain()
+                try:
+                    helper.stdin.write(value.encode('ascii'))
+                    await helper.stdin.drain()
+                except (BrokenPipeError, ConnectionResetError):
+                    break
         finally:
             pump.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -249,6 +284,66 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
             writer.close()
             await writer.wait_closed()
         await asyncio.gather(exchange(),exchange())
+
+    async def test_output_loss_duplication_corruption_and_lost_input_ack_recover(self):
+        async def echo(reader, writer):
+            while data := await reader.read(65536):
+                writer.write(data)
+                await writer.drain()
+            writer.write_eof()
+            await writer.drain()
+            writer.close()
+        server = await asyncio.start_server(echo,'127.0.0.1',0)
+        self.servers.append(server)
+        self.target_port = server.sockets[0].getsockname()[1]
+        child, port = await self.launch()
+        for fault in ['drop','duplicate','corrupt','input-ack']:
+            with self.subTest(fault=fault):
+                before = self.faults_applied
+                if fault == 'input-ack': self.drop_input_ack = True
+                else: self.output_fault = fault
+                async def exchange():
+                    reader, writer = await asyncio.open_connection('127.0.0.1',port)
+                    payload = bytes(range(256))*4096
+                    writer.write(payload)
+                    await writer.drain()
+                    writer.write_eof()
+                    received = await asyncio.wait_for(reader.read(),20)
+                    self.assertEqual(received,payload)
+                    writer.close()
+                    await writer.wait_closed()
+                await asyncio.gather(exchange(),exchange())
+                self.assertEqual(self.faults_applied,before+1)
+                self.assertIsNone(child.returncode)
+
+    async def test_permanent_output_loss_fails_without_delivering_corrupted_bytes(self):
+        async def echo(reader, writer):
+            try:
+                while data := await reader.read(65536):
+                    writer.write(data)
+                    await writer.drain()
+            finally:
+                writer.close()
+        server = await asyncio.start_server(echo,'127.0.0.1',0)
+        self.servers.append(server)
+        self.target_port=server.sockets[0].getsockname()[1]
+        child,port=await self.launch()
+        reader,writer=await asyncio.open_connection('127.0.0.1',port)
+        writer.write(b'probe')
+        await writer.drain()
+        self.assertEqual(await asyncio.wait_for(reader.readexactly(5),5),b'probe')
+        self.blackhole_output=True
+        writer.write(b'must not become corrupted SSH bytes'*100)
+        await writer.drain()
+        self.assertEqual(await asyncio.wait_for(reader.read(),10),b'')
+        await asyncio.wait_for(child.wait(),10)
+        self.assertNotEqual(child.returncode,0)
+        error=(await child.stderr.read()).decode()
+        self.assertIn('Reliable helper output delivery stalled',error)
+        self.assertNotIn('Wrong bridge protocol',error)
+        self.assertGreater(self.faults_applied,0)
+        writer.close()
+        await writer.wait_closed()
 
     async def test_llm_streaming_preserves_headers_and_body(self):
         release = asyncio.Event()

@@ -295,6 +295,9 @@ impl Sender {
             last_report: None,
         }
     }
+    pub fn has_capacity(&self) -> bool {
+        self.next - self.base < self.window as u64
+    }
     pub fn queue(&mut self, data: &[u8], now: Instant) -> Result<Option<Arc<[u8]>>> {
         ensure!(
             (1..=MAX_WINDOW).contains(&self.window),
