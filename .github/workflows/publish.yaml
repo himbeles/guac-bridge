@@ -226,10 +226,64 @@ jobs:
       - uses: actions/upload-artifact@v7
         with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 
+  macos:
+    name: macOS ${{ matrix.arch }} client and Python package
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: aarch64
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            arch: x86_64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {components: rustfmt, clippy}
+      - uses: Swatinem/rust-cache@v2
+        with: {key: "macos-${{ matrix.arch }}"}
+      - uses: actions/download-artifact@v8
+        with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/download-artifact@v8
+        with: {name: windows-agent, path: crates/guac-bridge/assets}
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - run: python -m pip install maturin uv
+      - name: Check native host architecture
+        run: |
+          rustc -vV | grep 'host: ${{ matrix.target }}'
+      - run: cargo xtask check --prepared
+      - run: cargo xtask python --prepared
+      - name: Test installed client and archive
+        run: |
+          export UV_TOOL_DIR="$RUNNER_TEMP/guac-tools"
+          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/guac-bin"
+          uv tool install --from dist/*.whl guac-bridge
+          "$UV_TOOL_BIN_DIR/guac-bridge" --version
+          "$UV_TOOL_BIN_DIR/guac-bridge" tcp --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" list
+          "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
+          cargo xtask portable --wheel dist/*.whl
+          mkdir -p "$RUNNER_TEMP/portable"
+          tar -xzf dist/guac-bridge-*-macos-${{ matrix.arch }}.tar.gz -C "$RUNNER_TEMP/portable"
+          "$RUNNER_TEMP/portable/guac-bridge" --version
+          "$RUNNER_TEMP/portable/guac-bridge" tcp --help
+          file "$RUNNER_TEMP/portable/guac-bridge" | grep 'Mach-O'
+      - uses: actions/upload-artifact@v7
+        with: {name: "macos-${{ matrix.arch }}-distributions", path: dist/, if-no-files-found: error}
+
   publish:
     name: Publish to PyPI
     if: needs.plan.outputs.beta != 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
-    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
+    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, macos, bundled-installer]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -255,7 +309,7 @@ jobs:
   release:
     name: GitHub release
     if: needs.plan.outputs.beta != 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
-    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
+    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, macos, bundled-installer]
     runs-on: ubuntu-latest
     permissions: {contents: write}
     steps:
