@@ -49,7 +49,7 @@ impl Manager {
         let Some(bridge) = self.selected() else {
             return StackPanel::new().spacing(12.0).children((
                 heading("No bridge selected", 22.0),
-                label("Start an SSH or HTTP bridge. It appears here when ready."),
+                label("Start an SSH, RDP, HTTP or TCP bridge. It appears here when ready."),
             ));
         };
         let mut sections = vec![
@@ -307,16 +307,35 @@ impl Component for Manager {
                     ),
             )
         });
-        let confirm = self.pending.as_ref().filter(|p| !p.is_empty()).map(|p| Border::new().padding(16.0).corner_radius(8.0).background(ThemeBrush::SystemCriticalBackground).content(
-            StackPanel::new().spacing(10.0).children((
-                heading(format!("Stop {} bridge(s)?", p.len()), 18.0),
-                label("Active SSH sessions and HTTP requests on these bridges will disconnect."),
-                StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
-                    Button::new().style(ButtonStyle::Accent).on_click(context.message(Message::Confirm)).content("Disconnect and stop"),
-                    Button::new().on_click(context.message(Message::Cancel)).content("Cancel"),
-                )),
-            ))
-        )).unwrap_or_else(View::empty);
+        let confirm = self
+            .pending
+            .as_ref()
+            .filter(|p| !p.is_empty())
+            .map(|p| {
+                Border::new()
+                    .padding(16.0)
+                    .corner_radius(8.0)
+                    .background(ThemeBrush::SystemCriticalBackground)
+                    .content(
+                        StackPanel::new().spacing(10.0).children((
+                            heading(format!("Stop {} bridge(s)?", p.len()), 18.0),
+                            label("All active connections on these bridges will disconnect."),
+                            StackPanel::new()
+                                .orientation(Orientation::Horizontal)
+                                .spacing(8.0)
+                                .children((
+                                    Button::new()
+                                        .style(ButtonStyle::Accent)
+                                        .on_click(context.message(Message::Confirm))
+                                        .content("Disconnect and stop"),
+                                    Button::new()
+                                        .on_click(context.message(Message::Cancel))
+                                        .content("Cancel"),
+                                )),
+                        )),
+                    )
+            })
+            .unwrap_or_else(View::empty);
         Grid::new().margin(24.0).rows([GridLength::Auto, GridLength::STAR, GridLength::Auto]).row_spacing(20.0).children((
             Grid::new().grid_row(0).columns([GridLength::STAR, GridLength::Auto]).children((
                 StackPanel::new().grid_column(0).spacing(6.0).children((heading("🐸 Running bridges",28.0), label("Connections, activity and data transferred since startup"))),

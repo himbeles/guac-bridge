@@ -130,7 +130,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_prepare_update_stops_all_foreground_bridges(self):
         target = await self.target(self.echo)
-        for mode in ('ssh', 'http', 'llm'):
+        for mode in ('ssh', 'http', 'rdp', 'tcp', 'llm'):
             child = await self.child('--port', '0', '--remote-port', target, mode=mode)
             while b'Bridge ready on ' not in await asyncio.wait_for(child.stderr.readline(), 20):
                 self.assertIsNone(child.returncode)
@@ -179,7 +179,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_tray_registration_usage_and_authenticated_stop(self):
         import re
         target = await self.target(self.echo)
-        for mode in ('ssh', 'http', 'llm'):
+        for mode in ('ssh', 'http', 'rdp', 'tcp', 'llm'):
             with self.subTest(mode=mode):
                 child = await self.child('--port', '0', '--remote-port', target, mode=mode)
                 while True:
@@ -201,7 +201,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
                 output, error = await asyncio.wait_for(listing.communicate(), 5)
                 self.assertEqual(listing.returncode, 0, error.decode())
                 text = output.decode()
-                self.assertIn('SSH' if mode == 'ssh' else 'HTTP', text)
+                self.assertIn(mode.upper() if mode in ('ssh', 'rdp', 'tcp') else 'HTTP', text)
                 self.assertIn('Guacamole', text)
                 self.assertNotIn('[Guacamole]', text)
                 self.assertIn(self.url, text)
@@ -244,7 +244,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reliable_recovers_loss_corruption_and_duplicates_for_all_commands(self):
         target = await self.target(self.echo)
-        for mode in ('ssh', 'http', 'llm'):
+        for mode in ('ssh', 'http', 'rdp', 'tcp', 'llm'):
             with self.subTest(mode=mode):
                 child, port = await self.bridge(target, mode)
                 term = self.gateway.terminals[-1]
@@ -667,6 +667,27 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_managed_start_reuse_status_and_stop(self):
         await self.managed_lifetime('ssh')
+
+    async def test_rdp_negotiation_and_binary_data_pass_through_without_inner_ssh(self):
+        from rdp_fixture import verify_rdp_passthrough
+        child = None
+        async def start(target):
+            nonlocal child
+            child, port = await self.bridge(target, 'rdp')
+            return port
+        await verify_rdp_passthrough(self, start)
+        await self.finish(child)
+
+    async def test_generic_tcp_preserves_binary_data_and_half_close(self):
+        child, port = await self.bridge(await self.target(self.echo), 'tcp')
+        await self.roundtrip(port, bytes(range(256)) * 2048)
+        await self.finish(child)
+
+    async def test_tcp_background_reuse_status_and_stop(self):
+        await self.managed_lifetime('tcp')
+
+    async def test_rdp_defaults_to_background_and_reuses_bridge(self):
+        await self.managed_lifetime('rdp')
 
     async def test_http_defaults_to_background_and_reuses_bridge(self):
         await self.managed_lifetime('http')

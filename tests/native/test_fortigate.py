@@ -262,6 +262,22 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         payload = (ROOT/'crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe').read_bytes()
         self.assertEqual(self.upload_digest,hashlib.sha256(payload).hexdigest())
 
+    async def test_generic_tcp_forwards_binary_service_traffic(self):
+        from rdp_fixture import verify_rdp_passthrough
+        async def start(target):
+            self.target_port = target
+            _, port = await self.launch('tcp')
+            return port
+        await verify_rdp_passthrough(self, start)
+
+    async def test_rdp_negotiation_and_binary_data_pass_through_without_inner_ssh(self):
+        from rdp_fixture import verify_rdp_passthrough
+        async def start(target):
+            self.target_port = target
+            _, port = await self.launch('rdp')
+            return port
+        await verify_rdp_passthrough(self, start)
+
     async def test_binary_transfer_concurrency_and_half_close(self):
         async def echo(reader, writer):
             while data := await reader.read(65536):

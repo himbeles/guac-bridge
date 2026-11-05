@@ -216,9 +216,7 @@ mod windows {
                     STOP_ALL
                         if MessageBoxW(
                             hwnd,
-                            w!(
-                                "Stop all bridges? Active SSH sessions and HTTP requests will disconnect."
-                            ),
+                            w!("Stop all bridges? All active connections will disconnect."),
                             w!("Guac Bridge"),
                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
                         ) == IDYES =>

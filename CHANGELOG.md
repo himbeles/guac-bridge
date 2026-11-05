@@ -1,5 +1,31 @@
 # Changelog
 
+## 5.0.1
+
+- Improve Windows helper output throughput by writing short ASCII OSC/Base64 envelopes directly to the console handle, avoiding standard-output text conversion and buffering.
+- Write each complete data-envelope/close pair together, halving write and flush calls while retaining the 120-byte carrier chunks, record integrity checks, retries and duplicate suppression. Use the same writer for data, acknowledgements, retries and fatal reports.
+- Preserve console handle lifetime through fatal reporting and restore the original handles during cleanup. Keep the Linux binary output path unchanged.
+- Add reproducible Windows console and simulated FortiGate/latency benchmarks. Baseline Windows console tests measured 0.67–0.69 MiB/s for v5.0.0 and 2.89–3.06 MiB/s for direct complete-pair writes; actual gateway throughput depends on deployment and latency.
+
+## 5.0.0
+
+- Add FortiGate SSL-VPN portal password login and custom Windows SSH sessions alongside the existing Guacamole gateway. Keep portal and server credentials separate and show gateway types in CLI and Windows UI connections.
+- Forward arbitrary HTTP paths, methods, streaming and upgrades, with end-to-end HTTPS passthrough. Keep the deprecated legacy command compatible.
+- Protect FortiGate output using CRC32, selective acknowledgements, retries and duplicate suppression. Flush complete Windows OSC sequences separately; this passed controlled transfers with default settings on the reported FortiGate deployment.
+- Preserve Windows helper fatal reports, shorten PowerShell bootstrap commands and add metadata-only record/ACK/retry diagnostics.
+- Document every public argument in CLI help, and update gateway, deployment and troubleshooting guides. Stable releases include Windows installers, native portable distributions and Python packages.
+
+- Add `rdp` for direct Remote Desktop TCP forwarding through the existing gateway helper, with local port 13389 and remote port 3389 by default. Include managed startup, status, stop and RDP connection labels. The gateway SSH session still starts the helper; an additional SSH forwarding client is not required.
+- Add `tcp` for arbitrary binary TCP services, with explicit local and remote ports, managed controls and TCP connection labels.
+- Default HTTP listeners and remote HTTP services to port 8000. HTTPS retains remote port 443.
+
+## 5.0.0-beta.4
+
+- Flush complete Windows OSC terminal sequences separately for helper output, retries and fatal reports. Avoid sending concatenated envelopes through one large buffered console write.
+- Expand the real Windows ConPTY probe to compare bulk writes with complete-envelope writes using mixed binary data.
+- This is a candidate mitigation for repeatedly damaged FortiGate output records. Verification against the affected gateway is still required; the underlying disconnect is not yet confirmed fixed.
+- Released from the candidate branch without merging it into main. Assets are limited to the Windows x86-64 installer and SHA256SUMS.
+
 ## 5.0.0-beta.3
 
 - Add a general `http` bridge for arbitrary HTTP paths, methods, headers, binary bodies, streaming and upgrades. Support HTTPS through end-to-end TLS passthrough with `--https`. Keep the deprecated `llm` command and its original defaults and registrations for compatibility.

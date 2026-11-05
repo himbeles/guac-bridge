@@ -268,6 +268,10 @@ impl Bridge {
     fn scheme(&self) -> &str {
         if self.state.mode == "ssh" {
             "ssh"
+        } else if self.state.mode == "rdp" {
+            "rdp"
+        } else if self.state.mode == "tcp" {
+            "tcp"
         } else if self.state.https {
             "https"
         } else {
@@ -295,6 +299,10 @@ impl Bridge {
     pub fn bridge_type(&self) -> &str {
         if self.state.mode == "ssh" {
             "SSH"
+        } else if self.state.mode == "rdp" {
+            "RDP"
+        } else if self.state.mode == "tcp" {
+            "TCP"
         } else {
             "HTTP"
         }
@@ -427,6 +435,8 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
         };
         if path.extension().is_none_or(|s| s != "json")
             || !(key.starts_with("ssh-")
+                || key.starts_with("rdp-")
+                || key.starts_with("tcp-")
                 || key.starts_with(&format!("{}-", crate::options::LEGACY_HTTP_COMMAND))
                 || key.starts_with("http-"))
         {
@@ -438,7 +448,14 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
         let Ok(state) = serde_json::from_slice::<State>(&bytes) else {
             continue;
         };
-        if !["ssh", crate::options::LEGACY_HTTP_COMMAND, "http"].contains(&state.mode.as_str())
+        if ![
+            "ssh",
+            crate::options::LEGACY_HTTP_COMMAND,
+            "http",
+            "rdp",
+            "tcp",
+        ]
+        .contains(&state.mode.as_str())
             || state.port == 0
             || state.instance.is_empty()
             || state.target.is_empty()
@@ -456,7 +473,12 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             instance: state.instance.clone(),
             label: format!(
                 "[{}]  127.0.0.1:{} → {}",
-                if state.mode == "ssh" { "SSH" } else { "HTTP" }.to_owned(),
+                match state.mode.as_str() {
+                    "ssh" => "SSH",
+                    "rdp" => "RDP",
+                    "tcp" => "TCP",
+                    _ => "HTTP",
+                },
                 state.port,
                 state.target
             ),

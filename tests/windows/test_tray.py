@@ -141,6 +141,15 @@ class TrayTests(unittest.TestCase):
         registration.write_text(json.dumps(dict(pid=os.getpid(), control=server.server_address[1],
             token=token, identity='tray-smoke-test', username='frog-user', jump_url='https://guac.example/guacamole/#/client/MQBjAG15c3Fs?token=never-display', mode='llm', port=65534,
             target='smoke-test:8000', version='test', executable=str(BINARY), instance=str(uuid.uuid4()), log=None)))
+        rdp_registration = directory / 'rdp-65533.json'
+        self.assertFalse(rdp_registration.exists(), 'Refusing to replace an existing registration')
+        rdp_state = json.loads(registration.read_text())
+        rdp_state.update(mode='rdp', port=65533, target='rdp-smoke-test:3389', instance=str(uuid.uuid4()))
+        rdp_registration.write_text(json.dumps(rdp_state))
+        tcp_registration = directory / 'tcp-65532.json'
+        self.assertFalse(tcp_registration.exists(), 'Refusing to replace an existing registration')
+        tcp_state = dict(rdp_state, mode='tcp', port=65532, target='tcp-smoke-test:5432', instance=str(uuid.uuid4()))
+        tcp_registration.write_text(json.dumps(tcp_state))
         child = None
         try:
             child = subprocess.Popen([str(BINARY), 'tray', '--background'])
@@ -152,6 +161,10 @@ class TrayTests(unittest.TestCase):
             content = wait_for(lambda: (value if 'Total uploaded' in value else None)
                 if (value := ui(window)) else None, timeout=30)
             self.assertIn('HTTP', content)
+            self.assertIn('RDP', content)
+            self.assertIn('TCP', content)
+            self.assertIn('tcp://127.0.0.1:65532', content)
+            self.assertIn('rdp://127.0.0.1:65533', content)
             self.assertIn('Gateway Type: Guacamole', content)
             self.assertNotIn('[Guacamole]', content)
             self.assertIn('2.0 KiB', content)
@@ -217,6 +230,8 @@ class TrayTests(unittest.TestCase):
             if log.exists() and log.stat().st_size:
                 print('Manager diagnostics:', log.read_text(errors='replace'))
             registration.unlink(missing_ok=True)
+            rdp_registration.unlink(missing_ok=True)
+            tcp_registration.unlink(missing_ok=True)
             server.shutdown()
             server.server_close()
             worker.join(timeout=5)

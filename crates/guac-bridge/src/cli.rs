@@ -8,7 +8,8 @@ use std::{ffi::OsString, time::Duration};
     name = "guac-bridge",
     version,
     propagate_version = true,
-    about = "🐸 Guac Bridge · SSH and HTTP(S) bridges through Guacamole or FortiGate"
+    about = "🐸 Guac Bridge · SSH, RDP, HTTP(S) and TCP bridges through Guacamole or FortiGate",
+    after_help = "Bridge commands start or reuse a background helper by default; use --foreground to stay attached.\nPasswords: GUAC_BRIDGE_PASSWORD for the gateway; GUAC_BRIDGE_SERVER_PASSWORD for the FortiGate SSH server.\nUnspecified passwords use the native credential store or an interactive prompt.\nRun guac-bridge COMMAND --help for every argument and command examples."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -28,21 +29,36 @@ enum Command {
         background: bool,
     },
     /// Forward the remote SSH service.
+    #[command(
+        after_help = "Defaults: local 127.0.0.1:2222 -> remote loopback:22.\nExample: guac-bridge ssh CONNECTION_URL\nConnect: ssh -p 2222 USER@127.0.0.1\nStop: guac-bridge ssh --stop"
+    )]
     Ssh(BridgeOptions),
     /// Forward any HTTP service, including all paths, methods and streaming; use --https for TLS passthrough.
+    #[command(
+        after_help = "Defaults: local 127.0.0.1:8000 -> remote loopback:8000.\nExample: guac-bridge http CONNECTION_URL\nHTTPS: guac-bridge http CONNECTION_URL --https (remote port 443).\nTLS passes unchanged; configure service hostname/SNI and certificate trust in your HTTP client.\nStop: guac-bridge http --stop"
+    )]
     Http(BridgeOptions),
-    /// Deprecated: use http --port 8000 --remote-port 8000. Existing defaults are preserved.
+    /// Forward the remote RDP service directly to your Remote Desktop client.
+    #[command(
+        after_help = "Defaults: local 127.0.0.1:13389 -> remote loopback:3389.\nExample: guac-bridge rdp CONNECTION_URL\nConnect: mstsc /v:127.0.0.1:13389\nThe gateway SSH terminal still runs the helper; no additional SSH tunnel is required.\nRDP TCP traffic and its security negotiation pass unchanged; UDP is not forwarded.\nStop: guac-bridge rdp --stop"
+    )]
+    Rdp(BridgeOptions),
+    /// Forward any TCP service; specify --port and --remote-port.
+    #[command(
+        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nForwards local 127.0.0.1:15432 -> remote loopback:5432, preserving binary data and TLS.\nBoth ports are required at startup. The remote target must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 15432\nStop: guac-bridge tcp --stop --port 15432"
+    )]
+    Tcp(BridgeOptions),
+    /// Deprecated: use http. Existing defaults are preserved.
     #[command(name = LEGACY_HTTP_COMMAND)]
     LegacyHttp(BridgeOptions),
 }
 
 pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
     let arguments: Vec<_> = arguments.into_iter().collect();
-    let default_background = arguments
-        .get(1)
-        .and_then(|a| a.to_str())
-        .is_some_and(|s| matches!(s, "ssh" | "http") || s == LEGACY_HTTP_COMMAND)
-        && !arguments.iter().any(|a| {
+    let default_background =
+        arguments.get(1).and_then(|a| a.to_str()).is_some_and(|s| {
+            matches!(s, "ssh" | "http" | "rdp" | "tcp") || s == LEGACY_HTTP_COMMAND
+        }) && !arguments.iter().any(|a| {
             a.to_str().is_some_and(|s| {
                 matches!(
                     s,
@@ -121,6 +137,8 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             ("http", a)
         }
         Command::Http(a) => ("http", a),
+        Command::Rdp(a) => ("rdp", a),
+        Command::Tcp(a) => ("tcp", a),
     };
     args.mode = mode.into();
     let hook_output = args.background
@@ -198,7 +216,7 @@ mod tests {
 
     #[test]
     fn start_requires_positional_url_and_user_names_the_guacamole_login() {
-        for mode in ["ssh", "http", LEGACY_HTTP_COMMAND] {
+        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
             assert!(Cli::try_parse_from(["guac-bridge", mode]).is_err());
             let cli = Cli::try_parse_from([
                 "guac-bridge",
@@ -208,8 +226,11 @@ mod tests {
                 "alice",
             ])
             .unwrap();
-            let (Command::Ssh(args) | Command::Http(args) | Command::LegacyHttp(args)) =
-                cli.command
+            let (Command::Ssh(args)
+            | Command::Http(args)
+            | Command::Rdp(args)
+            | Command::Tcp(args)
+            | Command::LegacyHttp(args)) = cli.command
             else {
                 panic!("bridge expected")
             };
@@ -223,7 +244,7 @@ mod tests {
 
     #[test]
     fn background_is_default_with_explicit_foreground_and_internal_exceptions() {
-        for mode in ["ssh", "http", LEGACY_HTTP_COMMAND] {
+        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
             for (extra, managed) in [
                 (vec![], true),
                 (vec!["--foreground"], false),
@@ -241,6 +262,8 @@ mod tests {
                 .unwrap();
                 let (Command::Ssh(mut args)
                 | Command::Http(mut args)
+                | Command::Rdp(mut args)
+                | Command::Tcp(mut args)
                 | Command::LegacyHttp(mut args)) = cli.command
                 else {
                     panic!("bridge expected")
@@ -259,7 +282,7 @@ mod tests {
             (vec!["--input-window", "64"], (4, 64)),
             (vec!["--window", "1", "--input-window", "128"], (1, 128)),
         ] {
-            for mode in ["ssh", "http", LEGACY_HTTP_COMMAND] {
+            for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
                 let cli = Cli::try_parse_from(
                     ["guac-bridge", mode, "http://example.invalid"]
                         .into_iter()
@@ -268,6 +291,8 @@ mod tests {
                 .unwrap();
                 let (Command::Ssh(mut args)
                 | Command::Http(mut args)
+                | Command::Rdp(mut args)
+                | Command::Tcp(mut args)
                 | Command::LegacyHttp(mut args)) = cli.command
                 else {
                     panic!("Expected bridge command")
@@ -281,7 +306,7 @@ mod tests {
 
     #[test]
     fn protocol_selection_options_are_not_exposed() {
-        for mode in ["ssh", "http", LEGACY_HTTP_COMMAND] {
+        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
             for option in ["--reliable-input", "--reliable-window"] {
                 assert!(
                     Cli::try_parse_from(["guac-bridge", mode, "http://example.invalid", option])
@@ -302,8 +327,11 @@ mod tests {
                 value,
             ])
             .unwrap();
-            let (Command::Ssh(mut args) | Command::Http(mut args) | Command::LegacyHttp(mut args)) =
-                cli.command
+            let (Command::Ssh(mut args)
+            | Command::Http(mut args)
+            | Command::Rdp(mut args)
+            | Command::Tcp(mut args)
+            | Command::LegacyHttp(mut args)) = cli.command
             else {
                 panic!("Expected bridge command")
             };
@@ -317,15 +345,18 @@ mod tests {
     }
     #[test]
     fn gateway_options_are_shared_by_bridges_and_preserve_guacamole_default() {
-        for mode in ["ssh", "http", LEGACY_HTTP_COMMAND] {
+        for mode in ["ssh", "http", "rdp", LEGACY_HTTP_COMMAND] {
             let cli = Cli::try_parse_from([
                 "guac-bridge",
                 mode,
                 "https://guac.example/#/client/MQBjAG15c3Fs",
             ])
             .unwrap();
-            let (Command::Ssh(mut old) | Command::Http(mut old) | Command::LegacyHttp(mut old)) =
-                cli.command
+            let (Command::Ssh(mut old)
+            | Command::Http(mut old)
+            | Command::Rdp(mut old)
+            | Command::Tcp(mut old)
+            | Command::LegacyHttp(mut old)) = cli.command
             else {
                 panic!()
             };
@@ -345,8 +376,11 @@ mod tests {
                 "windows",
             ])
             .unwrap();
-            let (Command::Ssh(mut args) | Command::Http(mut args) | Command::LegacyHttp(mut args)) =
-                cli.command
+            let (Command::Ssh(mut args)
+            | Command::Http(mut args)
+            | Command::Rdp(mut args)
+            | Command::Tcp(mut args)
+            | Command::LegacyHttp(mut args)) = cli.command
             else {
                 panic!()
             };
@@ -360,10 +394,48 @@ mod tests {
         }
     }
     #[test]
-    fn http_and_legacy_defaults_preserve_https_passthrough() {
+    fn tcp_requires_explicit_endpoints_and_preserves_management_actions() {
+        for (flags, valid) in [
+            (vec![], false),
+            (vec!["--port", "5432"], false),
+            (vec!["--remote-port", "5432"], false),
+            (vec!["--port", "5432", "--remote-port", "5432"], true),
+            (
+                vec!["--port", "0", "--remote-port", "5432", "--foreground"],
+                true,
+            ),
+            (vec!["--port", "5432", "--stop"], true),
+            (vec!["--port", "5432", "--status"], true),
+            (vec!["--stop"], false),
+            (vec!["--forget-password"], true),
+        ] {
+            let cli = Cli::try_parse_from(
+                [
+                    "guac-bridge",
+                    "tcp",
+                    "https://gateway.example/#/client/MQBjAG15c3Fs",
+                ]
+                .into_iter()
+                .chain(flags.iter().copied()),
+            )
+            .unwrap();
+            let Command::Tcp(mut args) = cli.command else {
+                panic!()
+            };
+            args.mode = "tcp".into();
+            assert_eq!(args.validate().is_ok(), valid, "{flags:?}");
+            if args.background {
+                assert_eq!(args.port(), 5432);
+                assert_eq!(args.target_port(), 5432);
+            }
+        }
+    }
+    #[test]
+    fn service_defaults_and_https_validation_preserve_legacy_compatibility() {
         for (mode, local, remote) in [
             ("ssh", 2222, 22),
-            ("http", 8080, 80),
+            ("http", 8000, 8000),
+            ("rdp", 13389, 3389),
             (LEGACY_HTTP_COMMAND, 8000, 8000),
         ] {
             for https in [false, true] {
@@ -377,12 +449,16 @@ mod tests {
                 }
                 let cli = Cli::try_parse_from(argv).unwrap();
                 let mut args = match cli.command {
-                    Command::Ssh(a) | Command::Http(a) | Command::LegacyHttp(a) => a,
+                    Command::Ssh(a)
+                    | Command::Http(a)
+                    | Command::Rdp(a)
+                    | Command::Tcp(a)
+                    | Command::LegacyHttp(a) => a,
                     _ => panic!(),
                 };
                 args.legacy_http = mode == LEGACY_HTTP_COMMAND;
                 args.mode = if args.legacy_http { "http" } else { mode }.into();
-                if mode == "ssh" && https {
+                if mode != "http" && !args.legacy_http && https {
                     assert!(args.validate().is_err());
                     continue;
                 }
