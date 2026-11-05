@@ -1,5 +1,17 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::io::Write;
+struct ConsoleStdout<W> {
+    _console: W,
+    output: std::io::StdoutLock<'static>,
+}
+impl<W> Write for ConsoleStdout<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.output.write(bytes)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.output.flush()
+    }
+}
 fn main() {
     #[cfg(windows)]
     let stdout = {
@@ -20,6 +32,7 @@ fn main() {
                 ),
                 0
             );
+            assert_ne!(SetStdHandle(STD_OUTPUT_HANDLE, file.as_raw_handle()), 0);
         }
         file
     };
@@ -27,7 +40,11 @@ fn main() {
     let stdout = std::io::stdout().lock();
     let flags: Vec<_> = std::env::args().collect();
     let mut stdout: Box<dyn Write> = if flags.iter().any(|s| s == "--stdio") {
-        Box::new(std::io::stdout().lock())
+        // Keep the file owning the installed console handle alive for stdout.
+        Box::new(ConsoleStdout {
+            _console: stdout,
+            output: std::io::stdout().lock(),
+        })
     } else {
         Box::new(stdout)
     };

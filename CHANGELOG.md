@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.0.0-beta.4
+
+- Flush complete Windows OSC terminal sequences separately for helper output, retries and fatal reports. Avoid sending concatenated envelopes through one large buffered console write.
+- Expand the real Windows ConPTY probe to compare bulk writes with complete-envelope writes using mixed binary data.
+- This is a candidate mitigation for repeatedly damaged FortiGate output records. Verification against the affected gateway is still required; the underlying disconnect is not yet confirmed fixed.
+- Released from the candidate branch without merging it into main. Assets are limited to the Windows x86-64 installer and SHA256SUMS.
+
 ## 5.0.0-beta.3
 
 - Add a general `http` bridge for arbitrary HTTP paths, methods, headers, binary bodies, streaming and upgrades. Support HTTPS through end-to-end TLS passthrough with `--https`. Keep the deprecated `llm` command and its original defaults and registrations for compatibility.
