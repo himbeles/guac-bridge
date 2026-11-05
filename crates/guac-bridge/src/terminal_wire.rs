@@ -22,13 +22,22 @@ pub fn osc_bytes(prefix: &str, bytes: &[u8]) -> Vec<u8> {
     }
     output
 }
-/// Flush complete OSC sequences independently. Large buffered console writes can
-/// split escape sequences at intermediate console/terminal buffer boundaries.
+/// Flush one complete data envelope and its pipe close per write. Keep the small
+/// carrier chunk intact without paying for a separate close write and flush.
 pub fn write_output(writer: &mut impl std::io::Write, bytes: &[u8], windows: bool) -> Result<()> {
     if windows {
-        for envelope in bytes.split_inclusive(|byte| *byte == 7) {
-            writer.write_all(envelope)?;
+        const CLOSE: &[u8] = b"\x1b]482203;\x07";
+        let mut start = 0;
+        while start < bytes.len() {
+            let terminator = memchr::memchr(7, &bytes[start..])
+                .ok_or_else(|| anyhow::anyhow!("Incomplete OSC output envelope"))?;
+            let mut end = start + terminator + 1;
+            if bytes[end..].starts_with(CLOSE) {
+                end += CLOSE.len();
+            }
+            writer.write_all(&bytes[start..end])?;
             writer.flush()?;
+            start = end;
         }
     } else {
         writer.write_all(bytes)?;
@@ -181,6 +190,53 @@ impl InputDecoder {
 mod tests {
     use super::*;
     use crate::Kind;
+    #[derive(Default)]
+    struct Writes {
+        chunks: Vec<Vec<u8>>,
+        flushes: usize,
+    }
+    impl std::io::Write for Writes {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.chunks.push(bytes.to_vec());
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushes += 1;
+            Ok(())
+        }
+    }
+    #[test]
+    fn console_writes_keep_short_envelope_pairs_complete_and_unchanged() {
+        let payload: Vec<u8> = (0..4096).map(|n| (n % 256) as u8).collect();
+        for prefix in [OSC_PREFIX, "GBR1:", "GBIA:", ERROR_PREFIX] {
+            let bytes = osc_bytes(prefix, &payload);
+            let mut writer = Writes::default();
+            write_output(&mut writer, &bytes, true).unwrap();
+            assert_eq!(writer.chunks.concat(), bytes);
+            assert_eq!(writer.chunks.len(), payload.len().div_ceil(OSC_CHUNK));
+            assert_eq!(writer.flushes, writer.chunks.len());
+            for chunk in writer.chunks {
+                assert!(chunk.starts_with(b"\x1b]482202;2;"));
+                assert!(chunk.ends_with(b"\x07\x1b]482203;\x07"));
+                assert_eq!(chunk.iter().filter(|&&b| b == 7).count(), 2);
+                assert!(chunk.len() < 256, "Console writes must remain short");
+            }
+        }
+    }
+    #[test]
+    fn binary_output_keeps_literal_bells_and_one_flush() {
+        let bytes: Vec<u8> = (0..65536).map(|n| (n % 256) as u8).collect();
+        let mut writer = Writes::default();
+        write_output(&mut writer, &bytes, false).unwrap();
+        assert_eq!(writer.chunks, vec![bytes]);
+        assert_eq!(writer.flushes, 1);
+    }
+    #[test]
+    fn unterminated_console_envelope_is_not_written() {
+        let mut writer = Writes::default();
+        assert!(write_output(&mut writer, b"\x1b]482202;2;unfinished", true).is_err());
+        assert!(writer.chunks.is_empty());
+    }
     #[test]
     fn output_feedback_bypasses_full_history_without_ack_loop() {
         let now = std::time::Instant::now();

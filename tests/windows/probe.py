@@ -49,3 +49,5 @@ print("ConPTY preserves complete short OSC envelopes")
 
 assert capture("--stdio", "--mixed", "--pairs") == expected
 assert capture("--mixed", "--pairs") == expected
+
+assert capture("--mixed", "--envelopes") == expected

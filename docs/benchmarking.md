@@ -68,9 +68,9 @@ Server 2022 and the current Windows runner, respectively:
 
 Encoding those 4 MiB took 10–13 ms; the current console writes took 5.79–6.00 s.
 The carrier expanded 4,194,304 payload bytes to 6,536,139 wire bytes. All paired
-variants preserved every payload byte in the ConPTY comparison. Production
-forwarding is unchanged by these measurement tools. The paired/direct variants
-need integration and affected-gateway verification before deployment.
+variants preserved every payload byte in the ConPTY comparison. The v5.0.1 helper uses the direct-console complete-pair path. Integrity is checked
+by helper and real-ConPTY integration tests; affected-gateway throughput still
+needs deployment verification.
 
 [Windows measurement run](https://github.com/himbeles/guac-bridge/actions/runs/42073709197).
 The prior large bulk stdout path measured 5.8–7.1 MiB/s in this console-only test,

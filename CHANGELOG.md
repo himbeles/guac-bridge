@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.0.1
+
+- Improve Windows helper output throughput by writing short ASCII OSC/Base64 envelopes directly to the console handle, avoiding standard-output text conversion and buffering.
+- Write each complete data-envelope/close pair together, halving write and flush calls while retaining the 120-byte carrier chunks, record integrity checks, retries and duplicate suppression. Use the same writer for data, acknowledgements, retries and fatal reports.
+- Preserve console handle lifetime through fatal reporting and restore the original handles during cleanup. Keep the Linux binary output path unchanged.
+- Add reproducible Windows console and simulated FortiGate/latency benchmarks. Baseline Windows console tests measured 0.67–0.69 MiB/s for v5.0.0 and 2.89–3.06 MiB/s for direct complete-pair writes; actual gateway throughput depends on deployment and latency.
+
 ## 5.0.0
 
 - Add FortiGate SSL-VPN portal password login and custom Windows SSH sessions alongside the existing Guacamole gateway. Keep portal and server credentials separate and show gateway types in CLI and Windows UI connections.

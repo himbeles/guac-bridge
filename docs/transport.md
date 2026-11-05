@@ -41,6 +41,7 @@ unchecked TCP bytes; the receiver requests replay of the damaged record.
 
 Output acknowledgements travel through reliable input. Input acknowledgements
 are independent, checksummed feedback messages that do not themselves require
-output acknowledgements, avoiding an acknowledgement loop. Windows output flushes each complete OSC sequence separately to avoid large
-buffered writes through the terminal. The Guacamole binary output protocol remains
+output acknowledgements, avoiding an acknowledgement loop. Windows output writes each short data-envelope/close pair together through the
+direct console handle, avoiding standard-output text conversion and large buffered
+writes through the terminal. The Guacamole binary output protocol remains
 unchanged. Client and helper must come from the same build.
