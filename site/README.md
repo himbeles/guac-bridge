@@ -17,8 +17,13 @@ python -m http.server 8000 --directory _site
 
 Open <http://localhost:8000>. The generated `_site` directory is disposable.
 
-The Website action deploys to GitHub Pages after site changes on main, a published
+Website updates are independent of software releases: push edits to `site/` on
+main, or run **Actions → Website → Run workflow** for a manual deployment.
+
+The Website action also deploys to GitHub Pages after a published
 release or a successful release workflow. The workflow completion trigger also
 handles releases created with `GITHUB_TOKEN`, which do not emit another workflow's
 release trigger. Beta releases keep the website on the latest stable downloads.
-Select **GitHub Actions** as the Pages source in repository settings.
+The deployment action enables GitHub Pages with GitHub Actions as its source.
+If repository policy blocks that setup, select **GitHub Actions** under
+**Settings → Pages → Build and deployment → Source**.
