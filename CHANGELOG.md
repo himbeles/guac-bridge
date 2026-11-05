@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.0.3
+
+- Add an Apple Silicon macOS client with native Keychain password storage, a portable archive and a Python/uv wheel. Stable releases build and test the client on a native macOS runner.
+- Add a compact GitHub Pages website with direct downloads and a TCP usage example. Refresh download links after stable releases; deploy website edits independently of software releases.
+- Simplify the README around basic installation and TCP usage. Move SSH config and Windows manager setup details into dedicated documentation.
+
 ## 5.0.2
 
 - Move stop controls to `guac-bridge stop --port PORT` and `guac-bridge stop all`, independent of TCP/preset selection. Remove per-preset `--stop` flags.
