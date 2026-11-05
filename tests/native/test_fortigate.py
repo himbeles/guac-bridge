@@ -146,8 +146,8 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
             op, value = parse(message.data)
             self.assertEqual(op, 'str')
             command += value
-        encoded = command.split('-EncodedCommand ')[1].strip()
-        script = base64.b64decode(encoded).decode('utf-16-le')
+        encoded = re.search(r"FromBase64String\('([A-Za-z0-9+/=]+)'\)", command)[1]
+        script = base64.b64decode(encoded).decode('utf-8')
         nonce = re.search(r"'([0-9a-f]{32}):'", script)[1]
         wire = osc('GBWB:', f'{nonce}:PREPARED\n'.encode())
         await ws.send_str(wire[:7])

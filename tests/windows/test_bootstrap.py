@@ -115,6 +115,9 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
         gateway = Gateway()
         url = await gateway.start()
         children = []
+        log = Path(self.enterContext(tempfile.TemporaryDirectory())) / (
+            "日志's $log`" + "x" * 100 + ".log"
+        )
 
         async def echo(r, w):
             data = await r.read()
@@ -150,6 +153,8 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
                 "--remote-port",
                 str(port),
                 "--benchmark-control",
+                "--server-debug-log",
+                str(log),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -183,6 +188,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
             await c.stdin.drain()
             await asyncio.wait_for(c.wait(), 15)
             self.assertEqual(c.returncode, 0, (await c.stderr.read()).decode())
+            self.assertIn("helper stopped", log.read_text(encoding="utf-8"))
 
         try:
             for i in range(3):
