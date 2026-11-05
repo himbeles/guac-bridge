@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.0.0-beta.3
+
+- Add a general `http` bridge for arbitrary HTTP paths, methods, headers, binary bodies, streaming and upgrades. Support HTTPS through end-to-end TLS passthrough with `--https`. Keep the deprecated `llm` command and its original defaults and registrations for compatibility.
+- Use HTTP naming in tool descriptions and documentation. Display gateway types once, with aligned Unicode CLI tables, gateway tags in the Windows connection list and `Gateway Type: …` in details.
+- Keep Windows console handles alive until fatal reporting completes, restoring the original standard handles during cleanup. Preserve the underlying error when an active helper fails.
+- Shrink the Windows bootstrap command with a UTF-8 Base64 PowerShell loader so enabling server debug logs does not exceed the command-line limit. Preserve Unicode paths and shell quoting.
+- Include reliable record sequence numbers, acknowledgement bitmaps, rejection counts, retry attempts and delivery state in metadata-only debug logs. Keep forwarded content and passwords out of logs.
+- Known issue: FortiGate sessions can still disconnect after an output record remains unacknowledged until the delivery timeout. This beta improves diagnosis; it does not claim to fix that underlying failure.
+- Beta assets remain limited to the Windows x86-64 installer and SHA256SUMS.
+
 ## 5.0.0-beta.2
 
 - Protect FortiGate helper output with the same CRC32, sequence, selective acknowledgement, retry and duplicate-suppression protocol already used for input. Validate full records before forwarding their bytes to SSH or HTTP clients.
