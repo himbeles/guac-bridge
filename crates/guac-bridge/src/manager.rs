@@ -49,12 +49,15 @@ impl Manager {
         let Some(bridge) = self.selected() else {
             return StackPanel::new().spacing(12.0).children((
                 heading("No bridge selected", 22.0),
-                label("Start an SSH or LLM bridge. It appears here when ready."),
+                label("Start an SSH or HTTP bridge. It appears here when ready."),
             ));
         };
         let mut sections = vec![
             ("title", heading(endpoint(bridge), 22.0)),
-            ("gateway", heading(bridge.gateway(), 16.0)),
+            (
+                "gateway",
+                label(format!("Gateway Type: {}", bridge.gateway())),
+            ),
             ("user", label(format!("Gateway user: {}", bridge.user()))),
             ("route", label(bridge.route())),
             ("status", label(activity(bridge))),
@@ -257,25 +260,39 @@ impl Component for Manager {
                             .on_click(context.message(Message::Select(bridge.instance.clone())))
                             .content(
                                 StackPanel::new().spacing(6.0).children((
-                                    Border::new()
-                                        .corner_radius(4.0)
-                                        .padding(Thickness::new(8.0, 2.0, 8.0, 2.0))
-                                        .horizontal_alignment(HorizontalAlignment::Left)
-                                        .background(if selected {
-                                            ThemeBrush::CardBackground
-                                        } else {
-                                            ThemeBrush::CardStroke
-                                        })
-                                        .content(
-                                            TextBlock::new()
-                                                .text(if bridge.key.starts_with("ssh-") {
-                                                    "SSH"
+                                    StackPanel::new()
+                                        .orientation(Orientation::Horizontal)
+                                        .spacing(8.0)
+                                        .children((
+                                            Border::new()
+                                                .corner_radius(4.0)
+                                                .padding(Thickness::new(8.0, 2.0, 8.0, 2.0))
+                                                .horizontal_alignment(HorizontalAlignment::Left)
+                                                .background(if selected {
+                                                    ThemeBrush::CardBackground
                                                 } else {
-                                                    "LLM"
+                                                    ThemeBrush::CardStroke
                                                 })
-                                                .font_size(12.0)
-                                                .foreground(ThemeBrush::PrimaryText),
-                                        ),
+                                                .content(
+                                                    TextBlock::new()
+                                                        .text(bridge.bridge_type())
+                                                        .font_size(12.0)
+                                                        .foreground(ThemeBrush::PrimaryText),
+                                                ),
+                                            Border::new()
+                                                .corner_radius(8.0)
+                                                .padding(Thickness::new(8.0, 3.0, 8.0, 3.0))
+                                                .horizontal_alignment(HorizontalAlignment::Left)
+                                                .background(Brush::Solid(Color::argb(
+                                                    36, 76, 132, 73,
+                                                )))
+                                                .content(
+                                                    TextBlock::new()
+                                                        .text(bridge.gateway())
+                                                        .font_size(12.0)
+                                                        .font_weight(FontWeight::SEMI_BOLD),
+                                                ),
+                                        )),
                                     TextBlock::new()
                                         .text(endpoint(bridge))
                                         .text_wrapping(TextWrapping::Wrap),
@@ -293,7 +310,7 @@ impl Component for Manager {
         let confirm = self.pending.as_ref().filter(|p| !p.is_empty()).map(|p| Border::new().padding(16.0).corner_radius(8.0).background(ThemeBrush::SystemCriticalBackground).content(
             StackPanel::new().spacing(10.0).children((
                 heading(format!("Stop {} bridge(s)?", p.len()), 18.0),
-                label("Active SSH sessions and LLM requests on these bridges will disconnect."),
+                label("Active SSH sessions and HTTP requests on these bridges will disconnect."),
                 StackPanel::new().orientation(Orientation::Horizontal).spacing(8.0).children((
                     Button::new().style(ButtonStyle::Accent).on_click(context.message(Message::Confirm)).content("Disconnect and stop"),
                     Button::new().on_click(context.message(Message::Cancel)).content("Cancel"),
@@ -332,7 +349,7 @@ fn label(text: impl Into<String>) -> View {
         .into()
 }
 fn endpoint(bridge: &Bridge) -> String {
-    format!("[{}] {}", bridge.gateway(), bridge.destination())
+    bridge.destination()
 }
 fn activity(bridge: &Bridge) -> &'static str {
     if let Some(s) = &bridge.usage {

@@ -1,6 +1,6 @@
 # Windows bridge manager
 
-A single native Windows tray icon starts automatically when an SSH or LLM bridge
+A single native Windows tray icon starts automatically when an SSH or HTTP bridge
 opens its local listener, including the default background startup and `--foreground` sessions.
 It also reappears when an existing background bridge is reused. Bridges enter
 the list once their remote helper is ready. The tray, manager and installer use
@@ -36,11 +36,11 @@ window keeps the tray and bridges running. Clicking the tray reopens the manager
 only one manager runs at a time. Exit tray and update preparation close the manager
 as well, waiting for both executables to exit before replacement.
 
-The responsive manager has a bridge sidebar, SSH/LLM tags and activity labels,
+The responsive manager has a bridge sidebar, SSH/HTTP service tags, gateway type tags and activity labels,
 live rate and cumulative usage cards, connection activity and explicit stop
 confirmations. It follows the Windows light/dark theme, with subtle frog-green selection and card accents.
 
-The sidebar shows SSH/LLM tags, the Guacamole jump-host URL, username and local URL.
+The sidebar shows SSH/HTTP service tags and gateway type tags, the gateway URL, username and local URL. Gateway details use `Gateway Type: …`.
 Select a bridge to see the route **local URL → Guacamole jump host → remote server service**,
 with the server loopback endpoint labelled explicitly. URL credentials and authentication
 queries are omitted. The same route and user are available from `guac-bridge list` on Windows and Linux.
@@ -58,7 +58,7 @@ preserves the running bridge's totals. These are aggregate counters, not payload
 logs or records of earlier bridge runs.
 
 **Stop selected** and **Stop all** ask for confirmation because they disconnect
-active SSH sessions and LLM requests. **Open log** opens the managed bridge's
+active SSH sessions and HTTP requests. **Open log** opens the managed bridge's
 output log, or the configured debug log for a foreground bridge. A foreground
 bridge without a debug log has no log to open.
 
@@ -70,7 +70,7 @@ again, or use `guac-bridge tray` to reopen it.
 
 The Windows installer automatically stops registered bridges and the tray before
 replacing files. It uses the new executable extracted into its temporary directory,
-before replacing the running executable. Active SSH sessions and LLM requests disconnect. If shutdown fails, the installer aborts
+before replacing the running executable. Active SSH sessions and HTTP requests disconnect. If shutdown fails, the installer aborts
 before replacing files. Unresponsive registrations are retained; no PID is killed.
 
 For a uv tool installation, prepare for the external upgrade:
@@ -88,7 +88,7 @@ bridges again afterwards. The CLI has no self-update command.
 ## Tracking and control
 
 Each bridge registers in the existing per-user application data directory, using
-`ssh-PORT.json` or `llm-PORT.json`. A registration contains a random instance ID,
+`ssh-PORT.json` or `http-PORT.json`. A registration contains a random instance ID,
 PID, executable, version, sanitized jump-host URL, Guacamole username, target, and an authenticated loopback control endpoint.
 The authentication token stays out of the UI and status responses. Treat the
 registration directory as private, as with the existing background controls.

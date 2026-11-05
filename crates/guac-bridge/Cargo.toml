@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SSH and OpenAI-compatible endpoints through Guacamole, with automatic helper deployment"
+description = "SSH and HTTP(S) bridges through Guacamole and FortiGate, with automatic helper deployment"
 build = "build.rs"
 include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 
@@ -13,7 +13,7 @@ include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 default = ["client"]
 agent = []
 bundled-ui = ["client", "dep:windows-reactor-setup"]
-client = ["dep:futures-util", "dep:serde", "dep:sha2", "dep:socket2", "dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:windows-reactor"]
+client = ["dep:unicode-width", "dep:futures-util", "dep:serde", "dep:sha2", "dep:socket2", "dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:windows-reactor"]
 
 [lib]
 name = "guac_bridge"
@@ -29,6 +29,7 @@ path = "src/agent.rs"
 required-features = ["agent"]
 
 [dependencies]
+unicode-width = { version = "0.2", optional = true }
 anyhow = "1"
 base64 = "0.22"
 crc32fast = "1.5"

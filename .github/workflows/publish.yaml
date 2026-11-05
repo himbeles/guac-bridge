@@ -150,7 +150,7 @@ jobs:
           uv tool install --from $wheel guac-bridge
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" ssh --help
-          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" llm --help
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" http --help
           $commands = @(Get-ChildItem "$env:UV_TOOL_BIN_DIR/guac*")
           if ($commands.Count -ne 1 -or $commands[0].Name -ne 'guac-bridge.exe') { throw 'Expected one guac-bridge CLI entry point' }
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
@@ -212,7 +212,7 @@ jobs:
           uv tool install --from dist/*.whl guac-bridge
           "$UV_TOOL_BIN_DIR/guac-bridge" --version
           "$UV_TOOL_BIN_DIR/guac-bridge" ssh --help
-          "$UV_TOOL_BIN_DIR/guac-bridge" llm --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" http --help
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           cargo xtask portable --wheel dist/*.whl
       - name: Check source distribution contains the helper

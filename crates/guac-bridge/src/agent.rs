@@ -247,7 +247,11 @@ async fn serve(args: Arc<Args>) -> Result<()> {
         guac_bridge::terminal_wire::ReliableOutput::new(Duration::from_secs(args.connect_timeout))
     });
     if !args.windows_console {
-        stdout.write_all(b"\x1b]482202;2;LLM\x07")?;
+        write!(
+            stdout,
+            "\x1b]482202;2;{}\x07",
+            guac_bridge::terminal_wire::OUTPUT_STREAM
+        )?;
     }
     let ready = serde_json::to_vec(
         &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"input_protocol":"reliable-v1","output_protocol":if args.reliable_output {"reliable-v1"} else {"plain"}}),

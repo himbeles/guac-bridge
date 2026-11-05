@@ -29,6 +29,8 @@ struct State {
     server_port: u16,
     jump_url: String,
     mode: String,
+    #[serde(default)]
+    https: bool,
     port: u16,
     target: String,
     version: String,
@@ -50,14 +52,14 @@ pub(crate) fn directory() -> Result<PathBuf> {
     Ok(p)
 }
 fn path(args: &BridgeOptions) -> Result<PathBuf> {
-    Ok(directory()?.join(format!("{}-{}.json", args.mode, args.port())))
+    Ok(directory()?.join(format!("{}-{}.json", args.command_name(), args.port())))
 }
 fn identity(args: &BridgeOptions) -> String {
     let mut data = serde_json::json!([
         args.url,
         args.connection_id,
         args.data_source,
-        args.mode,
+        args.command_name(),
         args.port(),
         args.target_host,
         args.target_port(),
@@ -80,6 +82,11 @@ fn identity(args: &BridgeOptions) -> String {
             serde_json::json!(args.server_port),
             serde_json::json!("output-reliable-v1"),
         ]);
+    }
+    if args.https {
+        data.as_array_mut()
+            .unwrap()
+            .push(serde_json::json!("https-passthrough"));
     }
     format!("{:x}", Sha256::digest(data.to_string().as_bytes()))
 }
@@ -155,19 +162,20 @@ pub(crate) async fn control(
         server_host: args.server_host.clone(),
         server_port: args.server_port,
         jump_url: display_url(args.url.as_deref().unwrap_or_default()),
-        mode: args.mode.clone(),
+        mode: args.command_name().into(),
+        https: args.https,
         port,
         target: format!("{}:{}", args.target_host, args.target_port()),
         version: env!("CARGO_PKG_VERSION").into(),
         executable: std::env::current_exe()?,
         instance: uuid::Uuid::new_v4().to_string(),
         log: if args.managed_child {
-            Some(directory()?.join(format!("{}-{}.log", args.mode, port)))
+            Some(directory()?.join(format!("{}-{}.log", args.command_name(), port)))
         } else {
             args.debug_log.as_ref().map(PathBuf::from)
         },
     };
-    let path = directory()?.join(format!("{}-{}.json", args.mode, port));
+    let path = directory()?.join(format!("{}-{}.json", args.command_name(), port));
     let token = s.token.clone();
     let temp = path.with_extension(format!("{}.tmp", s.pid));
     let mut options = OpenOptions::new();
@@ -260,16 +268,17 @@ impl Bridge {
     fn scheme(&self) -> &str {
         if self.state.mode == "ssh" {
             "ssh"
+        } else if self.state.https {
+            "https"
         } else {
             "http"
         }
     }
     pub fn route(&self) -> String {
         format!(
-            "{} → {} [{}]{} → {}",
+            "{} → {}{} → {}",
             self.local_url(),
             self.destination(),
-            self.gateway(),
             self.state
                 .server_host
                 .as_ref()
@@ -282,6 +291,13 @@ impl Bridge {
                 .unwrap_or_default(),
             self.server_url()
         )
+    }
+    pub fn bridge_type(&self) -> &str {
+        if self.state.mode == "ssh" {
+            "SSH"
+        } else {
+            "HTTP"
+        }
     }
     pub fn gateway(&self) -> &str {
         self.state.gateway.name()
@@ -330,28 +346,72 @@ pub(crate) fn list() -> Result<()> {
         println!("No registered bridges.");
         return Ok(());
     }
-    println!("TYPE\tGATEWAY\tSTATUS\tUSER\tLOCAL → GATEWAY → SERVER");
-    for bridge in bridges {
-        println!(
-            "{}\t{}\t{}\t{}\t{}",
-            bridge
-                .key
-                .split('-')
-                .next()
-                .unwrap_or("bridge")
-                .to_uppercase(),
-            bridge.gateway(),
-            if bridge.online {
-                "Running"
-            } else {
-                "Unresponsive"
-            },
-            single_line(bridge.user()),
-            single_line(&bridge.route())
-        );
-    }
+    let rows: Vec<[String; 5]> = bridges
+        .into_iter()
+        .map(|bridge| {
+            [
+                bridge.bridge_type().into(),
+                bridge.gateway().into(),
+                if bridge.online {
+                    "Running"
+                } else {
+                    "Unresponsive"
+                }
+                .into(),
+                single_line(bridge.user()),
+                single_line(&bridge.route()),
+            ]
+        })
+        .collect();
+    print!(
+        "{}",
+        connection_table(["TYPE", "GATEWAY", "STATUS", "USER", "ROUTE"], &rows)
+    );
     Ok(())
 }
+fn connection_table(headers: [&str; 5], rows: &[[String; 5]]) -> String {
+    use unicode_width::UnicodeWidthStr;
+    let widths: [usize; 5] = std::array::from_fn(|column| {
+        rows.iter()
+            .map(|row| row[column].width())
+            .chain(std::iter::once(headers[column].width()))
+            .max()
+            .unwrap()
+    });
+    let border = |left: char, middle: char, right: char| {
+        format!(
+            "{left}{}{right}\n",
+            widths
+                .iter()
+                .map(|width| "─".repeat(width + 2))
+                .collect::<Vec<_>>()
+                .join(&middle.to_string())
+        )
+    };
+    let row = |cells: &[String; 5]| {
+        format!(
+            "│ {} │\n",
+            cells
+                .iter()
+                .enumerate()
+                .map(|(column, text)| format!(
+                    "{text}{}",
+                    " ".repeat(widths[column] - text.width())
+                ))
+                .collect::<Vec<_>>()
+                .join(" │ ")
+        )
+    };
+    let mut output = border('┌', '┬', '┐');
+    output.push_str(&row(&headers.map(str::to_owned)));
+    output.push_str(&border('├', '┼', '┤'));
+    for cells in rows {
+        output.push_str(&row(cells));
+    }
+    output.push_str(&border('└', '┴', '┘'));
+    output
+}
+
 fn single_line(value: &str) -> String {
     value
         .chars()
@@ -366,7 +426,9 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             continue;
         };
         if path.extension().is_none_or(|s| s != "json")
-            || !(key.starts_with("ssh-") || key.starts_with("llm-"))
+            || !(key.starts_with("ssh-")
+                || key.starts_with(&format!("{}-", crate::options::LEGACY_HTTP_COMMAND))
+                || key.starts_with("http-"))
         {
             continue;
         }
@@ -376,7 +438,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
         let Ok(state) = serde_json::from_slice::<State>(&bytes) else {
             continue;
         };
-        if !["ssh", "llm"].contains(&state.mode.as_str())
+        if !["ssh", crate::options::LEGACY_HTTP_COMMAND, "http"].contains(&state.mode.as_str())
             || state.port == 0
             || state.instance.is_empty()
             || state.target.is_empty()
@@ -394,7 +456,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             instance: state.instance.clone(),
             label: format!(
                 "[{}]  127.0.0.1:{} → {}",
-                state.mode.to_uppercase(),
+                if state.mode == "ssh" { "SSH" } else { "HTTP" }.to_owned(),
                 state.port,
                 state.target
             ),
@@ -481,6 +543,43 @@ mod control_tests {
         assert!(display_url("file:///private").is_empty());
     }
 
+    #[test]
+    fn connection_table_aligns_unicode_display_columns() {
+        use unicode_width::UnicodeWidthStr;
+        let rows = [
+            [
+                "SSH",
+                "Guacamole",
+                "Running",
+                "用户😀",
+                "ssh://127.0.0.1:2222 → https://gateway.example",
+            ]
+            .map(str::to_owned),
+            [
+                "HTTP",
+                "FortiGate",
+                "Unresponsive",
+                "Müller",
+                "https://127.0.0.1:8080 → https://gateway.example",
+            ]
+            .map(str::to_owned),
+        ];
+        let table = connection_table(["TYPE", "GATEWAY", "STATUS", "USER", "ROUTE"], &rows);
+        let widths: Vec<_> = table.lines().map(UnicodeWidthStr::width).collect();
+        assert!(widths.iter().all(|width| *width == widths[0]));
+        let columns: Vec<Vec<usize>> = table
+            .lines()
+            .filter(|line| line.starts_with('│'))
+            .map(|line| {
+                line.char_indices()
+                    .filter(|(_, c)| *c == '│')
+                    .map(|(at, _)| line[..at].width())
+                    .collect()
+            })
+            .collect();
+        assert!(columns.iter().all(|positions| positions == &columns[0]));
+        assert!(table.contains("用户😀"));
+    }
     async fn roundtrip(command: &str, token: &str) -> (String, bool) {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
             .await

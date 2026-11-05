@@ -52,7 +52,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         .truncate(false)
         .read(true)
         .write(true)
-        .open(dir.join(format!("{}-{}.lock", args.mode, args.port())))?;
+        .open(dir.join(format!("{}-{}.lock", args.command_name(), args.port())))?;
     lock.lock()?;
     if let Ok(s) = state(&args)
         && request(&s, "status").is_ok()
@@ -121,7 +121,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
     let exe = std::env::current_exe()?;
     let mut command = Command::new(&exe);
     command
-        .arg(&args.mode)
+        .arg(args.command_name())
         .arg(args.url.as_deref().context("URL is required")?);
     for (flag, value) in [
         ("--user", args.username.clone()),
@@ -172,12 +172,13 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         ("--save-server-password", args.save_server_password),
         ("--no-keyring", args.no_keyring),
         ("--insecure", args.insecure),
+        ("--https", args.https),
     ] {
         if set {
             command.arg(flag);
         }
     }
-    let log_path = dir.join(format!("{}-{}.log", args.mode, args.port()));
+    let log_path = dir.join(format!("{}-{}.log", args.command_name(), args.port()));
     let log = OpenOptions::new()
         .create(true)
         .truncate(true)

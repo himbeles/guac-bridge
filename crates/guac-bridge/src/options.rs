@@ -4,6 +4,9 @@ use crate::{FRAME, WINDOW};
 use anyhow::{Result, ensure};
 use clap::{Args as ClapArgs, ValueEnum};
 
+// Retained only for the deprecated command and existing registration filenames.
+pub(crate) const LEGACY_HTTP_COMMAND: &str = "llm";
+
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize,
 )]
@@ -61,10 +64,15 @@ pub(crate) struct BridgeOptions {
     pub connection_id: Option<String>,
     #[arg(long)]
     pub data_source: Option<String>,
-    /// Local loopback port (SSH: 2222, LLM: 8000).
+    /// Preserve HTTPS end-to-end (TLS passthrough); defaults the remote service to 443.
+    #[arg(long, help_heading = "Endpoints")]
+    pub https: bool,
+    #[arg(skip)]
+    pub legacy_http: bool,
+    /// Local loopback port (SSH: 2222, HTTP: 8080).
     #[arg(long = "port", help_heading = "Endpoints")]
     pub port: Option<u16>,
-    /// Remote loopback service port (SSH: 22, LLM: 8000).
+    /// Remote service port (SSH: 22, HTTP: 80; --https: 443).
     #[arg(long = "remote-port", help_heading = "Endpoints")]
     pub target_port: Option<u16>,
     #[arg(long, default_value = "127.0.0.1")]
@@ -136,15 +144,36 @@ pub(crate) struct BridgeOptions {
     pub resolved_password: Option<String>,
 }
 impl BridgeOptions {
+    pub fn command_name(&self) -> &str {
+        if self.legacy_http {
+            LEGACY_HTTP_COMMAND
+        } else {
+            &self.mode
+        }
+    }
     pub fn port(&self) -> u16 {
-        self.port
-            .unwrap_or(if self.mode == "ssh" { 2222 } else { 8000 })
+        self.port.unwrap_or(match self.mode.as_str() {
+            "ssh" => 2222,
+            _ if self.legacy_http => 8000,
+            _ => 8080,
+        })
     }
     pub fn target_port(&self) -> u16 {
-        self.target_port
-            .unwrap_or(if self.mode == "ssh" { 22 } else { 8000 })
+        self.target_port.unwrap_or(if self.https {
+            443
+        } else {
+            match self.mode.as_str() {
+                "ssh" => 22,
+                _ if self.legacy_http => 8000,
+                _ => 80,
+            }
+        })
     }
     pub(crate) fn validate(&mut self) -> Result<()> {
+        ensure!(
+            !self.https || self.mode == "http",
+            "--https requires an HTTP bridge"
+        );
         if !self.foreground
             && !self.managed_child
             && !self.benchmark_control
