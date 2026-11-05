@@ -345,7 +345,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         writer.close()
         await writer.wait_closed()
 
-    async def test_llm_streaming_preserves_headers_and_body(self):
+    async def test_http_streaming_preserves_headers_and_body(self):
         release = asyncio.Event()
         async def http(reader, writer):
             request = await reader.readuntil(b'\r\n\r\n')
@@ -359,7 +359,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         server = await asyncio.start_server(http,'127.0.0.1',0)
         self.servers.append(server)
         self.target_port = server.sockets[0].getsockname()[1]
-        _, port = await self.launch('llm')
+        _, port = await self.launch('http')
         reader, writer = await asyncio.open_connection('127.0.0.1',port)
         writer.write(b'GET /v1/events HTTP/1.1\r\nHost: service\r\nAuthorization: Bearer service-secret\r\n\r\n')
         await writer.drain()

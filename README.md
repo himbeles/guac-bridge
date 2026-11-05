@@ -1,8 +1,8 @@
 # 🐸 Guac Bridge
 
-SSH and OpenAI-compatible endpoints through Guacamole.
+SSH and HTTP(S) bridges through Guacamole and FortiGate.
 
-Expose a remote server’s SSH service or OpenAI-compatible API on your computer through its Guacamole web terminal. Use your usual SSH tools or LLM applications with the local port.
+Expose a remote server’s SSH or HTTP(S) service through its gateway web terminal. Use your usual SSH tools, browser or HTTP client with the local port.
 
 ## First-time setup
 
@@ -62,28 +62,56 @@ guac-bridge ssh --stop --port 2222
 
 Use a dedicated local port for each destination.
 
-## LLM bridge
+## HTTP bridge
 
 ```shell
-guac-bridge llm CONNECTION_URL
+guac-bridge http CONNECTION_URL
 ```
 
-Enter your Guacamole credentials. The default local port is **8000**, forwarding the server’s HTTP endpoint at **127.0.0.1:8000**, including streamed responses. Use `--remote-port` for a different server port and `--port` for a different local port.
+The default local port is **8080**, forwarding the server’s HTTP service at
+**127.0.0.1:80**. All paths, methods, headers, binary bodies, streaming responses
+and protocol upgrades pass through without endpoint filtering. Use `--remote-port`
+for another server service port and `--port` for another local listener.
 
-The bridge runs in the background by default. Stop it with `guac-bridge llm --stop`. Use `--foreground` to keep it attached to this terminal until **Ctrl+C**.
+For HTTPS:
 
-`guac-bridge` is the CLI entry point. Use its `ssh` and `llm` subcommands. Run `guac-bridge --help` or a subcommand with `--help` for credential storage, certificates, background operation and transport tuning.
+```shell
+guac-bridge http CONNECTION_URL --https
+```
+
+This defaults the remote port to **443** and shows HTTPS URLs in connection lists.
+TLS passes unchanged between your HTTP client and the remote service; the bridge
+does not terminate TLS. Preserve the service's hostname for SNI and certificate
+verification. For example:
+
+```shell
+curl --connect-to service.example:443:127.0.0.1:8080 https://service.example/any/path
+```
+
+`--ca-file` configures trust for the gateway connection. Remote HTTPS certificate
+trust is configured in your HTTP client as usual.
+
+The bridge runs in the background by default. Stop it with `guac-bridge http --stop`.
+Use `--foreground` to keep it attached until **Ctrl+C**. Start and stop commands
+must select the same `--port`.
+
+`guac-bridge` is the CLI entry point. Use its `ssh` and `http` subcommands. Run
+`guac-bridge --help` or a subcommand with `--help` for credentials, certificates,
+background operation and transport tuning.
+
+Compatibility: `llm` is deprecated. Use `http --port 8000 --remote-port 8000` for its
+old defaults. Existing invocations and managed bridge registrations remain supported.
 
 ## FortiGate gateway (v5 beta)
 
 The experimental FortiGate adapter opens a custom SSH terminal through the SSL-VPN
-web portal. Both SSH and LLM bridges use this same connection path. Existing
+web portal. Both SSH and HTTP bridges use this same connection path. Existing
 Guacamole commands are unchanged; `--gateway` defaults to `guacamole`.
 
 ```sh
 guac-bridge ssh https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-port 22 --server-user SERVER_USER --server-os windows
 
-guac-bridge llm https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows --remote-port 8000
+guac-bridge http https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows --remote-port 8080
 ```
 
 `--server-host`, `--server-port` (default 22), `--server-user`, and `--server-os`
@@ -116,12 +144,12 @@ CLI connection lists and the Windows manager label each bridge **Guacamole** or
 guac-bridge list
 ```
 
-Lists registered SSH and LLM bridges with status, Guacamole username and the route
+Lists registered SSH and HTTP bridges in an aligned table with gateway type, status, gateway username and the route
 **local URL → gateway → service on the remote server**.
 The server endpoint is loopback on the remote machine. Unresponsive registrations
 are marked explicitly. URL credentials and authentication queries are omitted.
 
-`ssh` and `llm` start or reuse a managed background bridge by default. Use
+`ssh` and `http` start or reuse a managed background bridge by default. Use
 `--foreground` for an attached process, including `--port 0` for an
 automatically assigned local port.
 
@@ -140,7 +168,7 @@ See [Transport](docs/transport.md) for flow control and reliability, and
 [Connections](docs/connections.md) for deployment and process lifetimes.
 
 On Windows, running bridges appear in the tray. Use `guac-bridge tray` to open
-the manager with SSH/LLM tags, live rates, session totals and stop controls.
+the manager with SSH/HTTP tags, live rates, session totals and stop controls.
 See [Windows bridge manager](docs/tray.md).
 
 The Windows installer stops running bridges and the tray before updates.

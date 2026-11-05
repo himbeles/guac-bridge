@@ -217,7 +217,7 @@ mod windows {
                         if MessageBoxW(
                             hwnd,
                             w!(
-                                "Stop all bridges? Active SSH sessions and LLM requests will disconnect."
+                                "Stop all bridges? Active SSH sessions and HTTP requests will disconnect."
                             ),
                             w!("Guac Bridge"),
                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,

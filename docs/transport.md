@@ -1,6 +1,6 @@
 # Transport
 
-Each SSH or LLM bridge opens a Guacamole WebSocket connection, checks or uploads
+Each SSH or HTTP bridge opens a Guacamole WebSocket connection, checks or uploads
 its bundled helper, and runs it inside the remote terminal. TCP connections share
 numbered channels with bounded flow control. HTTP headers, bodies and streaming
 responses pass through unchanged. The helper exits with the session; its cached

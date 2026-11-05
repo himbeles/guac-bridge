@@ -3,6 +3,8 @@
 use crate::{Decoder, Frame, encode};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
+// Legacy gateway stream name, independent of the public bridge command.
+pub const OUTPUT_STREAM: &str = "LLM";
 pub const OSC_PREFIX: &str = "GBW1:";
 pub const ERROR_PREFIX: &str = "GBERR:";
 pub const BOOT_PREFIX: &str = "GBWB:";

@@ -737,7 +737,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
                                         if frames.feed(&data)?{heartbeat=Instant::now();}
                                         ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;
                                     }else if values[3]=="BOOT"&&boot_stream.is_none(){boot_stream=Some(values[1].clone());ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;}
-                                    else if values[3]=="LLM"&&output_stream.is_none(){output_stream=Some(values[1].clone());ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;}
+                                    else if values[3]==crate::terminal_wire::OUTPUT_STREAM&&output_stream.is_none(){output_stream=Some(values[1].clone());ws_send(&read_out,&["ack",&values[1],"OK","0"]).await?;}
                                     else{ws_send(&read_out,&["ack",&values[1],"Unsupported","256"]).await?;}
                                 },
                                 "blob" if values.get(1)==boot_stream.as_ref()=>{

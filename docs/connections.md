@@ -3,13 +3,13 @@
 ```mermaid
 flowchart TD
     SSH["SSH client"] --> Local["Rust client: local loopback listener"]
-    HTTP["LLM application"] --> Local
+    HTTP["HTTP application"] --> Local
     Local --> Guac["Guacamole HTTPS / WebSocket"]
     Guac --> Agent["Bundled Rust helper in terminal"]
     Agent --> Service["Remote loopback service: SSH or HTTP"]
 ```
 
-Each bridge process has its own Guacamole terminal. Within that connection, independent local TCP connections use numbered channels. The LLM mode forwards HTTP bytes without parsing, re-encoding, decompression or buffering a complete response. Authentication headers, binary bodies, keep-alive and server-sent events pass through unchanged.
+Each bridge process has its own Guacamole terminal. Within that connection, independent local TCP connections use numbered channels. The HTTP mode forwards HTTP bytes without parsing, re-encoding, decompression or buffering a complete response. Authentication headers, binary bodies, keep-alive and server-sent events pass through unchanged.
 
 **Loopback** is a computer’s internal network interface. `127.0.0.1` and `::1` refer to the machine on which a process runs. The client listener accepts connections only from your computer. The helper connects to the service on the remote machine’s loopback interface. No additional externally accessible server port is needed. The client-to-Guacamole leg uses HTTPS/WSS when the supplied URL is HTTPS; a plain HTTP URL uses HTTP/WS.
 
@@ -35,7 +35,7 @@ This block acknowledgment applies **only to first-time Linux helper deployment**
 
 Guacamole login and the forwarded SSH/API authentication are separate. Saved Guacamole passwords use Windows Credential Manager or Linux Secret Service. Passwords are never stored in bridge state files. Managed startup passes the password to the child through an anonymous pipe.
 
-`ssh` and `llm` start or reuse a managed background client by default. Use `--foreground` for an attached bridge that stops with Ctrl+C. Background startup relays its startup progress to the calling console, and waits until its listener and helper are ready. It reuses a running bridge only when destination and transport settings match. Background clients remain running after SSH exits. `--stop` sends an authenticated command over a separate local loopback control socket and closes every active connection. It never kills a process merely because its PID appears in a stale state file. `--status` queries the same socket. Windows background startup creates no extra console.
+`ssh` and `http` start or reuse a managed background client by default. Use `--foreground` for an attached bridge that stops with Ctrl+C. Background startup relays its startup progress to the calling console, and waits until its listener and helper are ready. It reuses a running bridge only when destination and transport settings match. Background clients remain running after SSH exits. `--stop` sends an authenticated command over a separate local loopback control socket and closes every active connection. It never kills a process merely because its PID appears in a stale state file. `--status` queries the same socket. Windows background startup creates no extra console.
 
 A connection failure ends the client and its helper session. Cached executables remain for later connections. New client releases carry their own helper; the server does not need a runtime installation, package index, root privileges or internet access.
 
@@ -45,6 +45,6 @@ Bootstrap first acknowledges a short raw/no-echo terminal preparation step, then
 
 ## Windows servers
 
-Add `--server-os windows` when the Guacamole connection opens a Windows SSH terminal. PowerShell 5.1+ uploads the bundled x86-64 executable to `%LOCALAPPDATA%\guac-bridge\helpers`, verifies its SHA-256 hash, and runs it for that session. Later connections reuse the verified file. No service or scheduled task is installed. The same helper forwards SSH or an OpenAI-compatible endpoint; the target service must already be running.
+Add `--server-os windows` when the Guacamole connection opens a Windows SSH terminal. PowerShell 5.1+ uploads the bundled x86-64 executable to `%LOCALAPPDATA%\guac-bridge\helpers`, verifies its SHA-256 hash, and runs it for that session. Later connections reuse the verified file. No service or scheduled task is installed. The same helper forwards SSH or an HTTP(S) service; the target service must already be running.
 
 Windows console processing changes arbitrary terminal bytes, so this carrier uses Base64 input and short OSC pipe envelopes for output. The shared framing and flow control remain the same, with more carrier overhead than Linux. RDP desktops are outside this transport. Application control or cache execution restrictions produce an error and must be resolved through the server’s normal administration process.

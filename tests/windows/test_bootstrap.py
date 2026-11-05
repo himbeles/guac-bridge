@@ -222,7 +222,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
 
             server = await asyncio.start_server(http, "127.0.0.1", 0)
             try:
-                c, endpoint = await bridge("llm", server.sockets[0].getsockname()[1])
+                c, endpoint = await bridge("http", server.sockets[0].getsockname()[1])
                 import aiohttp
 
                 async with aiohttp.ClientSession() as session:

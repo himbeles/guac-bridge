@@ -170,7 +170,7 @@ A proposed CLI is:
 guac-bridge ssh https://GATEWAY --gateway fortigate --bookmark BOOKMARK --server-os windows
 ```
 
-Keep `ssh` and `llm` as the local service modes. Add gateway type and stable bookmark
+Keep `ssh` and `http` as the local service modes. Add gateway type and stable bookmark
 identity to bridge reuse hashing, credential namespaces and route display. Pass
 those options through managed startup. Keep remote OS/carrier selection independent
 of the client's OS and gateway vendor.

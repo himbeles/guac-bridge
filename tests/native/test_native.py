@@ -130,7 +130,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_prepare_update_stops_all_foreground_bridges(self):
         target = await self.target(self.echo)
-        for mode in ('ssh', 'llm'):
+        for mode in ('ssh', 'http', 'llm'):
             child = await self.child('--port', '0', '--remote-port', target, mode=mode)
             while b'Bridge ready on ' not in await asyncio.wait_for(child.stderr.readline(), 20):
                 self.assertIsNone(child.returncode)
@@ -179,7 +179,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_tray_registration_usage_and_authenticated_stop(self):
         import re
         target = await self.target(self.echo)
-        for mode in ('ssh', 'llm'):
+        for mode in ('ssh', 'http', 'llm'):
             with self.subTest(mode=mode):
                 child = await self.child('--port', '0', '--remote-port', target, mode=mode)
                 while True:
@@ -201,7 +201,9 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
                 output, error = await asyncio.wait_for(listing.communicate(), 5)
                 self.assertEqual(listing.returncode, 0, error.decode())
                 text = output.decode()
-                self.assertIn(mode.upper(), text)
+                self.assertIn('SSH' if mode == 'ssh' else 'HTTP', text)
+                self.assertIn('Guacamole', text)
+                self.assertNotIn('[Guacamole]', text)
                 self.assertIn(self.url, text)
                 self.assertIn('test', text)
                 self.assertIn(f'127.0.0.1:{port}', text)
@@ -240,9 +242,9 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(child.returncode, 0, (await child.stderr.read()).decode())
                 self.assertFalse(registration.exists())
 
-    async def test_reliable_recovers_loss_corruption_and_duplicates_for_both_clients(self):
+    async def test_reliable_recovers_loss_corruption_and_duplicates_for_all_commands(self):
         target = await self.target(self.echo)
-        for mode in ('ssh', 'llm'):
+        for mode in ('ssh', 'http', 'llm'):
             with self.subTest(mode=mode):
                 child, port = await self.bridge(target, mode)
                 term = self.gateway.terminals[-1]
@@ -411,6 +413,54 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await asyncio.wait_for(results.get(),5),b'late upload')
         await self.finish(child)
 
+    async def generic_http_roundtrip(self, tls):
+        import ssl
+        ssl_server = ssl_client = None
+        names = []
+        if tls:
+            cert, key = self.home/'cert.pem', self.home/'key.pem'
+            process = await asyncio.create_subprocess_exec('openssl','req','-x509','-newkey','rsa:2048','-nodes',
+                '-days','1','-subj','/CN=service.test','-addext','subjectAltName=DNS:service.test',
+                '-keyout',str(key),'-out',str(cert),stdout=asyncio.subprocess.DEVNULL,stderr=asyncio.subprocess.DEVNULL)
+            self.assertEqual(await process.wait(),0)
+            ssl_server=ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ssl_server.load_cert_chain(cert,key)
+            ssl_server.set_servername_callback(lambda sock,name,ctx:names.append(name))
+            ssl_client=ssl.create_default_context(cafile=str(cert))
+        body=bytes(range(256))*128
+        seen=asyncio.Queue()
+        async def endpoint(reader,writer):
+            headers=await reader.readuntil(b'\r\n\r\n')
+            data=await reader.readexactly(len(body))
+            await seen.put((headers,data))
+            writer.write(b'HTTP/1.1 207 Multi-Status\r\nContent-Length: '+str(len(body)).encode()+b'\r\nConnection: close\r\n\r\n'+data)
+            await writer.drain()
+            writer.close()
+        server=await asyncio.start_server(endpoint,'127.0.0.1',0,ssl=ssl_server)
+        self.servers.append(server)
+        child,port=await self.bridge(server.sockets[0].getsockname()[1],'http',*(['--https'] if tls else []))
+        kwargs={'ssl':ssl_client,'server_hostname':'service.test'} if tls else {}
+        reader,writer=await asyncio.open_connection('127.0.0.1',port,**kwargs)
+        writer.write(b'PUT /arbitrary/path?item=42 HTTP/1.1\r\nHost: service.test\r\nContent-Length: '+str(len(body)).encode()+b'\r\n\r\n'+body)
+        await writer.drain()
+        response=await asyncio.wait_for(reader.read(),10)
+        self.assertTrue(response.startswith(b'HTTP/1.1 207'))
+        self.assertEqual(response.split(b'\r\n\r\n',1)[1],body)
+        headers,data=await seen.get()
+        self.assertIn(b'PUT /arbitrary/path?item=42 HTTP/1.1',headers)
+        self.assertEqual(data,body)
+        if tls:self.assertEqual(names,['service.test'])
+        writer.close()
+        await writer.wait_closed()
+        await self.finish(child)
+
+    async def test_generic_http_preserves_arbitrary_paths_methods_and_binary_bodies(self):
+        await self.generic_http_roundtrip(False)
+
+    @unittest.skipUnless(shutil.which('openssl'),'OpenSSL needed to generate a local test certificate')
+    async def test_https_passthrough_preserves_tls_and_verifies_remote_certificate(self):
+        await self.generic_http_roundtrip(True)
+
     async def test_http_streaming_headers_and_binary_body(self):
         received = asyncio.Event()
         release = asyncio.Event()
@@ -427,15 +477,15 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             await response.write_eof()
             return response
         app = web.Application()
-        app.router.add_post('/v1/chat/completions', endpoint)
+        app.router.add_post('/events', endpoint)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner,'127.0.0.1',0)
         await site.start()
         try:
-            child, port = await self.bridge(site._server.sockets[0].getsockname()[1], 'llm')
+            child, port = await self.bridge(site._server.sockets[0].getsockname()[1], 'http')
             async with aiohttp.ClientSession() as http:
-                async with http.post(f'http://127.0.0.1:{port}/v1/chat/completions',data=data,headers={'Authorization':'Bearer example'}) as response:
+                async with http.post(f'http://127.0.0.1:{port}/events',data=data,headers={'Authorization':'Bearer example'}) as response:
                     self.assertEqual(response.status,200)
                     await asyncio.wait_for(received.wait(),5)
                     self.assertEqual(await asyncio.wait_for(response.content.readexactly(13),5), b'data: first\n\n')
@@ -614,7 +664,10 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     async def test_managed_start_reuse_status_and_stop(self):
         await self.managed_lifetime('ssh')
 
-    async def test_llm_defaults_to_background_and_reuses_bridge(self):
+    async def test_http_defaults_to_background_and_reuses_bridge(self):
+        await self.managed_lifetime('http')
+
+    async def test_deprecated_http_command_preserves_background_reuse(self):
         await self.managed_lifetime('llm')
 
     async def managed_lifetime(self, mode):
