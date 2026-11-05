@@ -111,7 +111,7 @@ class Gateway:
 
 
 class BootstrapTests(unittest.IsolatedAsyncioTestCase):
-    async def test_upload_cache_repair_ssh_and_http(self):
+    async def test_upload_cache_repair_presets_and_tcp(self):
         gateway = Gateway()
         url = await gateway.start()
         children = []
@@ -228,7 +228,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
 
             server = await asyncio.start_server(http, "127.0.0.1", 0)
             try:
-                c, endpoint = await bridge("http", server.sockets[0].getsockname()[1])
+                c, endpoint = await bridge("tcp", server.sockets[0].getsockname()[1])
                 import aiohttp
 
                 async with aiohttp.ClientSession() as session:

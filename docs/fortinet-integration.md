@@ -1,7 +1,7 @@
 # FortiGate gateway
 
 Guac Bridge connects to the FortiGate SSL-VPN web portal and opens a custom SSH
-terminal. The existing helper then forwards SSH, RDP, HTTP(S) or another TCP
+terminal. The existing helper then forwards any TCP
 service from that server's loopback interface. This adapter uses the web portal,
 not a native FortiClient VPN connection.
 
@@ -11,12 +11,13 @@ not a native FortiClient VPN connection.
 guac-bridge ssh https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows
 ```
 
-Use `rdp`, `http` or `tcp` with the same gateway/server options. TCP also requires
-`--port` and `--remote-port`. For example:
+Use `tcp` as the general command, or the `ssh`, `llm` and `rdp` presets, with
+the same gateway/server options. TCP requires either `--port` or `--remote-port`;
+a single supplied value is used for both ends. For example:
 
 ```sh
 guac-bridge rdp https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows
-mstsc /v:127.0.0.1:13389
+mstsc /v:127.0.0.1:33899
 ```
 
 The server must provide a Windows x86-64 SSH console with PowerShell 5.1+ and allow
@@ -33,8 +34,9 @@ service installation or remote internet access.
 | `--target-host`, `--remote-port` | Loopback TCP service reached by the helper |
 | `--port` | Local loopback listener used by your application |
 
-The server SSH port defaults to 22. Service ports depend on the command: SSH 22,
-RDP 3389, HTTP 8000, HTTPS 443; generic TCP requires an explicit service port.
+The server SSH port defaults to 22. Preset service ports are SSH 22,
+LLM 8000 and RDP 3389. Generic TCP requires an explicit port. HTTPS uses TCP
+port 443 when selected by the user; the application performs TLS.
 Remote Desktop connects directly to the local RDP listener. No extra SSH client
 or SSH `LocalForward` is needed; the gateway SSH session still starts the helper.
 
@@ -64,8 +66,8 @@ Output is a raw terminal stream, not Guacamole's pipe/blob protocol. The client
 extracts short OSC/Base64 envelopes incrementally across WebSocket messages.
 Reliable records add CRC32, sequence numbers, selective acknowledgments, bounded
 retries and duplicate suppression. Invalid records never reach application sockets.
-Complete OSC sequences are flushed separately on Windows, including retries and
-fatal reports. See [Transport](transport.md).
+Short data-envelope/close pairs are written directly to the Windows console,
+including retries and fatal reports. See [Transport](transport.md).
 
 ## Supported scope
 

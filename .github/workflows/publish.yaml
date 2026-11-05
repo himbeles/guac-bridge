@@ -150,7 +150,7 @@ jobs:
           uv tool install --from $wheel guac-bridge
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" ssh --help
-          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" http --help
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" llm --help
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" rdp --help
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" tcp --help
           $commands = @(Get-ChildItem "$env:UV_TOOL_BIN_DIR/guac*")
@@ -214,7 +214,7 @@ jobs:
           uv tool install --from dist/*.whl guac-bridge
           "$UV_TOOL_BIN_DIR/guac-bridge" --version
           "$UV_TOOL_BIN_DIR/guac-bridge" ssh --help
-          "$UV_TOOL_BIN_DIR/guac-bridge" http --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" llm --help
           "$UV_TOOL_BIN_DIR/guac-bridge" rdp --help
           "$UV_TOOL_BIN_DIR/guac-bridge" tcp --help
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version

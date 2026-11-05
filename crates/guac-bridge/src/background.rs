@@ -29,8 +29,6 @@ struct State {
     server_port: u16,
     jump_url: String,
     mode: String,
-    #[serde(default)]
-    https: bool,
     port: u16,
     target: String,
     version: String,
@@ -52,14 +50,14 @@ pub(crate) fn directory() -> Result<PathBuf> {
     Ok(p)
 }
 fn path(args: &BridgeOptions) -> Result<PathBuf> {
-    Ok(directory()?.join(format!("{}-{}.json", args.command_name(), args.port())))
+    Ok(directory()?.join(format!("{}-{}.json", args.mode.as_str(), args.port())))
 }
 fn identity(args: &BridgeOptions) -> String {
     let mut data = serde_json::json!([
         args.url,
         args.connection_id,
         args.data_source,
-        args.command_name(),
+        args.mode.as_str(),
         args.port(),
         args.target_host,
         args.target_port(),
@@ -82,11 +80,6 @@ fn identity(args: &BridgeOptions) -> String {
             serde_json::json!(args.server_port),
             serde_json::json!("output-reliable-v1"),
         ]);
-    }
-    if args.https {
-        data.as_array_mut()
-            .unwrap()
-            .push(serde_json::json!("https-passthrough"));
     }
     format!("{:x}", Sha256::digest(data.to_string().as_bytes()))
 }
@@ -162,20 +155,19 @@ pub(crate) async fn control(
         server_host: args.server_host.clone(),
         server_port: args.server_port,
         jump_url: display_url(args.url.as_deref().unwrap_or_default()),
-        mode: args.command_name().into(),
-        https: args.https,
+        mode: args.mode.as_str().into(),
         port,
         target: format!("{}:{}", args.target_host, args.target_port()),
         version: env!("CARGO_PKG_VERSION").into(),
         executable: std::env::current_exe()?,
         instance: uuid::Uuid::new_v4().to_string(),
         log: if args.managed_child {
-            Some(directory()?.join(format!("{}-{}.log", args.command_name(), port)))
+            Some(directory()?.join(format!("{}-{}.log", args.mode.as_str(), port)))
         } else {
             args.debug_log.as_ref().map(PathBuf::from)
         },
     };
-    let path = directory()?.join(format!("{}-{}.json", args.command_name(), port));
+    let path = directory()?.join(format!("{}-{}.json", args.mode.as_str(), port));
     let token = s.token.clone();
     let temp = path.with_extension(format!("{}.tmp", s.pid));
     let mut options = OpenOptions::new();
@@ -266,16 +258,10 @@ impl Bridge {
         format!("{}://{} (on server)", self.scheme(), self.state.target)
     }
     fn scheme(&self) -> &str {
-        if self.state.mode == "ssh" {
-            "ssh"
-        } else if self.state.mode == "rdp" {
-            "rdp"
-        } else if self.state.mode == "tcp" {
-            "tcp"
-        } else if self.state.https {
-            "https"
-        } else {
-            "http"
+        match self.state.mode.as_str() {
+            "ssh" => "ssh",
+            "rdp" => "rdp",
+            _ => "tcp",
         }
     }
     pub fn route(&self) -> String {
@@ -297,15 +283,7 @@ impl Bridge {
         )
     }
     pub fn bridge_type(&self) -> &str {
-        if self.state.mode == "ssh" {
-            "SSH"
-        } else if self.state.mode == "rdp" {
-            "RDP"
-        } else if self.state.mode == "tcp" {
-            "TCP"
-        } else {
-            "HTTP"
-        }
+        service_label(&self.state.mode)
     }
     pub fn gateway(&self) -> &str {
         self.state.gateway.name()
@@ -346,6 +324,15 @@ fn display_url(value: &str) -> String {
     });
     url.set_fragment(fragment.as_deref());
     url.to_string()
+}
+
+fn service_label(mode: &str) -> &str {
+    match mode {
+        "ssh" => "SSH",
+        "llm" => "LLM",
+        "rdp" => "RDP",
+        _ => "TCP",
+    }
 }
 
 pub(crate) fn list() -> Result<()> {
@@ -437,7 +424,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             || !(key.starts_with("ssh-")
                 || key.starts_with("rdp-")
                 || key.starts_with("tcp-")
-                || key.starts_with(&format!("{}-", crate::options::LEGACY_HTTP_COMMAND))
+                || key.starts_with("llm-")
                 || key.starts_with("http-"))
         {
             continue;
@@ -448,14 +435,9 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
         let Ok(state) = serde_json::from_slice::<State>(&bytes) else {
             continue;
         };
-        if ![
-            "ssh",
-            crate::options::LEGACY_HTTP_COMMAND,
-            "http",
-            "rdp",
-            "tcp",
-        ]
-        .contains(&state.mode.as_str())
+        // Discover old HTTP registrations so update preparation and manager stop
+        // controls can still close them after the public HTTP command is removed.
+        if !["tcp", "ssh", "llm", "rdp", "http"].contains(&state.mode.as_str())
             || state.port == 0
             || state.instance.is_empty()
             || state.target.is_empty()
@@ -473,12 +455,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             instance: state.instance.clone(),
             label: format!(
                 "[{}]  127.0.0.1:{} → {}",
-                match state.mode.as_str() {
-                    "ssh" => "SSH",
-                    "rdp" => "RDP",
-                    "tcp" => "TCP",
-                    _ => "HTTP",
-                },
+                service_label(&state.mode),
                 state.port,
                 state.target
             ),
@@ -491,8 +468,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
     Ok(result)
 }
 
-pub(crate) fn stop_all() -> Result<()> {
-    let bridges = bridges()?;
+fn stop_registered(bridges: Vec<Bridge>) -> Result<()> {
     #[cfg(windows)]
     let mut processes = Vec::new();
     for bridge in &bridges {
@@ -533,14 +509,32 @@ pub(crate) fn stop_all() -> Result<()> {
         if !active {
             break;
         }
-        ensure!(
-            Instant::now() < deadline,
-            "Some bridges did not exit; update cancelled"
-        );
+        ensure!(Instant::now() < deadline, "Some bridges did not exit");
         std::thread::sleep(Duration::from_millis(50));
     }
-    crate::tray::shutdown()?;
     Ok(())
+}
+
+/// Root-level bridge control does not need a preset or gateway credentials.
+pub(crate) fn stop(port: Option<u16>) -> Result<()> {
+    let selected: Vec<_> = bridges()?
+        .into_iter()
+        .filter(|bridge| port.is_none_or(|port| bridge.state.port == port))
+        .collect();
+    let running = selected.iter().filter(|bridge| bridge.online).count();
+    stop_registered(selected)?;
+    let message = match (port, running) {
+        (Some(port), 0) => format!("No managed bridge running on port {port}"),
+        (Some(port), _) => format!("Bridge stopped on port {port}"),
+        (None, _) => format!("All bridges stopped ({running})"),
+    };
+    crate::console::line(&message);
+    Ok(())
+}
+
+pub(crate) fn stop_all() -> Result<()> {
+    stop_registered(bridges()?)?;
+    crate::tray::shutdown()
 }
 
 #[cfg(test)]

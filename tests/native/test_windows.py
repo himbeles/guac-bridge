@@ -62,7 +62,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.ready_allowed.set()
         with contextlib.suppress(Exception):
-            await self.command('--stop')
+            await self.stop_bridge()
         for ws in self.sockets:
             await ws.close()
         await self.runner.cleanup()
@@ -115,6 +115,13 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
                     started = True
         return ws
 
+    async def stop_bridge(self):
+        process=await asyncio.create_subprocess_exec(str(ROOT/'target/release/guac-bridge.exe'),
+            'stop','--port',str(self.port),stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        out,error=await asyncio.wait_for(process.communicate(),30)
+        self.assertEqual(process.returncode,0,(out+error).decode())
+        return (out+error).decode()
+
     async def command(self,*flags):
         args = [str(ROOT/'target/release/guac-bridge.exe'), 'ssh']
         args += [self.url,'--user','synthetic-user','--no-keyring','--startup-delay','0','--port',str(self.port),*flags]
@@ -138,7 +145,7 @@ class WindowsManagementTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('already running',await self.command())
         self.assertEqual(self.commands,1)
         self.assertIn('Bridge running',await self.command('--status'))
-        self.assertIn('stopping',await self.command('--stop'))
+        self.assertIn('stopped',await self.stop_bridge())
         for _ in range(60):
             try:
                 _,writer = await asyncio.open_connection('127.0.0.1',self.port)

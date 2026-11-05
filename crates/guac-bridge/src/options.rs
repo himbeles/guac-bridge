@@ -4,9 +4,6 @@ use crate::{FRAME, WINDOW};
 use anyhow::{Result, ensure};
 use clap::{Args as ClapArgs, ValueEnum};
 
-// Retained only for the deprecated command and existing registration filenames.
-pub(crate) const LEGACY_HTTP_COMMAND: &str = "llm";
-
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize,
 )]
@@ -34,7 +31,7 @@ impl Gateway {
 #[derive(ClapArgs, Clone)]
 pub(crate) struct BridgeOptions {
     /// Gateway URL (Guacamole connection URL or FortiGate portal origin). Required when starting a bridge.
-    #[arg(value_name = "URL", required_unless_present_any=["stop","status"])]
+    #[arg(value_name = "URL", required_unless_present = "status")]
     pub url: Option<String>,
     /// Gateway login username (prompted when omitted).
     #[arg(long = "user", help_heading = "Connection")]
@@ -70,15 +67,10 @@ pub(crate) struct BridgeOptions {
     /// Guacamole authentication data source; overrides the value decoded from the URL.
     #[arg(long, help_heading = "Gateway")]
     pub data_source: Option<String>,
-    /// Preserve HTTPS end-to-end (TLS passthrough); defaults the remote service to 443.
-    #[arg(long, help_heading = "Endpoints")]
-    pub https: bool,
-    #[arg(skip)]
-    pub legacy_http: bool,
-    /// Local loopback port (SSH: 2222, HTTP: 8000, RDP: 13389; required for TCP).
+    /// Local TCP port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 2222, LLM 8000, RDP 33899.
     #[arg(long = "port", help_heading = "Endpoints")]
     pub port: Option<u16>,
-    /// Remote service port (SSH: 22, HTTP: 8000, RDP: 3389; --https: 443; required for TCP).
+    /// Remote TCP service port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 22, LLM 8000, RDP 3389.
     #[arg(long = "remote-port", help_heading = "Endpoints")]
     pub target_port: Option<u16>,
     /// Service address on the helper server: 127.0.0.1, localhost or ::1.
@@ -118,11 +110,8 @@ pub(crate) struct BridgeOptions {
     #[arg(skip)]
     pub background: bool,
     /// Run in this terminal until Ctrl+C instead of starting a background bridge.
-    #[arg(long, conflicts_with_all=["stop","status"], help_heading = "Lifecycle")]
-    pub foreground: bool,
-    /// Stop the managed bridge on --port, including its active connections.
     #[arg(long, conflicts_with = "status", help_heading = "Lifecycle")]
-    pub stop: bool,
+    pub foreground: bool,
     /// Show the managed bridge status on --port.
     #[arg(long, help_heading = "Lifecycle")]
     pub status: bool,
@@ -156,51 +145,42 @@ pub(crate) struct BridgeOptions {
     pub resolved_password: Option<String>,
 }
 impl BridgeOptions {
-    pub fn command_name(&self) -> &str {
-        if self.legacy_http {
-            LEGACY_HTTP_COMMAND
-        } else {
-            &self.mode
+    fn ports(&self) -> (u16, u16) {
+        if self.mode == "tcp" {
+            match (self.port, self.target_port) {
+                (Some(port), None) | (None, Some(port)) => return (port, port),
+                _ => (),
+            }
         }
+        let defaults = match self.mode.as_str() {
+            "ssh" => (2222, 22),
+            "llm" => (8000, 8000),
+            "rdp" => (33899, 3389),
+            _ => (0, 0),
+        };
+        (
+            self.port.unwrap_or(defaults.0),
+            self.target_port.unwrap_or(defaults.1),
+        )
     }
     pub fn port(&self) -> u16 {
-        self.port.unwrap_or(match self.mode.as_str() {
-            "ssh" => 2222,
-            "rdp" => 13389,
-            _ => 8000,
-        })
+        self.ports().0
     }
     pub fn target_port(&self) -> u16 {
-        self.target_port.unwrap_or(if self.https {
-            443
-        } else {
-            match self.mode.as_str() {
-                "ssh" => 22,
-                "rdp" => 3389,
-                _ => 8000,
-            }
-        })
+        self.ports().1
     }
     pub(crate) fn validate(&mut self) -> Result<()> {
         if self.mode == "tcp" && !self.forget_password && !self.forget_server_password {
-            ensure!(self.port.is_some(), "TCP bridges require --port");
-            if !self.stop && !self.status {
-                ensure!(
-                    self.target_port.is_some(),
-                    "TCP bridges require --remote-port"
-                );
-            }
+            ensure!(
+                self.port.is_some() || self.target_port.is_some(),
+                "TCP bridges require --port or --remote-port"
+            );
         }
-        ensure!(
-            !self.https || self.mode == "http",
-            "--https requires an HTTP bridge"
-        );
         if !self.foreground
             && !self.managed_child
             && !self.benchmark_control
             && !self.forget_password
             && !self.forget_server_password
-            && !self.stop
             && !self.status
         {
             self.background = true;
@@ -229,9 +209,12 @@ impl BridgeOptions {
             ["127.0.0.1", "localhost", "::1"].contains(&self.target_host.as_str()),
             "Remote target must be loopback"
         );
-        ensure!(self.target_port() > 0, "Target port must be positive");
         ensure!(
-            !(self.background || self.stop || self.status) || self.port() > 0,
+            self.forget_password || self.forget_server_password || self.target_port() > 0,
+            "Target port must be positive; use --remote-port with --port 0"
+        );
+        ensure!(
+            !(self.background || self.status) || self.port() > 0,
             "Managed bridges require a fixed --port greater than zero"
         );
         ensure!(
@@ -243,7 +226,7 @@ impl BridgeOptions {
                 self.connection_id.is_none() && self.data_source.is_none(),
                 "--connection-id and --data-source apply only to Guacamole"
             );
-            if !self.stop && !self.status && !self.forget_password {
+            if !self.status && !self.forget_password {
                 ensure!(
                     self.server_host.as_ref().is_some_and(|h| !h.is_empty()
                         && !h.chars().any(|c| c.is_control() || c.is_whitespace())),

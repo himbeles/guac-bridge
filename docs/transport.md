@@ -1,6 +1,7 @@
 # Transport
 
-Each SSH, RDP, HTTP or TCP bridge opens a gateway terminal WebSocket connection, checks or uploads
+The main `tcp` command and the SSH, LLM and RDP port presets share one forwarding
+implementation. Each running bridge opens a gateway terminal WebSocket connection, checks or uploads
 its bundled helper, and runs it inside the remote terminal. TCP connections share
 numbered channels with bounded flow control. HTTP headers, bodies and streaming
 responses pass through unchanged. The helper exits with the session; its cached

@@ -375,7 +375,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         server = await asyncio.start_server(http,'127.0.0.1',0)
         self.servers.append(server)
         self.target_port = server.sockets[0].getsockname()[1]
-        _, port = await self.launch('http')
+        _, port = await self.launch('tcp')
         reader, writer = await asyncio.open_connection('127.0.0.1',port)
         writer.write(b'GET /v1/events HTTP/1.1\r\nHost: service\r\nAuthorization: Bearer service-secret\r\n\r\n')
         await writer.drain()
@@ -426,7 +426,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotEqual(child.returncode,0)
             self.assertIn(b'different settings',err)
         finally:
-            process, (_,err) = await command('ssh','--stop','--port',port)
+            process, (_,err) = await command('stop','--port',port)
             self.assertEqual(process.returncode,0,err.decode())
             for _ in range(100):
                 if not state_path.exists(): break
