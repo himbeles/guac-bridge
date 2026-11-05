@@ -1,6 +1,6 @@
 # 🐸 Guac Bridge
 
-Access remote TCP services through a gateway SSH terminal using your normal local
+Access remote TCP services through a Guacamole or FortiGate gateway using your local
 applications: SSH, web clients, model APIs and Remote Desktop.
 
 ## Install
