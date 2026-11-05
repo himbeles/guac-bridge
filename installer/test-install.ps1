@@ -48,7 +48,8 @@ $installer = (Get-ChildItem dist/*-setup.exe | Select-Object -First 1).FullName
 $expectedVersion = ((Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"').Matches.Groups[1].Value)
 $versionInfo = (Get-Item $installer).VersionInfo
 if ($versionInfo.ProductVersion.Trim([char[]]@(0, 32)) -ne $expectedVersion) { throw "Incorrect installer ProductVersion: $($versionInfo.ProductVersion)" }
-if ((@($versionInfo.FileMajorPart, $versionInfo.FileMinorPart, $versionInfo.FileBuildPart, $versionInfo.FilePrivatePart) -join '.') -ne "$expectedVersion.0") { throw "Incorrect installer FileVersion: $($versionInfo.FileVersion)" }
+$expectedNumericVersion = $expectedVersion.Split('-')[0]
+if ((@($versionInfo.FileMajorPart, $versionInfo.FileMinorPart, $versionInfo.FileBuildPart, $versionInfo.FilePrivatePart) -join '.') -ne "$expectedNumericVersion.0") { throw "Incorrect installer FileVersion: $($versionInfo.FileVersion)" }
 $dest = Join-Path $env:RUNNER_TEMP 'guac-installer-test'
 function Run-Setup($tasks) {
     $process = Start-Process -FilePath $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$dest`"", $tasks) -Wait -PassThru

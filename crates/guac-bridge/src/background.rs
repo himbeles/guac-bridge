@@ -19,6 +19,14 @@ struct State {
     token: String,
     identity: String,
     username: String,
+    #[serde(default)]
+    gateway: crate::options::Gateway,
+    #[serde(default)]
+    server_user: Option<String>,
+    #[serde(default)]
+    server_host: Option<String>,
+    #[serde(default)]
+    server_port: u16,
     jump_url: String,
     mode: String,
     port: u16,
@@ -45,7 +53,7 @@ fn path(args: &BridgeOptions) -> Result<PathBuf> {
     Ok(directory()?.join(format!("{}-{}.json", args.mode, args.port())))
 }
 fn identity(args: &BridgeOptions) -> String {
-    let data = serde_json::json!([
+    let mut data = serde_json::json!([
         args.url,
         args.connection_id,
         args.data_source,
@@ -65,6 +73,13 @@ fn identity(args: &BridgeOptions) -> String {
         args.ca_file,
         args.insecure
     ]);
+    if args.gateway == crate::options::Gateway::Fortigate {
+        data.as_array_mut().unwrap().extend([
+            serde_json::json!(args.gateway),
+            serde_json::json!(args.server_host),
+            serde_json::json!(args.server_port),
+        ]);
+    }
     format!("{:x}", Sha256::digest(data.to_string().as_bytes()))
 }
 fn state(args: &BridgeOptions) -> Result<State> {
@@ -134,6 +149,10 @@ pub(crate) async fn control(
         token: uuid::Uuid::new_v4().to_string(),
         identity: identity(args),
         username: username.into(),
+        gateway: args.gateway,
+        server_user: args.server_user.clone(),
+        server_host: args.server_host.clone(),
+        server_port: args.server_port,
         jump_url: display_url(args.url.as_deref().unwrap_or_default()),
         mode: args.mode.clone(),
         port,
@@ -246,11 +265,25 @@ impl Bridge {
     }
     pub fn route(&self) -> String {
         format!(
-            "{} → {} → {}",
+            "{} → {} [{}]{} → {}",
             self.local_url(),
             self.destination(),
+            self.gateway(),
+            self.state
+                .server_host
+                .as_ref()
+                .map(|host| format!(
+                    " → ssh://{}@{}:{}",
+                    self.state.server_user.as_deref().unwrap_or(""),
+                    host,
+                    self.state.server_port
+                ))
+                .unwrap_or_default(),
             self.server_url()
         )
+    }
+    pub fn gateway(&self) -> &str {
+        self.state.gateway.name()
     }
     pub fn user(&self) -> &str {
         &self.state.username
@@ -296,16 +329,17 @@ pub(crate) fn list() -> Result<()> {
         println!("No registered bridges.");
         return Ok(());
     }
-    println!("TYPE\tSTATUS\tUSER\tLOCAL → GUACAMOLE → SERVER");
+    println!("TYPE\tGATEWAY\tSTATUS\tUSER\tLOCAL → GATEWAY → SERVER");
     for bridge in bridges {
         println!(
-            "{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}",
             bridge
                 .key
                 .split('-')
                 .next()
                 .unwrap_or("bridge")
                 .to_uppercase(),
+            bridge.gateway(),
             if bridge.online {
                 "Running"
             } else {

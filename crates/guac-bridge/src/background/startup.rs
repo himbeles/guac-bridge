@@ -76,7 +76,11 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         }
         ensure!(
             s.identity == identity(&args)
-                && args.username.as_ref().is_none_or(|u| u == &s.username),
+                && args.username.as_ref().is_none_or(|u| u == &s.username)
+                && args
+                    .server_user
+                    .as_ref()
+                    .is_none_or(|u| Some(u) == s.server_user.as_ref()),
             "A bridge with different settings already owns this port. Stop it first with --stop --port {}",
             args.port()
         );
@@ -101,6 +105,19 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
     let user = crate::credentials::username(&args)?;
     args.username = Some(user.clone());
     let password = crate::credentials::password(&args, &user)?;
+    let server_password = if args.gateway == crate::options::Gateway::Fortigate {
+        let user = crate::credentials::server_username(&args)?;
+        args.server_user = Some(user.clone());
+        Some(crate::credentials::server_password(&args, &user)?)
+    } else {
+        None
+    };
+    let handoff = if args.gateway == crate::options::Gateway::Guacamole {
+        serde_json::to_string(&password)?
+    } else {
+        serde_json::json!({"gateway_password":password, "server_password":server_password})
+            .to_string()
+    };
     let exe = std::env::current_exe()?;
     let mut command = Command::new(&exe);
     command
@@ -108,6 +125,8 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         .arg(args.url.as_deref().context("URL is required")?);
     for (flag, value) in [
         ("--user", args.username.clone()),
+        ("--server-host", args.server_host.clone()),
+        ("--server-user", args.server_user.clone()),
         ("--connection-id", args.connection_id.clone()),
         ("--data-source", args.data_source.clone()),
         ("--ca-file", args.ca_file.clone()),
@@ -120,6 +139,10 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         }
     }
     command.args([
+        "--gateway",
+        args.gateway.argument(),
+        "--server-port",
+        &args.server_port.to_string(),
         "--upload-batch-size",
         &args.upload_batch_size.to_string(),
         "--server-os",
@@ -146,6 +169,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
     ]);
     for (flag, set) in [
         ("--save-password", args.save_password),
+        ("--save-server-password", args.save_server_password),
         ("--no-keyring", args.no_keyring),
         ("--insecure", args.insecure),
     ] {
@@ -170,7 +194,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         let child = crate::child_process::spawn(&command, &input, &log, 0x08000000 | 0x00000200)
             .context("Cannot start managed bridge")?;
         drop(input);
-        writeln!(password_pipe, "{}", serde_json::to_string(&password)?)?;
+        writeln!(password_pipe, "{}", handoff)?;
         child
     };
     #[cfg(unix)]
@@ -185,7 +209,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         writeln!(
             child.stdin.take().context("No child input pipe")?,
             "{}",
-            serde_json::to_string(&password)?
+            handoff
         )?;
         child
     };

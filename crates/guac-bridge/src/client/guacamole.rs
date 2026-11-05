@@ -24,6 +24,7 @@ pub(super) struct Session {
     pub http: reqwest::Client,
     pub token: String,
     pub username: String,
+    pub server_secret: Option<(String, String)>,
 }
 impl Destination {
     pub(super) fn parse(args: &BridgeOptions) -> Result<Self> {
@@ -71,28 +72,7 @@ impl Destination {
         } = self;
         let username = crate::credentials::username(args)?;
         let password = crate::credentials::password(args, &username)?;
-        let mut http = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(args.connect_timeout))
-            .timeout(Duration::from_secs(args.connect_timeout));
-        let mut roots = rustls::RootCertStore::empty();
-        for cert in rustls_native_certs::load_native_certs().certs {
-            let _ = roots.add(cert);
-        }
-        if let Some(path) = &args.ca_file {
-            let pem = std::fs::read(path)?;
-            for cert in rustls_pemfile::certs(&mut &pem[..]) {
-                roots.add(cert?)?;
-            }
-            for cert in reqwest::Certificate::from_pem_bundle(&pem)? {
-                http = http.add_root_certificate(cert);
-            }
-        }
-        if args.insecure {
-            eprintln!("\x1b[33mTLS verification disabled by --insecure\x1b[0m");
-            http = http.danger_accept_invalid_certs(true);
-        }
-        let http = http.build()?;
+        let (http, tls) = super::tls::clients(args, None)?;
         let response = http
             .post(base.join("api/tokens")?)
             .form(&[
@@ -145,13 +125,6 @@ impl Destination {
         request
             .headers_mut()
             .insert("Origin", base.origin().ascii_serialization().parse()?);
-        let mut tls = rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-        if args.insecure {
-            tls.dangerous()
-                .set_certificate_verifier(Arc::new(InsecureVerifier));
-        }
         let (socket, _) = tokio::time::timeout(Duration::from_secs(args.connect_timeout), async {
             let stream = crate::proxy::connect(&ws_url).await?;
             tokio_tungstenite::client_async_tls_with_config(
@@ -172,6 +145,7 @@ impl Destination {
             http,
             token,
             username,
+            server_secret: None,
         })
     }
 
@@ -306,51 +280,5 @@ mod refresh_tests {
             );
             server.await.unwrap();
         }
-    }
-}
-
-#[derive(Debug)]
-struct InsecureVerifier;
-impl rustls::client::danger::ServerCertVerifier for InsecureVerifier {
-    fn verify_server_cert(
-        &self,
-        _: &rustls::pki_types::CertificateDer<'_>,
-        _: &[rustls::pki_types::CertificateDer<'_>],
-        _: &rustls::pki_types::ServerName<'_>,
-        _: &[u8],
-        _: rustls::pki_types::UnixTime,
-    ) -> std::result::Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
-    }
-    fn verify_tls12_signature(
-        &self,
-        m: &[u8],
-        c: &rustls::pki_types::CertificateDer<'_>,
-        s: &rustls::DigitallySignedStruct,
-    ) -> std::result::Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls12_signature(
-            m,
-            c,
-            s,
-            &rustls::crypto::ring::default_provider().signature_verification_algorithms,
-        )
-    }
-    fn verify_tls13_signature(
-        &self,
-        m: &[u8],
-        c: &rustls::pki_types::CertificateDer<'_>,
-        s: &rustls::DigitallySignedStruct,
-    ) -> std::result::Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
-        rustls::crypto::verify_tls13_signature(
-            m,
-            c,
-            s,
-            &rustls::crypto::ring::default_provider().signature_verification_algorithms,
-        )
-    }
-    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        rustls::crypto::ring::default_provider()
-            .signature_verification_algorithms
-            .supported_schemes()
     }
 }

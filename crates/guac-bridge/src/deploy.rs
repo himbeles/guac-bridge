@@ -83,7 +83,11 @@ fn powershell_quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "''"))
 }
 fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
-    let bytes = agent(args)?;
+    let bytes = if args.server_command.is_some() {
+        &[][..]
+    } else {
+        agent(args)?
+    };
     let hash = format!("{:x}", Sha256::digest(bytes));
     let mut options = format!(
         "--target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",

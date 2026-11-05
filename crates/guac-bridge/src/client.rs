@@ -20,7 +20,9 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_tungstenite::tungstenite::Message;
+mod fortigate;
 mod guacamole;
+mod tls;
 
 struct Channel {
     queue: mpsc::Sender<Frame>,
@@ -29,6 +31,7 @@ struct Channel {
 type Channels = Arc<Mutex<HashMap<u32, Channel>>>;
 type Failure = watch::Sender<Option<String>>;
 struct Acks {
+    gateway: crate::options::Gateway,
     slots: Arc<Semaphore>,
     pending: Mutex<VecDeque<Instant>>,
     window: usize,
@@ -188,6 +191,16 @@ async fn raw_input(
     tx: &mpsc::Sender<Message>,
     timeout: Duration,
 ) -> Result<()> {
+    if acks.gateway == crate::options::Gateway::Fortigate {
+        // hterm has no Guacamole delivery ACK. Keep the bounded writer queue and
+        // rely on remote bootstrap receipts / helper ACKs, never synthetic gateway ACKs.
+        for part in bytes.chunks(chunk) {
+            let value = std::str::from_utf8(part)
+                .context("FortiGate Windows carrier requires printable input")?;
+            tokio::time::timeout(timeout, tx.send(fortigate::instruction("str", value))).await??;
+        }
+        return Ok(());
+    }
     for part in bytes.chunks(chunk) {
         tokio::time::timeout(timeout, acks.slots.clone().acquire_owned())
             .await??
@@ -198,6 +211,9 @@ async fn raw_input(
     Ok(())
 }
 async fn drain(acks: &Acks, timeout: Duration) -> Result<()> {
+    if acks.gateway == crate::options::Gateway::Fortigate {
+        return Ok(());
+    }
     let permit = tokio::time::timeout(
         timeout,
         acks.slots.clone().acquire_many_owned(acks.window as u32),
@@ -358,7 +374,7 @@ async fn input_sender(
             }
             reliable_send(&bytes, &reliable, &acks, &out, &args, printable).await?;
         } else {
-            raw_input(&bytes,chunk,&acks,&out,timeout).await.context("Guacamole terminal input stopped progressing; reduce --input-window or increase --connect-timeout for a slow link")?;
+            raw_input(&bytes,chunk,&acks,&out,timeout).await.context("Gateway terminal input stopped progressing; increase --connect-timeout for a slow link")?;
         }
         if let Some(done) = done {
             if shutdown {
@@ -541,7 +557,18 @@ async fn benchmark_control(port: u16) -> Result<()> {
 
 pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
     let startup_guard = crate::maintenance::startup_guard()?;
-    let destination = guacamole::Destination::parse(&args)?;
+    let mut resolved = (*args).clone();
+    let is_fortigate = args.gateway == crate::options::Gateway::Fortigate;
+    if is_fortigate {
+        resolved.server_user = Some(crate::credentials::server_username(&args)?);
+    }
+    let args = Arc::new(resolved);
+    let destination = if is_fortigate {
+        fortigate::base(&args)?;
+        None
+    } else {
+        Some(guacamole::Destination::parse(&args)?)
+    };
     #[cfg(unix)]
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     #[cfg(windows)]
@@ -559,11 +586,17 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         http,
         token,
         username,
-    } = destination.connect(&args).await?;
+        server_secret,
+    } = if let Some(destination) = &destination {
+        destination.connect(&args).await?
+    } else {
+        fortigate::connect(&args).await?
+    };
     let (mut sink, mut stream) = socket.split();
     let (out, mut outbound) = mpsc::channel::<Message>(128);
     let (input, inputs) = mpsc::channel(64);
     let acks = Arc::new(Acks {
+        gateway: args.gateway,
         slots: Arc::new(Semaphore::new(args.input_window)),
         pending: Mutex::new(VecDeque::new()),
         window: args.input_window,
@@ -613,6 +646,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         closing.clone(),
     );
     tasks.push(spawn_guard(async move {
+        let mut fortigate_decoder=fortigate::Decoder::default();
         let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started,reliable:&read_reliable};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
         let mut heartbeat=Instant::now();let mut tick=tokio::time::interval(Duration::from_secs(1));
         loop {
@@ -624,8 +658,27 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
                     ensure!(!timed_out,"Guacamole input acknowledgement timed out while {}",if read_started.load(Ordering::Relaxed){"forwarding data"}else{*read_phase.lock().unwrap()});
                 },
                 message=stream.next()=>{
-                    let Some(message)=message else {bail!("Guacamole tunnel closed");};
+                    let Some(message)=message else {bail!("Gateway terminal closed");};
                     let message=message.map_err(|_|anyhow!("WebSocket read failed"))?;
+                    if is_fortigate {
+                        let bytes = match message {
+                            Message::Text(text) => text.as_bytes().to_vec(),
+                            Message::Binary(bytes) => bytes.to_vec(),
+                            Message::Ping(bytes) => { read_out.send(Message::Pong(bytes)).await?; continue; },
+                            Message::Close(_) => bail!("FortiGate terminal closed"),
+                            _ => continue,
+                        };
+                        read_synced.notify_one();
+                        for event in fortigate_decoder.feed(&bytes)? {
+                            match event {
+                                fortigate::Output::Bootstrap(data) => bootstrap_bytes(&mut boot_buffer,&data,&read_nonce,&read_args,&read_phase,&boot_tx)?,
+                                fortigate::Output::Data(data) => { if frames.feed(&data)? { heartbeat=Instant::now(); } },
+                                fortigate::Output::Fatal(data) => { remote_error.extend(data); ensure!(remote_error.len()<=8192,"Remote helper fatal report exceeds limit"); },
+                                fortigate::Output::FatalEnd => bail!("Remote helper failed: {}",String::from_utf8_lossy(&remote_error).escape_debug()),
+                            }
+                        }
+                        continue;
+                    }
                     match message {
                         Message::Ping(bytes)=>{read_out.send(Message::Pong(bytes)).await?;continue;},
                         Message::Close(reason)=>bail!("Guacamole WebSocket closed: {reason:?}"),
@@ -702,10 +755,12 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         let startup=async {
             tokio::time::timeout(Duration::from_secs(args.connect_timeout),synced.notified()).await?;
             tokio::time::sleep(Duration::from_secs_f64(args.startup_delay)).await;
+    if !is_fortigate {
             acks.slots.clone().acquire_owned().await?.forget();
             acks.pending.lock().unwrap().push_back(Instant::now());
             ws_send(&out,&["pipe","0","text/plain","STDIN"]).await?;
             drain(&acks,Duration::from_secs(args.connect_timeout)).await?;
+            }
             let is_windows=args.server_os=="windows";
             windows.store(is_windows,Ordering::Relaxed);
             let mut deploy_args=(*args).clone();
@@ -789,6 +844,9 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
             },
         }
 
+        if args.save_server_password && let Some((user,password))=&server_secret {
+            crate::credentials::save_server(&args,user,password)?;
+        }
         let port=listener.local_addr()?.port();
         let (stop_tx,mut stop_rx)=mpsc::channel(1);
         let usage=Arc::new(crate::usage::Usage::default());
@@ -802,7 +860,9 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         let refresh=async {
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
-                guacamole::refresh_once(&http, destination.refresh_url()?, &token).await?;
+                if let Some(destination) = &destination {
+                    guacamole::refresh_once(&http, destination.refresh_url()?, &token).await?;
+                } else { fortigate::refresh(&http, &args).await?; }
             }
             #[allow(unreachable_code)] Ok::<(),anyhow::Error>(())
         };
@@ -812,7 +872,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
                 _=stop_rx.recv(),if !args.benchmark_control=>break,
                 result=&mut control=>{result?;break;},
                 _=failed.changed()=>bail!("{}",failed.borrow().as_deref().unwrap_or("Bridge failed")),
-                result=&mut refresh,if destination.is_connection()=>{result?;break;},
+                result=&mut refresh,if destination.as_ref().is_none_or(|d| d.is_connection())=>{result?;break;},
                 accepted=listener.accept()=>{
                     let (stream,_)=accepted?;
                     stream.set_nodelay(true)?;
