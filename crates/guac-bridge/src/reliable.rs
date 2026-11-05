@@ -130,6 +130,9 @@ impl Receiver {
     pub fn reject_armor(&mut self) {
         self.rejected += 1;
         self.dirty = true;
+        if crate::diagnostics::enabled() {
+            crate::diagnostics::event(&format!("reliable rx rejected armor: {}", self.status()));
+        }
     }
     fn finish(&mut self, decoder: &mut crate::Decoder) -> Result<Vec<crate::Frame>> {
         let mut frames = Vec::new();
@@ -152,6 +155,14 @@ impl Receiver {
                     == u32::from_be_bytes(raw[HEADER + length..].try_into()?)
             {
                 let sequence = u64::from_be_bytes(raw[3..11].try_into()?);
+                if crate::diagnostics::enabled() {
+                    crate::diagnostics::event(&format!(
+                        "reliable rx record={sequence} bytes={length} next={} reordered={} rejected={}",
+                        self.next,
+                        self.pending.len(),
+                        self.rejected
+                    ));
+                }
                 if sequence >= self.next && sequence < self.next.saturating_add(MAX_WINDOW as u64) {
                     self.pending.entry(sequence).or_insert(raw);
                     while let Some(data) = self.pending.remove(&self.next) {
@@ -171,6 +182,14 @@ impl Receiver {
                 // Retransmissions older than next are ACKed but never delivered twice.
             } else {
                 self.rejected += 1;
+                if crate::diagnostics::enabled() {
+                    crate::diagnostics::event(&format!(
+                        "reliable rx rejected record bytes={} next={} rejected={}",
+                        raw.len(),
+                        self.next,
+                        self.rejected
+                    ));
+                }
             }
         }
         self.record.clear();
@@ -317,6 +336,15 @@ impl Sender {
                 fast: false,
             },
         );
+        if crate::diagnostics::enabled() {
+            crate::diagnostics::event(&format!(
+                "reliable tx record={} bytes={} base={} pending={}",
+                self.next,
+                data.len(),
+                self.base,
+                self.pending.len()
+            ));
+        }
         self.next = self
             .next
             .checked_add(1)
@@ -372,10 +400,19 @@ impl Sender {
     }
     pub fn due(&mut self, now: Instant) -> Result<Vec<Arc<[u8]>>> {
         let mut due = Vec::new();
+        let pending = self.pending.len();
         for (&seq, packet) in &mut self.pending {
             if now.duration_since(packet.first) > self.timeout {
                 bail!(
-                    "Reliable input delivery stalled at record {seq}; try --input-window 4 (then 2), --window 2; collect client/server debug logs"
+                    "Reliable delivery stalled at record {seq}: bytes={} age_ms={} attempts={} base={} next={} pending={} rejected={} invalid_acks={}; collect client/server debug logs",
+                    packet.wire.len(),
+                    now.duration_since(packet.first).as_millis(),
+                    packet.retries + 1,
+                    self.base,
+                    self.next,
+                    pending,
+                    self.rejected,
+                    self.bad_acks
                 );
             }
             if packet.fast
@@ -385,6 +422,14 @@ impl Sender {
                 packet.sent = now;
                 packet.retries += 1;
                 self.retries += 1;
+                if crate::diagnostics::enabled() {
+                    crate::diagnostics::event(&format!(
+                        "reliable retry record={seq} attempt={} age_ms={} bytes={}",
+                        packet.retries + 1,
+                        now.duration_since(packet.first).as_millis(),
+                        packet.wire.len()
+                    ));
+                }
                 due.push(packet.wire.clone());
             }
         }
@@ -548,12 +593,19 @@ mod tests {
         tx.ack(&ack, now).unwrap();
         assert!(!tx.idle());
         assert!(tx.warning(now).unwrap().contains("invalid_acks=1"));
-        assert!(
-            tx.due(now + Duration::from_secs(3))
-                .unwrap_err()
-                .to_string()
-                .contains("--input-window")
-        );
+        let error = tx
+            .due(now + Duration::from_secs(3))
+            .unwrap_err()
+            .to_string();
+        for expected in [
+            "record 1",
+            "age_ms=3000",
+            "attempts=1",
+            "pending=1",
+            "invalid_acks=1",
+        ] {
+            assert!(error.contains(expected), "{error}");
+        }
     }
     #[test]
     fn lost_ack_does_not_duplicate_application_delivery() {

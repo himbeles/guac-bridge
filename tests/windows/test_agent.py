@@ -108,7 +108,7 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
                 rb"\x1b\]482202;2;GBERR:([A-Za-z0-9+/=]+)(?:\x07|\x1b\\)", data
             )
             message = b"".join(base64.b64decode(chunk) for chunk in chunks if chunk != b"END")
-            self.assertIn(b"Invalid or duplicate channel ID", message)
+            self.assertIn(b"Invalid channel ID", message)
             self.assertIn(b"Recent remote events:", message)
             self.assertEqual(await asyncio.to_thread(t.wait), 1)
         finally:

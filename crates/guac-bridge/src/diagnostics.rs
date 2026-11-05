@@ -111,7 +111,20 @@ pub fn event(message: &str) {
     }
 }
 #[inline]
+pub fn enabled() -> bool {
+    ENABLED.load(Ordering::Relaxed)
+}
+#[inline]
 pub fn frame(direction: &str, frame: &Frame) {
+    if enabled() && matches!(frame.kind, Kind::InputAck | Kind::OutputAck) {
+        if let Ok(ack) = crate::reliable::Ack::decode(&frame.data) {
+            event(&format!(
+                "{direction} kind={:?} next={} mask={:016x} rejected={}",
+                frame.kind, ack.next, ack.mask, ack.rejected
+            ));
+        }
+        return;
+    }
     // Hot path: no allocation, mutex, file I/O, payload scanning, or extra wire bytes.
     if matches!(frame.kind, Kind::Data | Kind::Credit | Kind::InputAck) {
         if ENABLED.load(Ordering::Relaxed) {
