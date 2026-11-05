@@ -27,3 +27,6 @@ release trigger. Beta releases keep the website on the latest stable downloads.
 The deployment action enables GitHub Pages with GitHub Actions as its source.
 If repository policy blocks that setup, select **GitHub Actions** under
 **Settings → Pages → Build and deployment → Source**.
+
+To link the deployed site on GitHub, open the repository's **About** gear and set
+**Website** to `https://himbeles.github.io/guac-bridge/`.

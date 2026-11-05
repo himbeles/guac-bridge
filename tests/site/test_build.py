@@ -25,7 +25,7 @@ class WebsiteTests(unittest.TestCase):
         release = self.release()
         page = website.render(release)
         self.assertNotIn("@@", page)
-        self.assertEqual(page.count('class="download"'), 4)
+        self.assertEqual(page.count('class="download"'), 3)
         for asset in release["assets"]:
             self.assertIn('href="' + asset["url"] + '"', page)
 

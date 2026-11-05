@@ -44,7 +44,6 @@ fn archive_suffix(wheel: Option<&str>) -> Result<&'static str> {
         ("windows", "x86_64") => Ok("windows-x86_64.zip"),
         ("linux", "x86_64") => Ok("linux-x86_64.tar.gz"),
         ("macos", "aarch64") => Ok("macos-aarch64.tar.gz"),
-        ("macos", "x86_64") => Ok("macos-x86_64.tar.gz"),
         _ => bail!("Unsupported native archive platform"),
     }
 }
@@ -172,7 +171,6 @@ mod tests {
             ("win_amd64", "windows-x86_64.zip"),
             ("manylinux_2_28_x86_64", "linux-x86_64.tar.gz"),
             ("macosx_11_0_arm64", "macos-aarch64.tar.gz"),
-            ("macosx_10_13_x86_64", "macos-x86_64.tar.gz"),
         ] {
             assert_eq!(
                 archive_suffix(Some(&format!("guac_bridge-5.0.2-py3-none-{tag}.whl"))).unwrap(),

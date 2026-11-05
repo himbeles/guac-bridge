@@ -10,7 +10,6 @@ REPOSITORY = "https://github.com/himbeles/guac-bridge"
 DOWNLOADS = (
     ("windows-x86_64-setup.exe", "Windows", "x64 · Installer"),
     ("macos-aarch64.tar.gz", "macOS", "Apple Silicon"),
-    ("macos-x86_64.tar.gz", "macOS", "Intel"),
     ("linux-x86_64.tar.gz", "Linux", "x64 · Archive"),
 )
 

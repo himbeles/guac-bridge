@@ -229,20 +229,10 @@ jobs:
         with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 
   macos:
-    name: macOS ${{ matrix.arch }} client and Python package
+    name: macOS Apple Silicon client and Python package
     needs: [plan, agent, windows-agent]
     if: needs.plan.outputs.beta != 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-15
-            arch: aarch64
-            target: aarch64-apple-darwin
-          - os: macos-15-intel
-            arch: x86_64
-            target: x86_64-apple-darwin
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-15
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
@@ -251,7 +241,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {components: rustfmt, clippy}
       - uses: Swatinem/rust-cache@v2
-        with: {key: "macos-${{ matrix.arch }}"}
+        with: {key: macos-aarch64}
       - uses: actions/download-artifact@v8
         with: {name: linux-agent, path: crates/guac-bridge/assets}
       - uses: actions/download-artifact@v8
@@ -261,7 +251,7 @@ jobs:
       - run: python -m pip install maturin uv
       - name: Check native host architecture
         run: |
-          rustc -vV | grep 'host: ${{ matrix.target }}'
+          rustc -vV | grep 'host: aarch64-apple-darwin'
       - run: cargo xtask check --prepared
       - run: cargo xtask python --prepared
       - name: Test installed client and archive
@@ -275,12 +265,12 @@ jobs:
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           cargo xtask portable --wheel dist/*.whl
           mkdir -p "$RUNNER_TEMP/portable"
-          tar -xzf dist/guac-bridge-*-macos-${{ matrix.arch }}.tar.gz -C "$RUNNER_TEMP/portable"
+          tar -xzf dist/guac-bridge-*-macos-aarch64.tar.gz -C "$RUNNER_TEMP/portable"
           "$RUNNER_TEMP/portable/guac-bridge" --version
           "$RUNNER_TEMP/portable/guac-bridge" tcp --help
           file "$RUNNER_TEMP/portable/guac-bridge" | grep 'Mach-O'
       - uses: actions/upload-artifact@v7
-        with: {name: "macos-${{ matrix.arch }}-distributions", path: dist/, if-no-files-found: error}
+        with: {name: macos-aarch64-distributions, path: dist/, if-no-files-found: error}
 
   publish:
     name: Publish to PyPI

@@ -6,7 +6,7 @@ applications: SSH, web clients, model APIs and Remote Desktop.
 ## Install
 
 - **Windows x86-64:** run the installer from [Releases](https://github.com/himbeles/guac-bridge/releases).
-- **macOS (Apple Silicon or Intel) / Linux x86-64:** extract the native release archive and put `guac-bridge` on your `PATH`.
+- **macOS (Apple Silicon) / Linux x86-64:** extract the native release archive and put `guac-bridge` on your `PATH`.
 - **Python/uv:** install the same native CLI with:
 
 ```shell
