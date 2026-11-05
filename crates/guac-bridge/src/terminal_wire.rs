@@ -59,6 +59,7 @@ impl ReliableOutput {
             self.pending.len() < crate::reliable::MAX_WINDOW,
             "Reliable output queue exceeds limit"
         );
+        crate::diagnostics::frame("tx", frame);
         self.pending.push_back(frame.clone());
         self.flush(now)
     }

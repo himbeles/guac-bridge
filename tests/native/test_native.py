@@ -314,10 +314,14 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             data = log.read_text()
             self.assertIn('kind=Opened', data)
             self.assertIn('tx_bytes=', data)
+            self.assertIn('next=', data)
             self.assertNotIn(secret.decode(), data)
             self.assertNotIn('kind=Data', data)
             self.assertNotIn('kind=Credit', data)
             self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+        self.assertIn('reliable tx record=', local_log.read_text())
+        self.assertIn('kind=InputAck next=', local_log.read_text())
+        self.assertIn('reliable rx record=', remote_log.read_text())
 
     async def test_remote_debug_log_setup_error_reaches_client(self):
         child = await self.child('--port', '0', '--server-debug-log',
