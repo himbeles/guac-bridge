@@ -78,6 +78,7 @@ fn identity(args: &BridgeOptions) -> String {
             serde_json::json!(args.gateway),
             serde_json::json!(args.server_host),
             serde_json::json!(args.server_port),
+            serde_json::json!("output-reliable-v1"),
         ]);
     }
     format!("{:x}", Sha256::digest(data.to_string().as_bytes()))

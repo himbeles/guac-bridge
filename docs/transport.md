@@ -30,3 +30,16 @@ The running process retains its original executable and settings.
 
 See [Connections](connections.md) for interfaces and helper deployment, and
 [Transport debugging](transport-debugging.md) for collecting client and server logs.
+
+## FortiGate output integrity
+
+FortiGate terminal output also uses the shared reliable record protocol: sequence
+numbers, CRC32, selective acknowledgements, bounded history, retries and duplicate
+suppression. Records carry complete logical frames before terminal OSC/Base64
+chunking. Missing, duplicated or altered terminal chunks cannot be delivered as
+unchecked TCP bytes; the receiver requests replay of the damaged record.
+
+Output acknowledgements travel through reliable input. Input acknowledgements
+are independent, checksummed feedback messages that do not themselves require
+output acknowledgements, avoiding an acknowledgement loop. The existing Guacamole
+output carrier stays unchanged. Client and helper must come from the same build.

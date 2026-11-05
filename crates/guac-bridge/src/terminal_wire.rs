@@ -29,6 +29,60 @@ pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
         bytes
     })
 }
+/// FortiGate output uses the existing checksummed, sequenced record protocol.
+/// Input acknowledgements bypass this history: acknowledging an output ACK must
+/// not recursively require another output acknowledgement.
+pub struct ReliableOutput {
+    sender: crate::reliable::Sender,
+    pending: std::collections::VecDeque<Frame>,
+}
+impl ReliableOutput {
+    pub fn new(timeout: std::time::Duration) -> Self {
+        Self {
+            sender: crate::reliable::Sender::new(crate::reliable::MAX_WINDOW, timeout),
+            pending: Default::default(),
+        }
+    }
+    pub fn has_capacity(&self) -> bool {
+        self.pending.is_empty() && self.sender.has_capacity()
+    }
+    pub fn ack(&mut self, bytes: &[u8], now: std::time::Instant) -> Result<()> {
+        self.sender.ack(bytes, now)
+    }
+    pub fn send(&mut self, frame: &Frame, now: std::time::Instant) -> Result<Vec<u8>> {
+        if frame.kind == crate::Kind::InputAck {
+            return Ok(osc_bytes("GBIA:", &frame.data));
+        }
+        ensure!(
+            self.pending.len() < crate::reliable::MAX_WINDOW,
+            "Reliable output queue exceeds limit"
+        );
+        self.pending.push_back(frame.clone());
+        self.flush(now)
+    }
+    pub fn flush(&mut self, now: std::time::Instant) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        while self.sender.has_capacity() {
+            let Some(frame) = self.pending.pop_front() else {
+                break;
+            };
+            let wire = self
+                .sender
+                .queue(&crate::encode_plain(&frame)?, now)?
+                .expect("Checked output capacity");
+            bytes.extend(osc_bytes("GBR1:", &wire));
+        }
+        Ok(bytes)
+    }
+    pub fn retry(&mut self, now: std::time::Instant) -> Result<Vec<u8>> {
+        let mut bytes = self.flush(now)?;
+        for wire in self.sender.due(now)? {
+            bytes.extend(osc_bytes("GBR1:", &wire));
+        }
+        Ok(bytes)
+    }
+}
+
 #[derive(Default)]
 pub struct InputDecoder {
     binary: Decoder,
@@ -110,6 +164,45 @@ impl InputDecoder {
 mod tests {
     use super::*;
     use crate::Kind;
+    #[test]
+    fn output_feedback_bypasses_full_history_without_ack_loop() {
+        let now = std::time::Instant::now();
+        let mut output = ReliableOutput::new(std::time::Duration::from_secs(10));
+        for _ in 0..crate::reliable::MAX_WINDOW {
+            assert!(
+                !output
+                    .send(&Frame::control(Kind::Heartbeat, 0), now)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert!(!output.has_capacity());
+        let ack = crate::reliable::Ack {
+            next: 1,
+            mask: 0,
+            rejected: 0,
+        }
+        .encode();
+        let feedback = output
+            .send(&Frame::payload(Kind::InputAck, 0, ack), now)
+            .unwrap();
+        assert!(feedback.windows(5).any(|s| s == b"GBIA:"));
+        output
+            .ack(
+                &crate::reliable::Ack {
+                    next: 65,
+                    mask: 0,
+                    rejected: 0,
+                }
+                .encode(),
+                now,
+            )
+            .unwrap();
+        assert!(
+            output.has_capacity(),
+            "Input feedback must not consume reliable output history"
+        );
+    }
     #[test]
     fn armored_input_survives_crlf_and_all_bytes() {
         let frame = Frame::payload(Kind::Data, 1, (0..65536).map(|n| (n % 256) as u8).collect());

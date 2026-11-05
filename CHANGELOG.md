@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.0.0-beta.2
+
+- Protect FortiGate helper output with the same CRC32, sequence, selective acknowledgement, retry and duplicate-suppression protocol already used for input. Validate full records before forwarding their bytes to SSH or HTTP clients.
+- Recover missing, repeated and altered terminal output chunks without poisoning the binary frame decoder. Fail closed with a delivery error when recovery times out.
+- Keep feedback acknowledgements outside reliable output history to prevent acknowledgement loops, and preserve bounded queues and the existing Guacamole output path.
+- Add real-helper simulator tests for mid-record loss, duplication, corruption, lost input acknowledgements and permanent output loss. Beta releases remain Windows-installer-only.
+
 ## 5.0.0-beta.1
 
 - Add an experimental FortiGate SSL-VPN web-SSH gateway for both SSH and LLM bridges, with portal password login, scoped session cookies, hterm custom SSH sessions and the existing Windows printable helper carrier. Existing commands continue to default to Guacamole.

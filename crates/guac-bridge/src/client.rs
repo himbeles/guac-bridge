@@ -60,6 +60,9 @@ impl ReceivedFrames<'_> {
             .decoder
             .feed(data)
             .with_context(|| format!("Helper output decode failed: {}", self.decoder.status()))?;
+        self.accept(frames)
+    }
+    fn accept(&mut self, frames: Vec<Frame>) -> Result<bool> {
         let any = !frames.is_empty();
         for frame in frames {
             crate::diagnostics::frame("rx", &frame);
@@ -80,6 +83,12 @@ impl ReceivedFrames<'_> {
                         meta["input_protocol"] == "reliable-v1",
                         "Helper must support reliable-v1 input; rebuild client and helper from the same release"
                     );
+                    if self.args.gateway == crate::options::Gateway::Fortigate {
+                        ensure!(
+                            meta["output_protocol"] == "reliable-v1",
+                            "FortiGate requires reliable helper output"
+                        );
+                    }
                     self.started.store(true, Ordering::Relaxed);
                     self.ready.notify_one();
                 }
@@ -645,8 +654,11 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         synced.clone(),
         closing.clone(),
     );
+    let read_input = input.clone();
     tasks.push(spawn_guard(async move {
         let mut fortigate_decoder=fortigate::Decoder::default();
+        let mut output_records=crate::reliable::Receiver::default();
+        let mut output_decoder=Decoder::default();
         let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started,reliable:&read_reliable};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
         let mut heartbeat=Instant::now();let mut tick=tokio::time::interval(Duration::from_secs(1));
         loop {
@@ -672,10 +684,25 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
                         for event in fortigate_decoder.feed(&bytes)? {
                             match event {
                                 fortigate::Output::Bootstrap(data) => bootstrap_bytes(&mut boot_buffer,&data,&read_nonce,&read_args,&read_phase,&boot_tx)?,
-                                fortigate::Output::Data(data) => { if frames.feed(&data)? { heartbeat=Instant::now(); } },
+                                fortigate::Output::Data(data) => {
+                                    let decoded=output_records.feed(&data,&mut output_decoder).context("Reliable helper output decode failed")?;
+                                    if frames.accept(decoded)? { heartbeat=Instant::now(); }
+                                },
+                                fortigate::Output::InputAck(data) => {
+                                    read_reliable.sender.lock().unwrap().ack(&data,Instant::now())?;
+                                    read_reliable.changed.notify_one();
+                                },
+                                fortigate::Output::Corrupt => output_records.reject_armor(),
+                                fortigate::Output::Legacy => bail!("FortiGate requires the matching helper with reliable output"),
                                 fortigate::Output::Fatal(data) => { remote_error.extend(data); ensure!(remote_error.len()<=8192,"Remote helper fatal report exceeds limit"); },
                                 fortigate::Output::FatalEnd => bail!("Remote helper failed: {}",String::from_utf8_lossy(&remote_error).escape_debug()),
                             }
+                        }
+                        if let Some(ack)=output_records.take_ack() {
+                            // Do not block the reader behind a full input queue: it must keep
+                            // receiving input ACKs. A dropped output ACK is recovered by replay.
+                            let event=Input::Event(Frame::payload(Kind::OutputAck,0,ack.encode()));
+                            if read_input.try_send(event).is_err() && read_input.is_closed() { bail!("Helper input stopped"); }
                         }
                         continue;
                     }
