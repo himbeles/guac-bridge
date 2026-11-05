@@ -28,14 +28,34 @@ fn wheel_version(version: &str) -> Result<String> {
     Ok(format!("{base}{phase}{number}"))
 }
 
+fn archive_suffix(wheel: Option<&str>) -> Result<&'static str> {
+    if let Some(name) = wheel {
+        return match name {
+            n if n.ends_with("-win_amd64.whl") => Ok("windows-x86_64.zip"),
+            n if n.contains("-manylinux") && n.ends_with("_x86_64.whl") => {
+                Ok("linux-x86_64.tar.gz")
+            }
+            n if n.contains("-macosx_") && n.ends_with("_arm64.whl") => Ok("macos-aarch64.tar.gz"),
+            n if n.contains("-macosx_") && n.ends_with("_x86_64.whl") => Ok("macos-x86_64.tar.gz"),
+            _ => bail!("Unsupported wheel platform: {name}"),
+        };
+    }
+    match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("windows", "x86_64") => Ok("windows-x86_64.zip"),
+        ("linux", "x86_64") => Ok("linux-x86_64.tar.gz"),
+        ("macos", "aarch64") => Ok("macos-aarch64.tar.gz"),
+        _ => bail!("Unsupported native archive platform"),
+    }
+}
+
 pub(crate) fn portable(
     project: &Project,
     binary: Option<&Path>,
     wheel: Option<&Path>,
 ) -> Result<()> {
-    let windows = wheel
-        .map(|p| p.to_string_lossy().contains("win_amd64"))
-        .unwrap_or(cfg!(windows));
+    let wheel_name = wheel.map(|p| p.to_string_lossy());
+    let suffix = archive_suffix(wheel_name.as_deref())?;
+    let windows = suffix.ends_with(".zip");
     let executable = if windows {
         "guac-bridge.exe"
     } else {
@@ -63,11 +83,6 @@ pub(crate) fn portable(
         ("README.md", fs::read(project.root.join("README.md"))?),
         ("LICENSE", fs::read(project.root.join("LICENSE"))?),
     ];
-    let suffix = if windows {
-        "windows-x86_64.zip"
-    } else {
-        "linux-x86_64.tar.gz"
-    };
     let output = project
         .dist()?
         .join(format!("guac-bridge-{}-{suffix}", project.version));
@@ -149,6 +164,26 @@ mod tests {
             writer.write_all(data).unwrap();
         }
         ZipArchive::new(writer.finish().unwrap()).unwrap()
+    }
+    #[test]
+    fn archive_platform_follows_wheel_instead_of_build_host() {
+        for (tag, suffix) in [
+            ("win_amd64", "windows-x86_64.zip"),
+            ("manylinux_2_28_x86_64", "linux-x86_64.tar.gz"),
+            ("macosx_11_0_arm64", "macos-aarch64.tar.gz"),
+        ] {
+            assert_eq!(
+                archive_suffix(Some(&format!("guac_bridge-5.0.2-py3-none-{tag}.whl"))).unwrap(),
+                suffix
+            );
+        }
+        assert!(archive_suffix(Some("guac_bridge-5.0.2-py3-none-any.whl")).is_err());
+        assert!(
+            archive_suffix(Some(
+                "guac_bridge-5.0.2-py3-none-macosx_11_0_universal2.whl"
+            ))
+            .is_err()
+        );
     }
     #[test]
     fn wheel_versions_match_maturin_prerelease_normalization() {
