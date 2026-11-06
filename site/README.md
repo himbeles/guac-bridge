@@ -2,6 +2,8 @@
 
 Edit `index.html` and `style.css` directly. The frog is the application's SVG logo.
 No JavaScript, framework or package installation is required.
+The theme follows the device color scheme. The root background fills iOS safe
+areas; content padding accounts for the notch and home indicator.
 
 `build.py` replaces the three `@@…@@` placeholders with the latest stable
 release's version, release URL and available native download links. Missing
