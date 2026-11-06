@@ -832,7 +832,7 @@ dependencies = [
 
 [[package]]
 name = "guac-bridge"
-version = "5.0.4"
+version = "5.0.5"
 dependencies = [
  "anyhow",
  "base64 0.22.1",

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Check license content in built wheels, source packages and portable archives."""
+import argparse
 from email.parser import BytesParser
 from pathlib import Path
-import sys
 import tarfile
 import zipfile
 
@@ -39,15 +39,29 @@ def check(path):
     print(f'{path.name}: MIT license and full third-party notices verified')
 
 
+def check_helper(path):
+    binary = path.read_bytes()
+    compressed = (ROOT / 'crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt.gz').read_bytes()
+    if compressed in binary or b'THIRD-PARTY SOFTWARE NOTICES' in binary:
+        raise ValueError(f'{path.name}: helper must exclude the embedded license report')
+    print(f'{path.name}: helper excludes the embedded license report')
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('archives', nargs='*')
+    parser.add_argument('--helper', action='append', type=Path, default=[])
+    args = parser.parse_args()
+    for helper in args.helper:
+        check_helper(helper)
     paths = []
-    for arg in sys.argv[1:]:
+    for arg in args.archives:
         path = Path(arg)
         if path.is_dir():
             paths.extend(p for p in path.iterdir() if p.name.endswith(('.whl', '.tar.gz', '.zip', '.crate')))
         else:
             paths.append(path)
-    if not paths:
+    if not paths and not args.helper:
         raise SystemExit('No distribution archives to check')
     for path in sorted(paths):
         check(path)

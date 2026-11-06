@@ -1,4 +1,4 @@
-//! License texts travel with standalone clients and deployed helpers.
+//! License texts accompany client distributions, covering their bundled helpers too.
 use std::io::Read;
 
 pub fn text() -> String {

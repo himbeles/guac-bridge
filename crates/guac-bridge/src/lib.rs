@@ -402,5 +402,6 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> i32 {
 #[cfg(all(feature = "client", windows))]
 mod child_process;
 
-/// Project and bundled third-party license information.
+/// Project and bundled third-party license information for client distributions.
+#[cfg(feature = "client")]
 pub mod licensing;

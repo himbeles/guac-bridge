@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.0.5
+
+- Remove the embedded license report and `--licenses` flag from server helpers. Build license viewing and its decompression dependency only into the client.
+- Keep helper notices in client packages, installers and source distributions. Include accompanying notices in standalone CI helper artifacts and verify that helper executables exclude the report.
+
 ## 5.0.4
 
 - Include project and third-party notices in standalone clients/helpers, portable archives, Python wheels/source packages and the Windows installer. Add CLI, helper, manager and tray license views.

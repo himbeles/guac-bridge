@@ -4512,7 +4512,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-- guac-bridge 5.0.4
+- guac-bridge 5.0.5
   Source: https://github.com/himbeles/guac-bridge
 
 MIT License

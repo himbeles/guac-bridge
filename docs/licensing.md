@@ -7,7 +7,9 @@ replace the licenses of dependencies or Microsoft redistributables.
 ## Where to find the terms
 
 - **CLI:** `guac-bridge licenses` prints the project license and third-party notices.
-  The deployed helper supports `--licenses` too; neither command connects to a gateway.
+  This command runs locally without a gateway connection.
+- **Helpers:** their notices accompany the client distributions. Deployment sends
+  the helper executable; license viewing is provided by the client.
 - **Windows manager and tray:** select **Licenses…** to open the same notices.
   Installed Microsoft package licenses and notices are included in this view.
 - **Native archives:** `LICENSE` and `THIRD-PARTY-NOTICES.txt` accompany the executable.
@@ -46,7 +48,7 @@ python scripts/licenses.py --check
 `cargo-about` resolves the locked dependency graph across all supported targets,
 uses reviewed SPDX choices from `licensing/about.toml`, and preserves component
 license texts. The script adds vendored C notices and the active Rust toolchain's
-`COPYRIGHT-library.html`, then compresses the report for embedding. Review the
+`COPYRIGHT-library.html`, then compresses the report for embedding in the client. Review the
 result and commit the report, compressed copy, packaged MIT license and
 `licensing/manifest.json` together. Ordinary source builds require neither Python
 nor cargo-about for license display.
