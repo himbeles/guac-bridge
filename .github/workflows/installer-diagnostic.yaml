@@ -1,0 +1,46 @@
+name: Published installer diagnostic
+on:
+  push:
+    branches: [diagnose/installer-v505]
+permissions:
+  contents: read
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
+    steps:
+      - name: Download and test the published installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/himbeles/guac-bridge/releases/download/v5.0.5/guac-bridge-5.0.5-windows-x86_64-setup.exe'
+          $installer = Join-Path $env:RUNNER_TEMP 'guac-bridge-5.0.5-setup.exe'
+          $dest = Join-Path $env:RUNNER_TEMP 'guac-bridge-installed'
+          $log = Join-Path $env:RUNNER_TEMP 'installer-diagnostic.log'
+          Invoke-WebRequest $url -OutFile $installer
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Downloaded bytes: $((Get-Item $installer).Length); SHA256: $hash"
+          if ($hash -ne 'db6a7e84ea984b56cfc642b324cd76c5f05cd164ac9283e83e6334e2f816eb47') { throw 'Published installer hash differs from the verified release artifact' }
+          $process = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=`"$dest`"", "/LOG=`"$log`"", '/MERGETASKS=!addtopath') -PassThru
+          if (!$process.WaitForExit(120000)) {
+            Get-Process | Where-Object { $_.MainWindowTitle } | Select-Object ProcessName, MainWindowTitle | Format-Table
+            $process.Kill()
+            throw 'Installer did not exit within 120 seconds'
+          }
+          if (Test-Path $log) { Get-Content $log }
+          if ($process.ExitCode -ne 0) { throw "Published installer exit code: $($process.ExitCode)" }
+          & "$dest/guac-bridge.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed to start' }
+          Write-Host 'Published installer completed successfully.'
+          $uninstall = Start-Process "$dest/unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw 'Diagnostic uninstall failed' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: installer-diagnostic-${{ matrix.os }}
+          path: ${{ runner.temp }}/installer-diagnostic.log
+          if-no-files-found: ignore
