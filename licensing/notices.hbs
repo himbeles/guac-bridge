@@ -16,7 +16,7 @@ been modified by Guac Bridge.
 Used by:
 {{#each used_by}}
 - {{crate.name}} {{crate.version}}
-  Source: https://crates.io/api/v1/crates/{{crate.name}}/{{crate.version}}/download
+  Source: {{#if crate.source}}https://crates.io/api/v1/crates/{{crate.name}}/{{crate.version}}/download{{else}}{{#if crate.repository}}{{crate.repository}}{{else}}https://github.com/himbeles/guac-bridge{{/if}}{{/if}}
 {{/each}}
 
 {{{text}}}

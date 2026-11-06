@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 5.0.4
 
 - Include project and third-party notices in standalone clients/helpers, portable archives, Python wheels/source packages and the Windows installer. Add CLI, helper, manager and tray license views.
 - Preserve the Microsoft runtime packages' original LICENSE and NOTICE files and verify license payloads in CI.

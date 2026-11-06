@@ -56,7 +56,7 @@ actual wheels, source distributions and portable archives and tests the installe
 Windows license payload. Unknown dependency licenses or missing Microsoft notices
 fail generation/build instead of silently omitting them.
 
-Published PyPI files are immutable. Existing v5.0.3 wheels carry the project MIT
-license but lack the additional dependency report; a subsequent software release
-is needed to distribute corrected wheel contents. Do not overwrite published
-archives or their checksums. The website can publish the notices independently.
+Published PyPI files are immutable. Releases starting with v5.0.4 carry the full
+notice report. Existing v5.0.3 wheels carry the project MIT license but lack the
+additional report; upgrade to v5.0.4 or newer for the complete packaged notices.
+The website also publishes the notices independently.

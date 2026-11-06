@@ -2,12 +2,12 @@
   "generator": "cargo-about 0.9.3",
   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
   "inputs": {
-    "Cargo.lock": "670243c3adbaee1824e010a63f279f802dcb1c6be660d4f88da44643bbddf220",
+    "Cargo.lock": "da17629fe354103a13e79eb39a993773046e5ec622036c74f4d8a0e77dcfbe25",
     "licensing/about.toml": "f3ed03e2851d79ecd7ebf21b97d9914f95c2ce86b3aa6f773145ccb737d68388",
-    "licensing/notices.hbs": "a44e3860a172e78a915d9b4293351efc541087025cc36e1e6e7cafc674e2187d",
+    "licensing/notices.hbs": "7ee290ed41d5eae8ecabc96e4f8ac26a15e6c80e31abe08f9b8711dd3650b0d9",
     "scripts/licenses.py": "bc9516d74600c8cbc2eb7ec1bd126bf59f415b8a9c311cdd7d69e649fdaca7c6",
     "LICENSE": "055050694a268efc96f0e2b30657f3d79e96d548bfa8081f33be4d7cdf048c55"
   },
-  "report_sha256": "a695e0c4d7597b67a83c120984dfa2ec0dcdc69522368d903a29a29978a29e19",
-  "compressed_sha256": "c5d94150e5e1c3e08475d77d99bcada5ccbfd93e8843a1cf61c9a3fc50c3f09b"
+  "report_sha256": "f369635cb338fa488c94c420903ce36ee154b9988f22778b8f1029e39e3d29bf",
+  "compressed_sha256": "8634d59477ae88fd142d6b10f0b2e8f434c745cc936e80f0cf48716d09880ccf"
 }

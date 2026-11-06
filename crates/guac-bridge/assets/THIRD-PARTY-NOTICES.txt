@@ -4512,8 +4512,8 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-- guac-bridge 5.0.3
-  Source: https://crates.io/api/v1/crates/guac-bridge/5.0.3/download
+- guac-bridge 5.0.4
+  Source: https://github.com/himbeles/guac-bridge
 
 MIT License
 
@@ -4543,7 +4543,7 @@ MIT License (MIT)
 
 Used by:
 - xtask 0.1.0
-  Source: https://crates.io/api/v1/crates/xtask/0.1.0/download
+  Source: https://github.com/himbeles/guac-bridge
 - windows-collections 0.100.0
   Source: https://crates.io/api/v1/crates/windows-collections/0.100.0/download
 - windows-core 0.100.0
