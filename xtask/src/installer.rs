@@ -226,18 +226,26 @@ fn redistribution_notices<R: std::io::Read + std::io::Seek>(
     use std::io::Read;
     let mut files = Vec::new();
     for kind in ["LICENSE", "NOTICE"] {
-        let index = (0..archive.len())
-            .find(|&i| {
-                archive.by_index(i).is_ok_and(|entry| {
-                    [kind.to_owned(), format!("{kind}.txt"), format!("{kind}.md")]
-                        .iter()
-                        .any(|name| entry.name().eq_ignore_ascii_case(name))
-                })
-            })
-            .with_context(|| format!("Missing Microsoft redistribution {kind}"))?;
-        let mut bytes = Vec::new();
-        archive.by_index(index)?.read_to_end(&mut bytes)?;
-        files.push((kind, bytes));
+        let mut found = None;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index)?;
+            let matches = {
+                let name = entry.name()?;
+                [kind.to_owned(), format!("{kind}.txt"), format!("{kind}.md")]
+                    .iter()
+                    .any(|candidate| name.eq_ignore_ascii_case(candidate))
+            };
+            if matches {
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes)?;
+                found = Some(bytes);
+                break;
+            }
+        }
+        files.push((
+            kind,
+            found.with_context(|| format!("Missing Microsoft redistribution {kind}"))?,
+        ));
     }
     Ok(files)
 }

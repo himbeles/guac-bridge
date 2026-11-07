@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Update the ZIP packaging dependency to 9.0.5 and handle fallible entry names when extracting native executables and Microsoft redistribution notices.
+
 ## 5.0.5
 
 - Remove the embedded license report and `--licenses` flag from server helpers. Build license viewing and its decompression dependency only into the client.

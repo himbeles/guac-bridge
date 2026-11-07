@@ -133,15 +133,16 @@ fn wheel_binary<R: Read + std::io::Seek>(
     let mut matches = Vec::new();
     for index in 0..archive.len() {
         let entry = archive.by_index(index)?;
-        let name = entry.name().to_ascii_lowercase();
+        let name = entry.name()?;
+        let lowercase = name.to_ascii_lowercase();
         ensure!(
             !windows
                 || ![".dll", ".msix", ".msixbundle"]
                     .iter()
-                    .any(|extension| name.ends_with(extension)),
+                    .any(|extension| lowercase.ends_with(extension)),
             "Portable wheels must use the shared UI runtime"
         );
-        if entry.name().ends_with(&suffix) {
+        if name.ends_with(&suffix) {
             matches.push(index);
         }
     }
