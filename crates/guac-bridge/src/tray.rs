@@ -65,6 +65,7 @@ mod windows {
     };
     const ICON: u32 = WM_APP + 1;
     const SHOW: u32 = WM_APP + 2;
+    const LICENSES: usize = 106;
     const OPEN: usize = 104;
     const EXIT: usize = 105;
     const STOP_ALL: usize = 102;
@@ -210,15 +211,18 @@ mod windows {
                     OPEN => {
                         PostMessageW(hwnd, SHOW, 0, 0);
                     }
+                    LICENSES => {
+                        if let Err(error) = crate::licensing::open() {
+                            message(&format!("Cannot open licenses: {error:#}"), true);
+                        }
+                    }
                     EXIT => {
                         DestroyWindow(hwnd);
                     }
                     STOP_ALL
                         if MessageBoxW(
                             hwnd,
-                            w!(
-                                "Stop all bridges? Active SSH sessions and LLM requests will disconnect."
-                            ),
+                            w!("Stop all bridges? All active connections will disconnect."),
                             w!("Guac Bridge"),
                             MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
                         ) == IDYES =>
@@ -244,6 +248,7 @@ mod windows {
                     let menu = CreatePopupMenu();
                     AppendMenuW(menu, MF_STRING, OPEN, w!("Open bridge manager"));
                     AppendMenuW(menu, MF_STRING, STOP_ALL, w!("Stop all bridges…"));
+                    AppendMenuW(menu, MF_STRING, LICENSES, w!("Licenses…"));
                     AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
                     AppendMenuW(
                         menu,

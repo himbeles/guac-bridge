@@ -17,12 +17,12 @@ Python/uv only distribute and launch the native executable.
 | `src/options.rs` | Bridge options, defaults and validation |
 | `src/client.rs` | Forwarding lifecycle, channels, backpressure and shutdown |
 | `src/client/guacamole.rs` | Guacamole destination, login and session refresh |
-| `src/client/fortigate.rs` | Experimental FortiGate portal login, hterm sessions and bounded OSC decoding |
+| `src/client/fortigate.rs` | FortiGate portal login, hterm sessions and bounded OSC decoding |
 | `src/client/tls.rs` | Shared gateway HTTP/TLS trust configuration |
 | `src/background.rs` | Authenticated registrations, inspection and stop controls |
 | `src/background/startup.rs` | Child launch, password pipe and startup progress relay |
 | `src/deploy.rs`, `windows_bootstrap.ps1` | Remote helper deployment and checksum verification |
-| `src/lib.rs`, `reliable.rs`, `terminal_wire.rs` | Shared wire formats and reliable input |
+| `src/lib.rs`, `reliable.rs`, `terminal_wire.rs` | Shared wire formats and reliable input/output |
 | `src/tray.rs`, `manager.rs` | Native tray lifetime and WinUI presentation |
 | `xtask/src/build.rs` | Helper-first build order and test execution |
 | `xtask/src/distribution.rs` | Portable archives, including wheel extraction |
@@ -31,7 +31,7 @@ Python/uv only distribute and launch the native executable.
 
 ## Behavior to preserve
 
-A normal SSH or LLM command starts or reuses a background bridge and returns only
+A normal TCP, SSH, LLM or RDP command starts or reuses a background bridge and returns only
 when its helper is ready. `--foreground` stays attached to the current terminal.
 The local listener binds before remote login so a busy port fails promptly.
 
@@ -56,8 +56,7 @@ covered when touching the data path. See `transport.md` for the protocol.
 Run `cargo xtask check`, then `cargo xtask integration --prepared` on the relevant
 platform. Windows UI/installer checks require Windows; manylinux packaging stays
 in CI. The optional Python test supervisors simulate Guacamole but exercise real
-client/helper processes and real terminal transports. They do not validate a
-particular deployed corporate gateway.
+client/helper processes and real terminal transports. They do not replace deployment testing against a particular corporate gateway.
 
 Change `workspace.package.version` only when preparing an actual release. The
 Python manifest declares a dynamic version, and the installer receives its version

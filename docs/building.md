@@ -8,7 +8,7 @@ cargo xtask check
 cargo xtask portable
 ```
 
-The commands are identical on Linux and Windows. `cargo xtask --help` is the task
+The commands are identical on Linux, macOS and Windows. `cargo xtask --help` is the task
 reference. `Cargo.toml` holds the only application version; Python packages and
 installer metadata derive theirs from it.
 
@@ -29,6 +29,8 @@ staged helpers after changing helper code or the application version.
 
 - Linux x86-64: Rust/rustup, a C compiler and native build tools. The helper uses
   musl and Rust's bundled `rust-lld`; no separate musl compiler is needed.
+- macOS (Apple Silicon): Rust/rustup and Xcode Command Line Tools
+  (`xcode-select --install`). Saved passwords use macOS Keychain.
 - Windows x86-64: Rust MSVC, Visual Studio C++ Build Tools and a Windows SDK.
 - Windows installer: Inno Setup 6, optionally selected with `ISCC`.
 - Python/uv packages: Python and maturin (`python -m pip install maturin`).
@@ -41,7 +43,7 @@ and the remote bootstrap; it does not orchestrate builds or packaging.
 
 ```sh
 cargo xtask portable                         # native ZIP or tar.gz in dist/
-cargo xtask installer                        # Windows, private UI runtime
+cargo xtask installer                        # Windows, bundled UI runtime
 cargo xtask python                           # Python/uv wheel, shared UI runtime
 cargo xtask python --sdist                   # Python source distribution
 cargo xtask portable --wheel dist/FILE.whl    # preserve the wheel's native binary
@@ -68,3 +70,13 @@ cargo install --path crates/guac-bridge --bin guac-bridge
 
 GitHub Actions uses these same tasks. Publishing remains a CI action triggered by
 a matching release tag or a main commit beginning with `Release v`.
+
+Stable releases include a macOS Apple Silicon (`macos-aarch64`) archive and Python
+wheel. The client embeds the same Linux and Windows helpers. CI builds and checks
+the client on a native Apple Silicon runner;
+macOS 11 or newer is the deployment target. Beta releases remain Windows-installer-only.
+
+The [website](../site/README.md) is hand-edited HTML/CSS. Its Pages action refreshes
+direct download links from the latest stable GitHub release.
+
+See [Licensing](licensing.md) for notice regeneration and package checks.

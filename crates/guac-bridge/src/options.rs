@@ -31,7 +31,7 @@ impl Gateway {
 #[derive(ClapArgs, Clone)]
 pub(crate) struct BridgeOptions {
     /// Gateway URL (Guacamole connection URL or FortiGate portal origin). Required when starting a bridge.
-    #[arg(value_name = "URL", required_unless_present_any=["stop","status"])]
+    #[arg(value_name = "URL", required_unless_present = "status")]
     pub url: Option<String>,
     /// Gateway login username (prompted when omitted).
     #[arg(long = "user", help_heading = "Connection")]
@@ -47,79 +47,88 @@ pub(crate) struct BridgeOptions {
     /// SSH server opened by FortiGate, distinct from the helper's loopback target.
     #[arg(long, help_heading = "Server")]
     pub server_host: Option<String>,
+    /// SSH port opened by FortiGate; independent of --remote-port.
     #[arg(long, default_value_t = 22, value_parser = clap::value_parser!(u16).range(1..), help_heading = "Server")]
     pub server_port: u16,
+    /// FortiGate server SSH username (prompted when omitted).
     #[arg(long, help_heading = "Server")]
     pub server_user: Option<String>,
+    /// Save the FortiGate server SSH password after successful authentication.
     #[arg(long, conflicts_with_all=["forget_server_password", "no_keyring"], help_heading = "Server")]
     pub save_server_password: bool,
+    /// Remove the saved FortiGate server SSH password and exit.
     #[arg(long, conflicts_with_all=["forget_password", "no_keyring"], help_heading = "Server")]
     pub forget_server_password: bool,
     #[arg(skip)]
     pub resolved_server_password: Option<String>,
-    #[arg(long)]
+    /// Guacamole connection ID; overrides the connection decoded from the URL.
+    #[arg(long, help_heading = "Gateway")]
     pub connection_id: Option<String>,
-    #[arg(long)]
+    /// Guacamole authentication data source; overrides the value decoded from the URL.
+    #[arg(long, help_heading = "Gateway")]
     pub data_source: Option<String>,
-    /// Local loopback port (SSH: 2222, LLM: 8000).
+    /// Local TCP port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 2222, LLM 8000, RDP 33899.
     #[arg(long = "port", help_heading = "Endpoints")]
     pub port: Option<u16>,
-    /// Remote loopback service port (SSH: 22, LLM: 8000).
+    /// Remote TCP service port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 22, LLM 8000, RDP 3389.
     #[arg(long = "remote-port", help_heading = "Endpoints")]
     pub target_port: Option<u16>,
-    #[arg(long, default_value = "127.0.0.1")]
+    /// Service address on the helper server: 127.0.0.1, localhost or ::1.
+    #[arg(long, default_value = "127.0.0.1", help_heading = "Endpoints")]
     pub target_host: String,
-    #[arg(long, default_value_t = 30)]
+    /// Connection, startup and reliable-delivery timeout in seconds (greater than zero).
+    #[arg(long, default_value_t = 30, help_heading = "Transport")]
     pub connect_timeout: u64,
-    #[arg(long, default_value_t = 1.0)]
+    /// Seconds to wait after terminal synchronization before starting the helper.
+    #[arg(long, default_value_t = 1.0, help_heading = "Transport")]
     pub startup_delay: f64,
-    #[arg(long, default_value_t = 8)]
+    /// Maximum simultaneous TCP connections through this bridge (1-16).
+    #[arg(long, default_value_t = 8, help_heading = "Transport")]
     pub max_connections: usize,
     /// TCP frames in flight per connection; independent of --input-window.
-    #[arg(long, default_value_t=WINDOW)]
+    #[arg(long, default_value_t=WINDOW, help_heading = "Transport")]
     pub window: usize,
     /// Maximum bytes per frame. Larger frames reduce overhead; small writes still send immediately.
-    #[arg(long, default_value_t=FRAME as u32, value_parser=clap::value_parser!(u32).range(4096..=65536))]
+    #[arg(long, default_value_t=FRAME as u32, value_parser=clap::value_parser!(u32).range(4096..=65536), help_heading = "Transport")]
     pub frame_size: u32,
-    #[arg(long)]
+    /// PEM CA certificate bundle to add to system trust for the gateway.
+    #[arg(long, help_heading = "TLS")]
     pub ca_file: Option<String>,
     /// Disable certificate verification. Prefer --ca-file for a private CA.
-    #[arg(long)]
+    #[arg(long, help_heading = "TLS")]
     pub insecure: bool,
     /// Save the password to the native system credential store after successful login.
-    #[arg(long, conflicts_with_all=["forget_password","no_keyring"])]
+    #[arg(long, conflicts_with_all=["forget_password","no_keyring"], help_heading = "Credentials")]
     pub save_password: bool,
-    #[arg(long, conflicts_with = "no_keyring")]
+    /// Remove the saved gateway password and exit.
+    #[arg(long, conflicts_with = "no_keyring", help_heading = "Credentials")]
     pub forget_password: bool,
     /// Skip the native credential store for this connection.
-    #[arg(long)]
+    #[arg(long, help_heading = "Credentials")]
     pub no_keyring: bool,
     /// Resolved by validation; background operation is the default.
     #[arg(skip)]
     pub background: bool,
     /// Run in this terminal until Ctrl+C instead of starting a background bridge.
-    #[arg(long, conflicts_with_all=["stop","status"])]
+    #[arg(long, conflicts_with = "status", help_heading = "Lifecycle")]
     pub foreground: bool,
-    /// Stop the managed bridge on --port, including its active connections.
-    #[arg(long, conflicts_with = "status")]
-    pub stop: bool,
     /// Show the managed bridge status on --port.
-    #[arg(long)]
+    #[arg(long, help_heading = "Lifecycle")]
     pub status: bool,
-    /// Use a manually installed helper instead of deploying the bundled agent.
-    #[arg(long)]
+    /// Use a manually installed matching helper executable instead of deploying the bundled agent.
+    #[arg(long, help_heading = "Server")]
     pub server_command: Option<String>,
     /// Local metadata-only transport log (rotates at 2 MiB, plus one backup).
-    #[arg(long)]
+    #[arg(long, help_heading = "Diagnostics")]
     pub debug_log: Option<String>,
     /// Remote helper metadata log; use an absolute path in a private directory.
-    #[arg(long)]
+    #[arg(long, help_heading = "Diagnostics")]
     pub server_debug_log: Option<String>,
     /// Remote server OS. Windows requires an SSH terminal and PowerShell 5.1+.
-    #[arg(long, default_value = "linux", value_parser = ["linux", "windows"])]
+    #[arg(long, default_value = "linux", value_parser = ["linux", "windows"], help_heading = "Server")]
     pub server_os: String,
     /// Linux helper-upload bytes between remote acknowledgements; live forwarding is unaffected.
-    #[arg(long,default_value_t=crate::deploy::UPLOAD_CHUNK as u32,value_parser=clap::value_parser!(u32).range(3072..=49152))]
+    #[arg(long,default_value_t=crate::deploy::UPLOAD_CHUNK as u32,value_parser=clap::value_parser!(u32).range(3072..=49152), help_heading = "Transport")]
     pub upload_batch_size: u32,
     #[arg(long, hide = true)]
     pub benchmark_control: bool,
@@ -128,7 +137,7 @@ pub(crate) struct BridgeOptions {
     #[arg(skip)]
     pub mode: String,
     /// Guacamole input blobs awaiting gateway ACKs (1-128); independent of TCP credits.
-    #[arg(long, default_value_t = 8)]
+    #[arg(long, default_value_t = 8, help_heading = "Transport")]
     pub input_window: usize,
     #[arg(skip)]
     pub input_chunk: usize,
@@ -136,21 +145,42 @@ pub(crate) struct BridgeOptions {
     pub resolved_password: Option<String>,
 }
 impl BridgeOptions {
+    fn ports(&self) -> (u16, u16) {
+        if self.mode == "tcp" {
+            match (self.port, self.target_port) {
+                (Some(port), None) | (None, Some(port)) => return (port, port),
+                _ => (),
+            }
+        }
+        let defaults = match self.mode.as_str() {
+            "ssh" => (2222, 22),
+            "llm" => (8000, 8000),
+            "rdp" => (33899, 3389),
+            _ => (0, 0),
+        };
+        (
+            self.port.unwrap_or(defaults.0),
+            self.target_port.unwrap_or(defaults.1),
+        )
+    }
     pub fn port(&self) -> u16 {
-        self.port
-            .unwrap_or(if self.mode == "ssh" { 2222 } else { 8000 })
+        self.ports().0
     }
     pub fn target_port(&self) -> u16 {
-        self.target_port
-            .unwrap_or(if self.mode == "ssh" { 22 } else { 8000 })
+        self.ports().1
     }
     pub(crate) fn validate(&mut self) -> Result<()> {
+        if self.mode == "tcp" && !self.forget_password && !self.forget_server_password {
+            ensure!(
+                self.port.is_some() || self.target_port.is_some(),
+                "TCP bridges require --port or --remote-port"
+            );
+        }
         if !self.foreground
             && !self.managed_child
             && !self.benchmark_control
             && !self.forget_password
             && !self.forget_server_password
-            && !self.stop
             && !self.status
         {
             self.background = true;
@@ -179,9 +209,12 @@ impl BridgeOptions {
             ["127.0.0.1", "localhost", "::1"].contains(&self.target_host.as_str()),
             "Remote target must be loopback"
         );
-        ensure!(self.target_port() > 0, "Target port must be positive");
         ensure!(
-            !(self.background || self.stop || self.status) || self.port() > 0,
+            self.forget_password || self.forget_server_password || self.target_port() > 0,
+            "Target port must be positive; use --remote-port with --port 0"
+        );
+        ensure!(
+            !(self.background || self.status) || self.port() > 0,
             "Managed bridges require a fixed --port greater than zero"
         );
         ensure!(
@@ -193,7 +226,7 @@ impl BridgeOptions {
                 self.connection_id.is_none() && self.data_source.is_none(),
                 "--connection-id and --data-source apply only to Guacamole"
             );
-            if !self.stop && !self.status && !self.forget_password {
+            if !self.status && !self.forget_password {
                 ensure!(
                     self.server_host.as_ref().is_some_and(|h| !h.is_empty()
                         && !h.chars().any(|c| c.is_control() || c.is_whitespace())),

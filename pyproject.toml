@@ -5,13 +5,18 @@ build-backend = "maturin"
 [project]
 name = "guac-bridge"
 dynamic = ["version"]
-description = "SSH and OpenAI-compatible endpoints through Guacamole, powered by Rust"
+description = "TCP forwarding with SSH, LLM and RDP presets through Guacamole and FortiGate, powered by Rust"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt"]
+authors = [{name = "Luis Riegger"}]
 
 [project.urls]
+Homepage = "https://himbeles.github.io/guac-bridge/"
+Documentation = "https://github.com/himbeles/guac-bridge#usage"
+License = "https://github.com/himbeles/guac-bridge/blob/main/LICENSE"
+"Third-party notices" = "https://github.com/himbeles/guac-bridge/blob/main/docs/licensing.md"
 Repository = "https://github.com/himbeles/guac-bridge"
 Issues = "https://github.com/himbeles/guac-bridge/issues"
 

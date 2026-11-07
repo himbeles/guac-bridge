@@ -1,12 +1,87 @@
 # Changelog
 
+## Unreleased
+
+- Update the ZIP packaging dependency to 9.0.5 and handle fallible entry names when extracting native executables and Microsoft redistribution notices.
+
+## 5.0.5
+
+- Remove the embedded license report and `--licenses` flag from server helpers. Build license viewing and its decompression dependency only into the client.
+- Keep helper notices in client packages, installers and source distributions. Include accompanying notices in standalone CI helper artifacts and verify that helper executables exclude the report.
+
+## 5.0.4
+
+- Include project and third-party notices in standalone clients/helpers, portable archives, Python wheels/source packages and the Windows installer. Add CLI, helper, manager and tray license views.
+- Preserve the Microsoft runtime packages' original LICENSE and NOTICE files and verify license payloads in CI.
+- Add project copyright, author and license links to package metadata and documentation.
+- Replace the website's upper-left brand with Documentation and show copyright, year and license links in the footer.
+
+## 5.0.3
+
+- Add an Apple Silicon macOS client with native Keychain password storage, a portable archive and a Python/uv wheel. Stable releases build and test the client on a native macOS runner.
+- Add a compact GitHub Pages website with direct downloads and a TCP usage example. Refresh download links after stable releases; deploy website edits independently of software releases.
+- Simplify the README around basic installation and TCP usage. Move SSH config and Windows manager setup details into dedicated documentation.
+
+## 5.0.2
+
+- Move stop controls to `guac-bridge stop --port PORT` and `guac-bridge stop all`, independent of TCP/preset selection. Remove per-preset `--stop` flags.
+- Restructure the README around gateway choice, installation, TCP forwarding, presets and management. Keep detailed argument documentation in CLI help.
+
+- Make `tcp` the primary CLI command. If only `--port` or `--remote-port` is supplied, use that value for both endpoints; explicit pairs remain supported.
+- Keep `ssh`, `llm` and `rdp` as TCP presets with local/remote defaults 2222/22, 8000/8000 and 33899/3389. Preset port overrides remain independent, preserving SSH config hooks that set only the local port. Multiple bridges of any preset can run on distinct local ports.
+- Remove the public `http` command and `--https` option. HTTP, HTTPS and other application protocols continue to pass unchanged through `tcp`; select service ports explicitly. Keep old HTTP registrations discoverable so manager/update controls can close them.
+- Simplify CLI help, connection labels and documentation around TCP forwarding and presets.
+
+## 5.0.1
+
+- Improve Windows helper output throughput by writing short ASCII OSC/Base64 envelopes directly to the console handle, avoiding standard-output text conversion and buffering.
+- Write each complete data-envelope/close pair together, halving write and flush calls while retaining the 120-byte carrier chunks, record integrity checks, retries and duplicate suppression. Use the same writer for data, acknowledgements, retries and fatal reports.
+- Preserve console handle lifetime through fatal reporting and restore the original handles during cleanup. Keep the Linux binary output path unchanged.
+- Add reproducible Windows console and simulated FortiGate/latency benchmarks. Baseline Windows console tests measured 0.67–0.69 MiB/s for v5.0.0 and 2.89–3.06 MiB/s for direct complete-pair writes; actual gateway throughput depends on deployment and latency.
+
+## 5.0.0
+
+- Add FortiGate SSL-VPN portal password login and custom Windows SSH sessions alongside the existing Guacamole gateway. Keep portal and server credentials separate and show gateway types in CLI and Windows UI connections.
+- Forward arbitrary HTTP paths, methods, streaming and upgrades, with end-to-end HTTPS passthrough. Keep the deprecated legacy command compatible.
+- Protect FortiGate output using CRC32, selective acknowledgements, retries and duplicate suppression. Flush complete Windows OSC sequences separately; this passed controlled transfers with default settings on the reported FortiGate deployment.
+- Preserve Windows helper fatal reports, shorten PowerShell bootstrap commands and add metadata-only record/ACK/retry diagnostics.
+- Document every public argument in CLI help, and update gateway, deployment and troubleshooting guides. Stable releases include Windows installers, native portable distributions and Python packages.
+
+- Add `rdp` for direct Remote Desktop TCP forwarding through the existing gateway helper, with local port 13389 and remote port 3389 by default. Include managed startup, status, stop and RDP connection labels. The gateway SSH session still starts the helper; an additional SSH forwarding client is not required.
+- Add `tcp` for arbitrary binary TCP services, with explicit local and remote ports, managed controls and TCP connection labels.
+- Default HTTP listeners and remote HTTP services to port 8000. HTTPS retains remote port 443.
+
+## 5.0.0-beta.4
+
+- Flush complete Windows OSC terminal sequences separately for helper output, retries and fatal reports. Avoid sending concatenated envelopes through one large buffered console write.
+- Expand the real Windows ConPTY probe to compare bulk writes with complete-envelope writes using mixed binary data.
+- This is a candidate mitigation for repeatedly damaged FortiGate output records. Verification against the affected gateway is still required; the underlying disconnect is not yet confirmed fixed.
+- Released from the candidate branch without merging it into main. Assets are limited to the Windows x86-64 installer and SHA256SUMS.
+
+## 5.0.0-beta.3
+
+- Add a general `http` bridge for arbitrary HTTP paths, methods, headers, binary bodies, streaming and upgrades. Support HTTPS through end-to-end TLS passthrough with `--https`. Keep the deprecated `llm` command and its original defaults and registrations for compatibility.
+- Use HTTP naming in tool descriptions and documentation. Display gateway types once, with aligned Unicode CLI tables, gateway tags in the Windows connection list and `Gateway Type: …` in details.
+- Keep Windows console handles alive until fatal reporting completes, restoring the original standard handles during cleanup. Preserve the underlying error when an active helper fails.
+- Shrink the Windows bootstrap command with a UTF-8 Base64 PowerShell loader so enabling server debug logs does not exceed the command-line limit. Preserve Unicode paths and shell quoting.
+- Include reliable record sequence numbers, acknowledgement bitmaps, rejection counts, retry attempts and delivery state in metadata-only debug logs. Keep forwarded content and passwords out of logs.
+- Known issue: FortiGate sessions can still disconnect after an output record remains unacknowledged until the delivery timeout. This beta improves diagnosis; it does not claim to fix that underlying failure.
+- Beta assets remain limited to the Windows x86-64 installer and SHA256SUMS.
+
+## 5.0.0-beta.2
+
+- Protect FortiGate helper output with the same CRC32, sequence, selective acknowledgement, retry and duplicate-suppression protocol already used for input. Validate full records before forwarding their bytes to SSH or HTTP clients.
+- Recover missing, repeated and altered terminal output chunks without poisoning the binary frame decoder. Fail closed with a delivery error when recovery times out.
+- Keep feedback acknowledgements outside reliable output history to prevent acknowledgement loops, and preserve bounded queues and the existing Guacamole output path.
+- Add real-helper simulator tests for mid-record loss, duplication, corruption, lost input acknowledgements and permanent output loss. Beta releases remain Windows-installer-only.
+
 ## 5.0.0-beta.1
 
 - Add an experimental FortiGate SSL-VPN web-SSH gateway for both SSH and LLM bridges, with portal password login, scoped session cookies, hterm custom SSH sessions and the existing Windows printable helper carrier. Existing commands continue to default to Guacamole.
 - Add server-host, server-port and server-user options, separately stored server credentials and private background credential handoff. Keep the local listener and helper service destination independent of the gateway SSH server.
 - Label gateway types in CLI connection lists and the Windows manager, and include FortiGate server identity in managed bridge reuse checks.
 - Add simulated FortiGate tests using the real helper for binary transfer, concurrency, half-closes, streamed HTTP and managed lifecycle behavior. Real FortiGate deployment validation, MFA/SSO, bookmarks and Linux server support remain outside this first beta.
-- Publish beta builds as GitHub prereleases and preserve prerelease text in Windows installer version metadata.
+- Publish beta builds as Windows-installer-only GitHub prereleases with a checksum; skip Python/PyPI, Linux client and portable distributions. Preserve prerelease text in Windows installer version metadata.
 
 ## 4.0.2
 

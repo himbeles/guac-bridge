@@ -1,8 +1,10 @@
 name: Windows server helper
 on:
   pull_request:
+    paths-ignore: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
   push:
     branches: [main]
+    paths-ignore: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
     tags: ["v*"]
   workflow_dispatch:
 concurrency:
@@ -18,8 +20,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with: {targets: x86_64-unknown-linux-musl}
       - run: cargo xtask helper linux
+      - run: |
+          mkdir -p test-agent
+          cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent test-agent/
+          cp LICENSE crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt test-agent/
+          python scripts/check_license_packages.py --helper test-agent/guac-bridge-agent
       - uses: actions/upload-artifact@v7
-        with: {name: windows-test-linux-agent, path: target/x86_64-unknown-linux-musl/release/guac-bridge-agent}
+        with: {name: windows-test-linux-agent, path: test-agent/}
   console:
     needs: linux-agent
     strategy:

@@ -27,6 +27,7 @@ pub enum Kind {
     Heartbeat = 10,
     Shutdown = 11,
     InputAck = 12,
+    OutputAck = 13,
 }
 impl TryFrom<u8> for Kind {
     type Error = anyhow::Error;
@@ -44,6 +45,7 @@ impl TryFrom<u8> for Kind {
             10 => Self::Heartbeat,
             11 => Self::Shutdown,
             12 => Self::InputAck,
+            13 => Self::OutputAck,
             _ => bail!("Unknown frame kind"),
         })
     }
@@ -141,7 +143,11 @@ impl Decoder {
                 (id == 0)
                     == matches!(
                         kind,
-                        Kind::Ready | Kind::Heartbeat | Kind::Shutdown | Kind::InputAck
+                        Kind::Ready
+                            | Kind::Heartbeat
+                            | Kind::Shutdown
+                            | Kind::InputAck
+                            | Kind::OutputAck
                     ),
                 "Invalid channel ID"
             );
@@ -151,7 +157,7 @@ impl Decoder {
             let data = self.buffer[pos + 12..pos + 12 + n].to_vec();
             if !matches!(
                 kind,
-                Kind::Data | Kind::Error | Kind::Ready | Kind::InputAck
+                Kind::Data | Kind::Error | Kind::Ready | Kind::InputAck | Kind::OutputAck
             ) {
                 ensure!(n == 0, "Unexpected control payload");
             }
@@ -395,3 +401,7 @@ pub fn run(arguments: impl IntoIterator<Item = std::ffi::OsString>) -> i32 {
 
 #[cfg(all(feature = "client", windows))]
 mod child_process;
+
+/// Project and bundled third-party license information for client distributions.
+#[cfg(feature = "client")]
+pub mod licensing;

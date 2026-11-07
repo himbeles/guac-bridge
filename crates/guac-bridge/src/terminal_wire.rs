@@ -3,6 +3,8 @@
 use crate::{Decoder, Frame, encode};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
+// Legacy gateway stream name, independent of the public bridge command.
+pub const OUTPUT_STREAM: &str = "LLM";
 pub const OSC_PREFIX: &str = "GBW1:";
 pub const ERROR_PREFIX: &str = "GBERR:";
 pub const BOOT_PREFIX: &str = "GBWB:";
@@ -20,6 +22,29 @@ pub fn osc_bytes(prefix: &str, bytes: &[u8]) -> Vec<u8> {
     }
     output
 }
+/// Flush one complete data envelope and its pipe close per write. Keep the small
+/// carrier chunk intact without paying for a separate close write and flush.
+pub fn write_output(writer: &mut impl std::io::Write, bytes: &[u8], windows: bool) -> Result<()> {
+    if windows {
+        const CLOSE: &[u8] = b"\x1b]482203;\x07";
+        let mut start = 0;
+        while start < bytes.len() {
+            let terminator = memchr::memchr(7, &bytes[start..])
+                .ok_or_else(|| anyhow::anyhow!("Incomplete OSC output envelope"))?;
+            let mut end = start + terminator + 1;
+            if bytes[end..].starts_with(CLOSE) {
+                end += CLOSE.len();
+            }
+            writer.write_all(&bytes[start..end])?;
+            writer.flush()?;
+            start = end;
+        }
+    } else {
+        writer.write_all(bytes)?;
+        writer.flush()?;
+    }
+    Ok(())
+}
 pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
     let bytes = encode(frame)?;
     crate::diagnostics::frame("tx", frame);
@@ -29,6 +54,61 @@ pub fn output(frame: &Frame, windows: bool) -> Result<Vec<u8>> {
         bytes
     })
 }
+/// FortiGate output uses the existing checksummed, sequenced record protocol.
+/// Input acknowledgements bypass this history: acknowledging an output ACK must
+/// not recursively require another output acknowledgement.
+pub struct ReliableOutput {
+    sender: crate::reliable::Sender,
+    pending: std::collections::VecDeque<Frame>,
+}
+impl ReliableOutput {
+    pub fn new(timeout: std::time::Duration) -> Self {
+        Self {
+            sender: crate::reliable::Sender::new(crate::reliable::MAX_WINDOW, timeout),
+            pending: Default::default(),
+        }
+    }
+    pub fn has_capacity(&self) -> bool {
+        self.pending.is_empty() && self.sender.has_capacity()
+    }
+    pub fn ack(&mut self, bytes: &[u8], now: std::time::Instant) -> Result<()> {
+        self.sender.ack(bytes, now)
+    }
+    pub fn send(&mut self, frame: &Frame, now: std::time::Instant) -> Result<Vec<u8>> {
+        if frame.kind == crate::Kind::InputAck {
+            return Ok(osc_bytes("GBIA:", &frame.data));
+        }
+        ensure!(
+            self.pending.len() < crate::reliable::MAX_WINDOW,
+            "Reliable output queue exceeds limit"
+        );
+        crate::diagnostics::frame("tx", frame);
+        self.pending.push_back(frame.clone());
+        self.flush(now)
+    }
+    pub fn flush(&mut self, now: std::time::Instant) -> Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        while self.sender.has_capacity() {
+            let Some(frame) = self.pending.pop_front() else {
+                break;
+            };
+            let wire = self
+                .sender
+                .queue(&crate::encode_plain(&frame)?, now)?
+                .expect("Checked output capacity");
+            bytes.extend(osc_bytes("GBR1:", &wire));
+        }
+        Ok(bytes)
+    }
+    pub fn retry(&mut self, now: std::time::Instant) -> Result<Vec<u8>> {
+        let mut bytes = self.flush(now)?;
+        for wire in self.sender.due(now)? {
+            bytes.extend(osc_bytes("GBR1:", &wire));
+        }
+        Ok(bytes)
+    }
+}
+
 #[derive(Default)]
 pub struct InputDecoder {
     binary: Decoder,
@@ -110,6 +190,92 @@ impl InputDecoder {
 mod tests {
     use super::*;
     use crate::Kind;
+    #[derive(Default)]
+    struct Writes {
+        chunks: Vec<Vec<u8>>,
+        flushes: usize,
+    }
+    impl std::io::Write for Writes {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.chunks.push(bytes.to_vec());
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.flushes += 1;
+            Ok(())
+        }
+    }
+    #[test]
+    fn console_writes_keep_short_envelope_pairs_complete_and_unchanged() {
+        let payload: Vec<u8> = (0..4096).map(|n| (n % 256) as u8).collect();
+        for prefix in [OSC_PREFIX, "GBR1:", "GBIA:", ERROR_PREFIX] {
+            let bytes = osc_bytes(prefix, &payload);
+            let mut writer = Writes::default();
+            write_output(&mut writer, &bytes, true).unwrap();
+            assert_eq!(writer.chunks.concat(), bytes);
+            assert_eq!(writer.chunks.len(), payload.len().div_ceil(OSC_CHUNK));
+            assert_eq!(writer.flushes, writer.chunks.len());
+            for chunk in writer.chunks {
+                assert!(chunk.starts_with(b"\x1b]482202;2;"));
+                assert!(chunk.ends_with(b"\x07\x1b]482203;\x07"));
+                assert_eq!(chunk.iter().filter(|&&b| b == 7).count(), 2);
+                assert!(chunk.len() < 256, "Console writes must remain short");
+            }
+        }
+    }
+    #[test]
+    fn binary_output_keeps_literal_bells_and_one_flush() {
+        let bytes: Vec<u8> = (0..65536).map(|n| (n % 256) as u8).collect();
+        let mut writer = Writes::default();
+        write_output(&mut writer, &bytes, false).unwrap();
+        assert_eq!(writer.chunks, vec![bytes]);
+        assert_eq!(writer.flushes, 1);
+    }
+    #[test]
+    fn unterminated_console_envelope_is_not_written() {
+        let mut writer = Writes::default();
+        assert!(write_output(&mut writer, b"\x1b]482202;2;unfinished", true).is_err());
+        assert!(writer.chunks.is_empty());
+    }
+    #[test]
+    fn output_feedback_bypasses_full_history_without_ack_loop() {
+        let now = std::time::Instant::now();
+        let mut output = ReliableOutput::new(std::time::Duration::from_secs(10));
+        for _ in 0..crate::reliable::MAX_WINDOW {
+            assert!(
+                !output
+                    .send(&Frame::control(Kind::Heartbeat, 0), now)
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert!(!output.has_capacity());
+        let ack = crate::reliable::Ack {
+            next: 1,
+            mask: 0,
+            rejected: 0,
+        }
+        .encode();
+        let feedback = output
+            .send(&Frame::payload(Kind::InputAck, 0, ack), now)
+            .unwrap();
+        assert!(feedback.windows(5).any(|s| s == b"GBIA:"));
+        output
+            .ack(
+                &crate::reliable::Ack {
+                    next: 65,
+                    mask: 0,
+                    rejected: 0,
+                }
+                .encode(),
+                now,
+            )
+            .unwrap();
+        assert!(
+            output.has_capacity(),
+            "Input feedback must not consume reliable output history"
+        );
+    }
     #[test]
     fn armored_input_survives_crlf_and_all_bytes() {
         let frame = Frame::payload(Kind::Data, 1, (0..65536).map(|n| (n % 256) as u8).collect());

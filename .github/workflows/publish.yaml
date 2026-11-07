@@ -3,8 +3,10 @@ name: Native build and publish
 on:
   push:
     branches: [main]
+    paths-ignore: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
     tags: ["v*"]
   pull_request:
+    paths-ignore: ["site/**", "tests/site/**", ".github/workflows/pages.yaml"]
   workflow_dispatch:
 
 env:
@@ -14,6 +16,26 @@ permissions:
   contents: read
 
 jobs:
+  plan:
+    name: Select release targets
+    runs-on: ubuntu-latest
+    outputs:
+      beta: ${{ steps.version.outputs.beta }}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: python scripts/licenses.py --check
+      - id: version
+        shell: bash
+        run: |
+          python - <<'PYTHON'
+          import os, tomllib
+          with open('Cargo.toml', 'rb') as manifest:
+              version = tomllib.load(manifest)['workspace']['package']['version']
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print('beta=' + str('-' in version).lower(), file=output)
+          PYTHON
   agent:
     name: Static Linux x86-64 helper
     runs-on: ubuntu-latest
@@ -30,6 +52,8 @@ jobs:
           file target/x86_64-unknown-linux-musl/release/guac-bridge-agent | grep -E 'static.*linked'
           mkdir -p agent
           cp target/x86_64-unknown-linux-musl/release/guac-bridge-agent agent/guac-bridge-agent-linux-x86_64
+          cp LICENSE crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt agent/
+          python scripts/check_license_packages.py --helper agent/guac-bridge-agent-linux-x86_64
           sha256sum agent/* > agent/SHA256SUMS
       - uses: actions/upload-artifact@v7
         with: {name: linux-agent, path: agent/, if-no-files-found: error}
@@ -47,12 +71,15 @@ jobs:
           cargo xtask helper windows
           New-Item -ItemType Directory -Force agent
           Copy-Item target/release/guac-bridge-agent.exe agent/guac-bridge-agent-windows-x86_64.exe
+          Copy-Item LICENSE, crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt agent/
+          python scripts/check_license_packages.py --helper agent/guac-bridge-agent-windows-x86_64.exe
       - uses: actions/upload-artifact@v7
         with: {name: windows-agent, path: agent/, if-no-files-found: error}
 
   test-linux:
     name: Native Linux integration
-    needs: [agent, windows-agent]
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -74,6 +101,7 @@ jobs:
           cargo package  -p guac-bridge --allow-dirty --no-verify
           tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-linux-x86_64
           tar -tzf target/package/guac-bridge-*.crate | grep assets/guac-bridge-agent-windows-x86_64.exe
+          python scripts/check_license_packages.py target/package
       - uses: actions/upload-artifact@v7
         with: {name: benchmark-smoke, path: benchmark-smoke.json}
 
@@ -91,7 +119,8 @@ jobs:
 
   windows:
     name: Windows x86-64 executable, installer and uv package
-    needs: [agent, windows-agent]
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -131,11 +160,14 @@ jobs:
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" --version
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" ssh --help
           & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" llm --help
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" rdp --help
+          & "$env:UV_TOOL_BIN_DIR/guac-bridge.exe" tcp --help
           $commands = @(Get-ChildItem "$env:UV_TOOL_BIN_DIR/guac*")
           if ($commands.Count -ne 1 -or $commands[0].Name -ne 'guac-bridge.exe') { throw 'Expected one guac-bridge CLI entry point' }
           & "$env:UV_TOOL_DIR/guac-bridge/Scripts/python.exe" -m guac_bridge --version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo xtask portable --wheel $wheel
+      - run: python scripts/check_license_packages.py dist
       - uses: actions/upload-artifact@v7
         with: {name: windows-distributions, path: dist/, if-no-files-found: error}
 
@@ -165,7 +197,8 @@ jobs:
 
   linux-distribution:
     name: Linux x86-64 portable and Python packages
-    needs: [agent, windows-agent]
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -192,19 +225,67 @@ jobs:
           "$UV_TOOL_BIN_DIR/guac-bridge" --version
           "$UV_TOOL_BIN_DIR/guac-bridge" ssh --help
           "$UV_TOOL_BIN_DIR/guac-bridge" llm --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" rdp --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" tcp --help
           "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
           cargo xtask portable --wheel dist/*.whl
       - name: Check source distribution contains the helper
         run: |
           tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-linux-x86_64'
           tar -tzf dist/guac_bridge-*.tar.gz | grep 'assets/guac-bridge-agent-windows-x86_64.exe'
+      - run: python scripts/check_license_packages.py dist
       - uses: actions/upload-artifact@v7
         with: {name: linux-distributions, path: dist/, if-no-files-found: error}
 
+  macos:
+    name: macOS Apple Silicon client and Python package
+    needs: [plan, agent, windows-agent]
+    if: needs.plan.outputs.beta != 'true'
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+        with: {components: rustfmt, clippy}
+      - uses: Swatinem/rust-cache@v2
+        with: {key: macos-aarch64}
+      - uses: actions/download-artifact@v8
+        with: {name: linux-agent, path: crates/guac-bridge/assets}
+      - uses: actions/download-artifact@v8
+        with: {name: windows-agent, path: crates/guac-bridge/assets}
+      - uses: actions/setup-python@v7
+        with: {python-version: "3.12"}
+      - run: python -m pip install maturin uv
+      - name: Check native host architecture
+        run: |
+          rustc -vV | grep 'host: aarch64-apple-darwin'
+      - run: cargo xtask check --prepared
+      - run: cargo xtask python --prepared
+      - name: Test installed client and archive
+        run: |
+          export UV_TOOL_DIR="$RUNNER_TEMP/guac-tools"
+          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/guac-bin"
+          uv tool install --from dist/*.whl guac-bridge
+          "$UV_TOOL_BIN_DIR/guac-bridge" --version
+          "$UV_TOOL_BIN_DIR/guac-bridge" tcp --help
+          "$UV_TOOL_BIN_DIR/guac-bridge" list
+          "$UV_TOOL_DIR/guac-bridge/bin/python" -m guac_bridge --version
+          cargo xtask portable --wheel dist/*.whl
+          mkdir -p "$RUNNER_TEMP/portable"
+          tar -xzf dist/guac-bridge-*-macos-aarch64.tar.gz -C "$RUNNER_TEMP/portable"
+          "$RUNNER_TEMP/portable/guac-bridge" --version
+          "$RUNNER_TEMP/portable/guac-bridge" tcp --help
+          file "$RUNNER_TEMP/portable/guac-bridge" | grep 'Mach-O'
+      - run: python scripts/check_license_packages.py dist
+      - uses: actions/upload-artifact@v7
+        with: {name: macos-aarch64-distributions, path: dist/, if-no-files-found: error}
+
   publish:
     name: Publish to PyPI
-    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v'))
-    needs: [test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
+    if: needs.plan.outputs.beta != 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
+    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, macos, bundled-installer]
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -229,8 +310,8 @@ jobs:
 
   release:
     name: GitHub release
-    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v'))
-    needs: [test-linux, windows, cargo-windows, linux-distribution, bundled-installer]
+    if: needs.plan.outputs.beta != 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
+    needs: [plan, test-linux, windows, cargo-windows, linux-distribution, macos, bundled-installer]
     runs-on: ubuntu-latest
     permissions: {contents: write}
     steps:
@@ -250,3 +331,26 @@ jobs:
             release_args+=(--prerelease --latest=false)
           fi
           gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md "${release_args[@]}"
+
+  beta-release:
+    name: Windows installer beta release
+    needs: [plan, cargo-windows, bundled-installer]
+    if: needs.plan.outputs.beta == 'true' && (startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'Release v')))
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v7
+        with: {persist-credentials: false}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/download-artifact@v8
+        with: {name: windows-installer-distributions, path: installer-artifacts}
+      - name: Collect only the Windows installer
+        run: |
+          mkdir -p dist
+          cp installer-artifacts/*-setup.exe dist/
+      - name: Build installer checksum and release notes
+        env: {RELEASE_TAG: "${{ github.ref_name }}"}
+        run: cargo xtask release-notes
+      - name: Publish Windows installer prerelease
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: gh release create "$RELEASE_TAG" dist/*-setup.exe dist/SHA256SUMS --target "$GITHUB_SHA" --title "$RELEASE_TAG" --notes-file release-notes.md --prerelease --latest=false

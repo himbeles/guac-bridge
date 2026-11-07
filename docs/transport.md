@@ -1,6 +1,7 @@
 # Transport
 
-Each SSH or LLM bridge opens a Guacamole WebSocket connection, checks or uploads
+The main `tcp` command and the SSH, LLM and RDP port presets share one forwarding
+implementation. Each running bridge opens a gateway terminal WebSocket connection, checks or uploads
 its bundled helper, and runs it inside the remote terminal. TCP connections share
 numbered channels with bounded flow control. HTTP headers, bodies and streaming
 responses pass through unchanged. The helper exits with the session; its cached
@@ -30,3 +31,18 @@ The running process retains its original executable and settings.
 
 See [Connections](connections.md) for interfaces and helper deployment, and
 [Transport debugging](transport-debugging.md) for collecting client and server logs.
+
+## FortiGate output integrity
+
+FortiGate terminal output also uses the shared reliable record protocol: sequence
+numbers, CRC32, selective acknowledgements, bounded history, retries and duplicate
+suppression. Records carry complete logical frames before terminal OSC/Base64
+chunking. Missing, duplicated or altered terminal chunks cannot be delivered as
+unchecked TCP bytes; the receiver requests replay of the damaged record.
+
+Output acknowledgements travel through reliable input. Input acknowledgements
+are independent, checksummed feedback messages that do not themselves require
+output acknowledgements, avoiding an acknowledgement loop. Windows output writes each short data-envelope/close pair together through the
+direct console handle, avoiding standard-output text conversion and large buffered
+writes through the terminal. The Guacamole binary output protocol remains
+unchanged. Client and helper must come from the same build.

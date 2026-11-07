@@ -52,19 +52,14 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         .truncate(false)
         .read(true)
         .write(true)
-        .open(dir.join(format!("{}-{}.lock", args.mode, args.port())))?;
+        .open(dir.join(format!("{}-{}.lock", args.mode.as_str(), args.port())))?;
     lock.lock()?;
     if let Ok(s) = state(&args)
         && request(&s, "status").is_ok()
     {
         #[cfg(windows)]
-        if !args.stop && !args.status {
+        if !args.status {
             crate::tray::launch()?;
-        }
-        if args.stop {
-            request(&s, "stop")?;
-            crate::console::line(&format!("Bridge stopping on port {}", args.port()));
-            return Ok(());
         }
         if args.status {
             crate::console::line(&format!(
@@ -81,18 +76,11 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
                     .server_user
                     .as_ref()
                     .is_none_or(|u| Some(u) == s.server_user.as_ref()),
-            "A bridge with different settings already owns this port. Stop it first with --stop --port {}",
+            "A bridge with different settings already owns this port. Stop it first with guac-bridge stop --port {}",
             args.port()
         );
         crate::console::line(&format!(
             "Bridge already running on 127.0.0.1:{}",
-            args.port()
-        ));
-        return Ok(());
-    }
-    if args.stop {
-        crate::console::line(&format!(
-            "No managed bridge running on port {}",
             args.port()
         ));
         return Ok(());
@@ -121,7 +109,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
     let exe = std::env::current_exe()?;
     let mut command = Command::new(&exe);
     command
-        .arg(&args.mode)
+        .arg(args.mode.as_str())
         .arg(args.url.as_deref().context("URL is required")?);
     for (flag, value) in [
         ("--user", args.username.clone()),
@@ -177,7 +165,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
             command.arg(flag);
         }
     }
-    let log_path = dir.join(format!("{}-{}.log", args.mode, args.port()));
+    let log_path = dir.join(format!("{}-{}.log", args.mode.as_str(), args.port()));
     let log = OpenOptions::new()
         .create(true)
         .truncate(true)

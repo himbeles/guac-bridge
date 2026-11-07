@@ -4,10 +4,11 @@ default-members = ["crates/guac-bridge"]
 resolver = "2"
 
 [workspace.package]
-version = "5.0.0-beta.1"
+version = "5.0.5"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
+authors = ["Luis Riegger"]
 repository = "https://github.com/himbeles/guac-bridge"
 
 [profile.release]

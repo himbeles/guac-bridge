@@ -1,6 +1,6 @@
 # Reliable input transport
 
-All SSH and LLM bridges use this transport automatically, including managed
+All TCP, SSH, LLM and RDP bridges use this transport automatically, including managed
 bridges. There is no protocol selection flag and no raw
 input fallback. Stop an existing managed bridge after upgrading, then restart it
 with your normal command. The bundled helper updates automatically by content hash.
@@ -95,7 +95,7 @@ If an upload stalls or is damaged, try `--input-window 4` or `2`; on Linux also 
 
 The test gateway uses a real Bash PTY and a remote PATH without Python or uv. Fault
 tests acknowledge input at the gateway and then drop, corrupt or duplicate its
-bytes before the PTY. Concurrent SSH and LLM transfers must return exact payloads.
+bytes before the PTY. Concurrent TCP, SSH, LLM and RDP transfers must return exact payloads.
 Codec tests cover lost ACKs, missing delimiters, reordering, bounds, invalid ACK
 checksums, permanent-loss deadlines, and Windows armor damage and maximum frames.
 A real terminal test checks that upload progress occupies one row.

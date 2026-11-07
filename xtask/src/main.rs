@@ -1,4 +1,4 @@
-//! Repository tasks. Cargo is the only build entry point on Linux and Windows.
+//! Repository tasks. Cargo is the build entry point on Linux, macOS and Windows.
 mod build;
 mod distribution;
 mod installer;
@@ -35,7 +35,7 @@ enum Task {
         #[arg(value_enum)]
         os: build::ServerOs,
     },
-    /// Create the native portable archive, optionally from a manylinux/Windows wheel.
+    /// Create the native portable archive, optionally from a platform wheel.
     Portable {
         #[arg(long)]
         wheel: Option<PathBuf>,

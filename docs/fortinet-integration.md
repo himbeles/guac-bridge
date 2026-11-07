@@ -1,201 +1,100 @@
-# FortiGate web-SSH integration assessment
+# FortiGate gateway
 
-This assessment uses two supplied browser HARs and their embedded portal JavaScript: an authenticated bookmark session and a portal-login/custom-SSH session.
-The v5 beta implements the custom-SSH/password-login/Windows-carrier subset below.
-Simulator coverage exercises the real helper, binary forwarding, streaming HTTP,
-authentication failures, private background handoff and gateway labels. A deployed
-FortiGate and actual remote Windows console remain unvalidated. Sections below
-also describe planned bookmark and broader authentication support.
-No gateway hostnames, bookmark names, usernames, passwords or session values from
-that capture are reproduced here.
+Guac Bridge connects to the FortiGate SSL-VPN web portal and opens a custom SSH
+terminal. The existing helper then forwards any TCP
+service from that server's loopback interface. This adapter uses the web portal,
+not a native FortiClient VPN connection.
 
-## Confirmed protocol
-
-The deployment is a FortiGate SSL-VPN web portal. It is not a native FortiClient
-VPN tunnel and does not use the Guacamole wire protocol.
-
-The first capture contains 34 requests and 35 WebSocket messages and begins inside
-an already authenticated portal. The second contains 36 requests and 11 WebSocket
-messages and includes a successful portal password login and custom SSH startup.
-
-1. The browser loads `/sslvpn/portal/index.html`.
-2. `GET /remote/portal` supplies portal/session metadata, including realm,
-   session identifiers, CSRF metadata and timeout settings.
-3. `GET /remote/portal?access=admin` supplies portal configuration and configured
-   bookmark groups; `GET /remote/portal/bookmarks` supplies user bookmarks.
-4. An SSH bookmark opens
-   `wss://GATEWAY/remote/rds?connection=URL_ENCODED_JSON`, negotiating the `hterm`
-   WebSocket subprotocol. The JSON has `name`, `apptype`, `host`, `port`,
-   `bookmark-type` and `bookmark-group`. Preserve server-supplied bookmark identity;
-   do not infer that arbitrary destinations are permitted.
-5. The browser sends length-prefixed text instructions in this order:
-   `resize` (columns:rows), `user`, `passwd`, then `start` with an empty argument.
-   Subsequent keyboard input uses `str` instructions.
-6. Received messages in this recording are raw terminal text with ANSI escapes,
-   including PowerShell/Windows console output. They are not Guacamole `pipe`,
-   `blob`, `ack` or `sync` instructions.
-
-The embedded JavaScript confirms these framing rules:
-
-```text
-6.resize,L.COLUMNS:ROWS;
-4.user,L.USERNAME;
-6.passwd,L.PASSWORD;
-5.start,0.;
-3.str,L.INPUT;
-```
-
-Each L is the corresponding argument length. The browser uses JavaScript string
-length (UTF-16 code units), which must be reproduced for non-ASCII values rather
-than assuming Rust UTF-8 byte length or Unicode scalar count. The addon also has
-a binary-WebSocket input path, but this capture does not exercise it. Do not
-assume that arbitrary binary data survives the complete gateway/console path.
-
-The JavaScript exposes `GET /remote/portal?access=keepalive`; the capture itself
-shows portal status polling with `action=1`, not a demonstrated keepalive exchange.
-Neither HAR contains Cookie/Set-Cookie headers or populated cookie arrays. The
-second establishes the successful password-login request/redirect sequence, but
-does not identify session-cookie names, attributes or issuance. Cookie persistence
-and renewal still require implementation validation.
-
-## Portal login and custom SSH: second capture
-
-The second HAR records `POST /remote/logincheck` with URL-encoded text containing
-`ajax=1`, `username` and `credential`. Its recorded Content-Type is
-`text/plain;charset=UTF-8`; do not silently assume the browser sent the ordinary
-form Content-Type. The HTTP 200 body is a Fortinet key/value response, with
-`ret=1,redir=...` followed by user/group/portal metadata. Parse the protocol result
-and redirect rather than treating any HTTP 200 as authenticated success.
-
-The redirect goes to `/remote/hostcheck_install` with authentication and portal
-metadata. In this session that response is a small HTML/JavaScript navigation to
-`/sslvpn/portal/index.html`. This capture does not show an endpoint-compliance
-challenge; it does not establish that other accounts/deployments lack one. Follow
-the supported flow and fail clearly on unsupported challenges rather than skip it.
-
-The client should retain server-issued session cookies in memory across the login,
-redirects, portal requests and the WSS handshake. Preserve their origin/path/secure
-scope, and require authenticated portal access before opening the terminal. The
-HAR has omitted cookie material, so the exact cookie name and issuance remain
-unknown. Cookie names and attributes from Edge's Cookies pane would resolve that
-without collecting secret values. No MFA or SSO exchange appears in this successful
-password-login capture; support must not be inferred for unobserved flows.
-
-For the custom SSH session, `connection` contains only `name`, `apptype`, `host`
-and `port`; `apptype` is `ssh` and `port` is a string. Bookmark identity fields are
-absent. Reproduce this variant for custom connections rather than fabricating
-bookmark groups. The same `hterm` resize/user/passwd/start handshake follows, and
-raw PowerShell terminal output is returned. This confirms separate portal and
-remote SSH authentication in both session types.
-
-A custom-session CLI could use:
+## Connect
 
 ```sh
-guac-bridge ssh https://GATEWAY --gateway fortigate --server-host HOST --server-port 22 --server-user USER --server-os windows
+guac-bridge ssh https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows
 ```
 
-These SSH target options identify the terminal opened by FortiGate. They are distinct
-from the existing `--target-host`/`--remote-port`, which identify the TCP service
-opened by the helper inside that terminal, and from the local `--port`. Keep portal
-and SSH credentials distinct in prompts, credential-store identities and the private
-managed-child handoff. The existing `--user` can continue to mean gateway login.
-
-## Reuse boundaries
-
-Keep the local TCP listener, channel IDs and credits, TCP half-closes, byte-stream
-HTTP forwarding, authenticated local management, update exclusion, tray, process
-isolation and packaging. Retain the shared helper framing and reliable-input
-protocol wherever the new terminal carrier can preserve them.
-
-Extract a gateway-session boundary from `client.rs` and `client/guacamole.rs`.
-A session should provide bounded input submission, terminal/bootstrap output,
-terminal readiness/failure and cancellation, while owning gateway authentication,
-WebSocket framing, TLS/proxy use and session renewal. An enum with concrete
-Guacamole and FortiGate implementations is sufficient; a plugin framework is not
-needed.
-
-Guacamole must retain its current named streams, sync, blob acknowledgement and
-flow-control behavior inside its adapter. FortiGate wraps text input as `str` and
-consumes raw text/binary output according to its own protocol. No Guacamole
-`sync` wait or acknowledgement-slot timeout should run on a FortiGate session.
-Gateway acknowledgement, socket-write completion, helper upload receipt and
-helper protocol acknowledgement remain distinct concepts.
-
-The generic forwarding layer should consume decoded helper frames and submit
-helper input through the selected session/carrier. Preserve remote-consumption
-receipts and reliable-input retries; a completed WebSocket write does not prove
-that the shell or helper consumed the input.
-
-## Carrier and deployment
-
-The recorded target is Windows/PowerShell. Start with that supported path rather
-than assuming a Linux raw-terminal carrier. Reuse PowerShell upload/checksum/cache
-logic and the existing printable input/OSC-output helper carrier as candidates.
-Guacamole currently delivers OSC data through named pipe instructions; FortiGate
-needs an incremental raw-terminal OSC scanner to extract those payloads directly.
-Bootstrap receipts similarly need to be detected outside the Guacamole BOOT pipe.
-Handle markers split across messages, unrelated ANSI text, shell echo and bounded
-malformed/incomplete envelopes.
-
-First prove that this gateway preserves the existing OSC envelopes and encoded
-input end to end. If it strips or transforms them, choose an explicit carrier
-variant instead of changing the shared frame protocol or weakening checksums.
-Only after that proof can the current Windows helper be claimed reusable without
-changes. Linux over FortiGate requires its own raw-byte or printable-carrier test.
-
-## Authentication and identity
-
-Portal authentication and target SSH authentication are separate. The WebSocket
-`user`/`passwd` messages authenticate the SSH terminal. The second capture separately
-establishes `/remote/logincheck` portal password login. FortiGate must not reuse
-Guacamole's `/api/tokens` login.
-
-Implement the observed password-login path first, with explicit errors for
-unrecognized MFA/SSO or endpoint-compliance responses.
-Alternatively, a first proof of concept can accept an explicitly provided active
-portal session through a private local input channel. Do not embed the captured
-session in code, command arguments, registrations or test fixtures. Interactive
-portal/MFA acquisition belongs in the foreground launcher before the managed child
-starts. Extend the private startup handoff to structured, provider-specific session
-material as needed; preserve the current no-secrets-in-argv property.
-
-Use a separate remote SSH credential prompt/store entry unless the bookmark's
-supported SSO behavior is established. Keep session cookies and CSRF values scoped
-to the originating gateway. Reuse native CA trust, custom CA configuration and the
-existing proxy connection code for both HTTP and WSS.
-
-A proposed CLI is:
+Use `tcp` as the general command, or the `ssh`, `llm` and `rdp` presets, with
+the same gateway/server options. TCP requires either `--port` or `--remote-port`;
+a single supplied value is used for both ends. For example:
 
 ```sh
-guac-bridge ssh https://GATEWAY --gateway fortigate --bookmark BOOKMARK --server-os windows
+guac-bridge rdp https://gateway.example --gateway fortigate --user PORTAL_USER --server-host server.internal --server-user SERVER_USER --server-os windows
+mstsc /v:127.0.0.1:33899
 ```
 
-Keep `ssh` and `llm` as the local service modes. Add gateway type and stable bookmark
-identity to bridge reuse hashing, credential namespaces and route display. Pass
-those options through managed startup. Keep remote OS/carrier selection independent
-of the client's OS and gateway vendor.
+The server must provide a Windows x86-64 SSH console with PowerShell 5.1+ and allow
+the helper to execute from its private cache. The forwarded service must already
+be listening on the same server's loopback interface. The helper requires no
+service installation or remote internet access.
 
-## Implementation and validation sequence
+## Keep the endpoints separate
 
-1. Build sanitized protocol fixtures from the observed shapes, not captured secrets.
-   Test connection JSON encoding, UTF-16 lengths, `hterm` negotiation, initialization
-   order, text input and raw-terminal output.
-2. Extract the session boundary with Guacamole behavior unchanged. Run its existing
-   native, Windows, half-close, streaming, upload and process-lifecycle suites.
-3. Add the FortiGate adapter and a simulated FortiGate gateway with separate portal
-   and SSH authentication, bookmark selection, session expiry and bounded failures.
-4. Validate the existing Windows helper carrier and PowerShell upload against a real
-   authorized bookmark: marker pass-through, all byte values in both directions,
-   frame/message fragmentation, upload checksum/cache repair, concurrency, both
-   half-closes and streamed HTTP. Treat this as a prerequisite to readiness.
-5. Implement the observed portal password login, scoped cookie handling and renewal;
-   validate them live and cover rejected/expired sessions,
-   MFA cancellation and target-SSH authentication failure separately.
-6. Verify managed startup/reuse/status/stop, tray display, update exclusion and
-   provider-specific identity. Add Linux-server support only after its carrier is
-   independently validated.
+| Setting | Identifies |
+| --- | --- |
+| URL, `--user`, gateway password | FortiGate portal |
+| `--server-host`, `--server-port`, `--server-user`, server password | SSH terminal opened by the portal |
+| `--target-host`, `--remote-port` | Loopback TCP service reached by the helper |
+| `--port` | Local loopback listener used by your application |
 
-The captures establish the password-login and custom/bookmarked terminal-adapter
-protocol direction. Session-cookie issuance, renewal behavior and helper-carrier
-transparency still require verification. No connection
-to the captured gateway or replay of captured credentials was performed.
+The server SSH port defaults to 22. Preset service ports are SSH 22,
+LLM 8000 and RDP 3389. Generic TCP requires an explicit port. HTTPS uses TCP
+port 443 when selected by the user; the application performs TLS.
+Remote Desktop connects directly to the local RDP listener. No extra SSH client
+or SSH `LocalForward` is needed; the gateway SSH session still starts the helper.
+
+Portal and server passwords are prompted separately. Use `--save-password` and
+`--save-server-password` to save them to the native credential store, or the
+corresponding `--forget-*` options to remove them. `--no-keyring` disables lookup
+for both. Automation can provide `GUAC_BRIDGE_PASSWORD` and
+`GUAC_BRIDGE_SERVER_PASSWORD`; command-line password arguments are not supported.
+
+Use `--ca-file` for a private gateway CA. These trust settings apply to gateway
+HTTPS/WSS, independently of the forwarded application's own TLS or RDP security.
+
+## Login and session protocol
+
+The adapter posts URL-encoded `ajax=1`, username and credential fields to
+`/remote/logincheck`, using `text/plain;charset=UTF-8`. It retains scoped cookies
+and checks the portal redirect/session result. Login, redirect and renewal errors
+are surfaced instead of being treated as an authenticated terminal.
+
+The custom SSH connection opens `/remote/rds?connection=...` with the `hterm`
+WebSocket subprotocol. Connection JSON contains an empty custom-session name,
+`apptype=ssh`, server host and string-valued port. Initialization sends `resize`,
+`user`, `passwd` and `start`; subsequent input uses `str`. Length prefixes count
+UTF-16 code units, matching the portal's JavaScript implementation.
+
+Output is a raw terminal stream, not Guacamole's pipe/blob protocol. The client
+extracts short OSC/Base64 envelopes incrementally across WebSocket messages.
+Reliable records add CRC32, sequence numbers, selective acknowledgments, bounded
+retries and duplicate suppression. Invalid records never reach application sockets.
+Short data-envelope/close pairs are written directly to the Windows console,
+including retries and fatal reports. See [Transport](transport.md).
+
+## Supported scope
+
+The current adapter supports portal password login, custom SSH sessions and
+Windows x86-64 helper servers. It does not implement MFA/SSO challenges, endpoint
+compliance workflows, bookmark selection, Linux servers through FortiGate or the
+portal's native graphical RDP session.
+
+Controlled SSH transfers passed on the reported FortiGate/Windows deployment with
+default window and frame size after the complete-envelope write change. This is
+limited deployment evidence, not validation across all FortiGate firmware. RDP
+negotiation and TCP forwarding also have simulated-gateway integration coverage;
+those tests do not authenticate against a real corporate RDP service.
+
+## Troubleshooting
+
+Add paired metadata logs to your command:
+
+```powershell
+--debug-log client-debug.log --server-debug-log 'C:\Users\REMOTE_USER\server-debug.log'
+```
+
+The client file is local; the server file stays on the remote Windows machine.
+Use the same reproduction for both captures. Rejected record counts, ACK sequence
+numbers and selective bitmaps distinguish damaged output from lost feedback.
+A delivery timeout closes the bridge rather than forwarding incomplete bytes.
+Increasing a timeout does not repair repeatably damaged records.
+
+See [Transport debugging](transport-debugging.md) for log collection. Run
+`guac-bridge COMMAND --help` for every argument, default and credential option.

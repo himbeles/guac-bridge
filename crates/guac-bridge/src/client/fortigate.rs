@@ -221,6 +221,9 @@ pub(super) async fn refresh(http: &reqwest::Client, args: &BridgeOptions) -> Res
 pub(super) enum Output {
     Bootstrap(Vec<u8>),
     Data(Vec<u8>),
+    InputAck(Vec<u8>),
+    Corrupt,
+    Legacy,
     Fatal(Vec<u8>),
     FatalEnd,
 }
@@ -234,6 +237,9 @@ impl Decoder {
         let mut events = Vec::new();
         // Incremental scanning bounds retained terminal noise even for large WebSocket messages.
         for &byte in bytes {
+            if byte == 27 {
+                self.pending.clear();
+            }
             self.pending.push(byte);
             if !self.pending.starts_with(PREFIX) {
                 while !PREFIX.starts_with(&self.pending) && !self.pending.starts_with(PREFIX) {
@@ -241,10 +247,11 @@ impl Decoder {
                 }
                 continue;
             }
-            ensure!(
-                self.pending.len() <= 4096,
-                "FortiGate terminal OSC envelope exceeds limit"
-            );
+            if self.pending.len() > 4096 {
+                self.pending.clear();
+                events.push(Output::Corrupt);
+                continue;
+            }
             if byte != 7 {
                 continue;
             }
@@ -254,18 +261,28 @@ impl Decoder {
             } else {
                 for (prefix, kind) in [
                     (b"GBWB:".as_slice(), 0),
-                    (b"GBW1:".as_slice(), 1),
+                    (b"GBR1:".as_slice(), 1),
+                    (b"GBIA:".as_slice(), 3),
+                    (b"GBW1:".as_slice(), 4),
                     (b"GBERR:".as_slice(), 2),
                 ] {
                     if let Some(encoded) = payload.strip_prefix(prefix) {
-                        let data = STANDARD
-                            .decode(encoded)
-                            .context("Invalid FortiGate terminal carrier encoding")?;
-                        events.push(match kind {
-                            0 => Output::Bootstrap(data),
-                            1 => Output::Data(data),
-                            _ => Output::Fatal(data),
-                        });
+                        if kind == 4 {
+                            events.push(Output::Legacy);
+                            break;
+                        }
+                        match STANDARD.decode(encoded) {
+                            Ok(data) => events.push(match kind {
+                                0 => Output::Bootstrap(data),
+                                1 => Output::Data(data),
+                                3 => Output::InputAck(data),
+                                _ => Output::Fatal(data),
+                            }),
+                            Err(_) if kind == 1 || kind == 3 => events.push(Output::Corrupt),
+                            Err(_) => {
+                                anyhow::bail!("Invalid FortiGate bootstrap/fatal carrier encoding")
+                            }
+                        }
                         break;
                     }
                 }
@@ -339,7 +356,7 @@ mod tests {
     }
     #[test]
     fn osc_survives_fragmentation_noise_and_bounds_incomplete_messages() {
-        let wire = crate::terminal_wire::osc_bytes("GBW1:", &[0, 255, 27, 29]);
+        let wire = crate::terminal_wire::osc_bytes("GBR1:", &[0, 255, 27, 29]);
         for split in 0..=wire.len() {
             let mut decoder = Decoder::default();
             decoder.feed(b"PowerShell prompt\r\n").unwrap();
@@ -348,10 +365,9 @@ mod tests {
             assert_eq!(events.len(), 1);
             assert!(matches!(&events[0],Output::Data(data) if data==&[0,255,27,29]));
         }
-        assert!(
-            Decoder::default()
-                .feed(&[b"\x1b]482202;2;".as_slice(), &vec![b'x'; 4096]].concat())
-                .is_err()
-        );
+        let events = Decoder::default()
+            .feed(&[b"\x1b]482202;2;".as_slice(), &vec![b'x'; 4096]].concat())
+            .unwrap();
+        assert!(events.iter().any(|event| matches!(event, Output::Corrupt)));
     }
 }

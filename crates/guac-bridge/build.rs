@@ -113,6 +113,7 @@ fn main() {
         resource
             .set("FileDescription", "Guac Bridge")
             .set("ProductName", "Guac Bridge")
+            .set("LegalCopyright", "Copyright (c) 2026 Luis Riegger")
             .compile()
             .expect("Cannot embed Windows icon, version and visual styles");
     }

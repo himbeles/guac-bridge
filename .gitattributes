@@ -1,0 +1,8 @@
+# License fingerprints and embedded text must match on Windows, Linux and macOS.
+/Cargo.lock text eol=lf
+/LICENSE text eol=lf
+/licensing/** text eol=lf
+/scripts/licenses.py text eol=lf
+/crates/guac-bridge/assets/LICENSE text eol=lf
+/crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt text eol=lf
+/crates/guac-bridge/assets/THIRD-PARTY-NOTICES.txt.gz binary

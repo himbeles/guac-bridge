@@ -1,0 +1,13 @@
+{
+  "generator": "cargo-about 0.9.3",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "inputs": {
+    "Cargo.lock": "06140b20d4c0ea8dc4cd257abd580446d54f42a11846e1f350afc5e5d930fa8c",
+    "licensing/about.toml": "f3ed03e2851d79ecd7ebf21b97d9914f95c2ce86b3aa6f773145ccb737d68388",
+    "licensing/notices.hbs": "7ee290ed41d5eae8ecabc96e4f8ac26a15e6c80e31abe08f9b8711dd3650b0d9",
+    "scripts/licenses.py": "bc9516d74600c8cbc2eb7ec1bd126bf59f415b8a9c311cdd7d69e649fdaca7c6",
+    "LICENSE": "055050694a268efc96f0e2b30657f3d79e96d548bfa8081f33be4d7cdf048c55"
+  },
+  "report_sha256": "d6e891e155052b0f8a3e1cd605c03ea05302459d70df9b335114757c22a41c29",
+  "compressed_sha256": "70609f8ee4980499b15916a9a2742f773a94173e00fc2744bcda228e3ea71136"
+}

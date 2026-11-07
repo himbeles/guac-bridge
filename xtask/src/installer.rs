@@ -27,7 +27,7 @@ mod windows {
     use std::{
         env,
         fs::{self, File},
-        io::{Read, Write},
+        io::Write,
         path::{Path, PathBuf},
     };
 
@@ -52,6 +52,10 @@ mod windows {
         }
         fs::create_dir_all(&payload)?;
         fs::copy(&binary, payload.join("guac-bridge.exe"))?;
+        fs::copy(
+            project.assets().join("THIRD-PARTY-NOTICES.txt"),
+            payload.join("THIRD-PARTY-NOTICES.txt"),
+        )?;
         for entry in fs::read_dir(directory)? {
             let entry = entry?;
             let path = entry.path();
@@ -90,22 +94,9 @@ mod windows {
         for package in PACKAGES {
             let mut archive =
                 zip::ZipArchive::new(File::open(cache.join(format!("{package}.nupkg")))?)?;
-            let index = (0..archive.len())
-                .find(|&i| {
-                    archive.by_index(i).is_ok_and(|entry| {
-                        let name = entry
-                            .name()
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or_default()
-                            .to_ascii_lowercase();
-                        matches!(name.as_str(), "license" | "license.txt" | "license.md")
-                    })
-                })
-                .with_context(|| format!("Missing redistribution license: {package}"))?;
-            let mut bytes = Vec::new();
-            archive.by_index(index)?.read_to_end(&mut bytes)?;
-            fs::write(payload.join(format!("{package}-LICENSE.txt")), bytes)?;
+            for (kind, bytes) in redistribution_notices(&mut archive)? {
+                fs::write(payload.join(format!("{package}-{kind}.txt")), bytes)?;
+            }
         }
         let iscc = env::var_os("ISCC").map(PathBuf::from).unwrap_or_else(|| {
             PathBuf::from(
@@ -223,5 +214,66 @@ mod windows {
                 .trim_start_matches('\u{feff}')
                 .to_owned())
         }
+    }
+}
+
+#[cfg(any(windows, test))]
+// Both pinned NuGet packages carry their redistribution terms at the archive root.
+fn redistribution_notices<R: std::io::Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+) -> Result<Vec<(&'static str, Vec<u8>)>> {
+    use anyhow::Context;
+    use std::io::Read;
+    let mut files = Vec::new();
+    for kind in ["LICENSE", "NOTICE"] {
+        let mut found = None;
+        for index in 0..archive.len() {
+            let mut entry = archive.by_index(index)?;
+            let matches = {
+                let name = entry.name()?;
+                [kind.to_owned(), format!("{kind}.txt"), format!("{kind}.md")]
+                    .iter()
+                    .any(|candidate| name.eq_ignore_ascii_case(candidate))
+            };
+            if matches {
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes)?;
+                found = Some(bytes);
+                break;
+            }
+        }
+        files.push((
+            kind,
+            found.with_context(|| format!("Missing Microsoft redistribution {kind}"))?,
+        ));
+    }
+    Ok(files)
+}
+
+#[cfg(test)]
+mod license_tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+    fn package(notice: bool) -> zip::ZipArchive<Cursor<Vec<u8>>> {
+        let mut archive = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        archive
+            .start_file("license.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive
+            .write_all(b"Microsoft redistribution terms")
+            .unwrap();
+        if notice {
+            archive
+                .start_file("NOTICE.txt", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(b"Third-party copyrights").unwrap();
+        }
+        zip::ZipArchive::new(archive.finish().unwrap()).unwrap()
+    }
+    #[test]
+    fn microsoft_packages_require_both_terms_and_notices() {
+        let files = redistribution_notices(&mut package(true)).unwrap();
+        assert_eq!(files[1], ("NOTICE", b"Third-party copyrights".to_vec()));
+        assert!(redistribution_notices(&mut package(false)).is_err());
     }
 }

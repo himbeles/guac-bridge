@@ -111,10 +111,13 @@ class Gateway:
 
 
 class BootstrapTests(unittest.IsolatedAsyncioTestCase):
-    async def test_upload_cache_repair_ssh_and_http(self):
+    async def test_upload_cache_repair_presets_and_tcp(self):
         gateway = Gateway()
         url = await gateway.start()
         children = []
+        log = Path(self.enterContext(tempfile.TemporaryDirectory())) / (
+            "日志's $log`" + "x" * 100 + ".log"
+        )
 
         async def echo(r, w):
             data = await r.read()
@@ -150,6 +153,8 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
                 "--remote-port",
                 str(port),
                 "--benchmark-control",
+                "--server-debug-log",
+                str(log),
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -183,12 +188,13 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
             await c.stdin.drain()
             await asyncio.wait_for(c.wait(), 15)
             self.assertEqual(c.returncode, 0, (await c.stderr.read()).decode())
+            self.assertIn("helper stopped", log.read_text(encoding="utf-8"))
 
         try:
             for i in range(3):
                 if i == 2:
                     cache.write_bytes(b"corrupted")
-                c, port = await bridge("ssh", target.sockets[0].getsockname()[1])
+                c, port = await bridge("rdp" if i == 2 else "ssh", target.sockets[0].getsockname()[1])
                 self.assertEqual(cache.read_bytes(), helper.read_bytes())
 
                 async def roundtrip(seed):
@@ -222,7 +228,7 @@ class BootstrapTests(unittest.IsolatedAsyncioTestCase):
 
             server = await asyncio.start_server(http, "127.0.0.1", 0)
             try:
-                c, endpoint = await bridge("llm", server.sockets[0].getsockname()[1])
+                c, endpoint = await bridge("tcp", server.sockets[0].getsockname()[1])
                 import aiohttp
 
                 async with aiohttp.ClientSession() as session:

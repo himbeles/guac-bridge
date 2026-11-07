@@ -88,6 +88,14 @@ if ($WithoutSharedRuntime) {
     }
 }
 Run-Setup '/TASKS=addtopath'
+foreach ($file in @('LICENSE', 'THIRD-PARTY-NOTICES.txt',
+    'Microsoft.WindowsAppSDK.Runtime.2.4.0-LICENSE.txt', 'Microsoft.WindowsAppSDK.Runtime.2.4.0-NOTICE.txt',
+    'Microsoft.Web.WebView2.1.0.4078.44-LICENSE.txt', 'Microsoft.Web.WebView2.1.0.4078.44-NOTICE.txt')) {
+    if (!(Test-Path (Join-Path $dest $file))) { throw "Installer omitted license information: $file" }
+}
+$licenseText = & "$dest/guac-bridge.exe" licenses
+if ($LASTEXITCODE -ne 0 -or !($licenseText -match 'NOTICES AND INFORMATION')) { throw 'Installed license command omitted Microsoft notices' }
+
 if (!(Test-Path "$dest/Microsoft.WindowsAppRuntime.dll")) { throw 'Installer omitted the private runtime' }
 if ($WithoutSharedRuntime) { Test-InstalledManager }
 if (-not ([Environment]::GetEnvironmentVariable('Path','User').Split(';') -contains $dest)) { throw 'PATH option did not add the install directory' }

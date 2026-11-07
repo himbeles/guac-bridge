@@ -1,7 +1,7 @@
-Guac Bridge includes a private Windows App Runtime for its native WinUI manager.
+Guac Bridge includes a bundled Windows App Runtime for its native WinUI manager.
 
 Setup installs the UI runtime files with Guac Bridge. No separate runtime download,
-registration, or system-wide runtime installation is needed. The private runtime
+registration, or system-wide runtime installation is needed. The bundled runtime
 is removed when Guac Bridge is uninstalled.
 
 Closing the manager window keeps the tray and bridges running. Use the tray icon
@@ -9,3 +9,8 @@ or Start menu to reopen it. Use Exit tray to quit the tray, keeping bridges runn
 
 The manager requires Windows 11 / Windows Server 2025 or newer. Bridges and the
 tray host remain available on earlier Windows versions.
+
+Guac Bridge is MIT licensed. Third-party components retain their own licenses.
+Setup installs LICENSE, THIRD-PARTY-NOTICES.txt and the Microsoft package LICENSE
+and NOTICE files alongside the executable. Open Licenses in the manager/tray or
+run guac-bridge licenses to view the applicable terms.

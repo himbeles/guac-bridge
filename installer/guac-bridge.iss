@@ -14,6 +14,7 @@ VersionInfoProductVersion={#NumericVersion}
 VersionInfoTextVersion={#Version}
 VersionInfoProductTextVersion={#Version}
 VersionInfoDescription=Guac Bridge {#Version} Setup
+VersionInfoCopyright=Copyright (c) 2026 Luis Riegger
 SetupIconFile=..\crates\guac-bridge\assets\frog.ico
 WizardStyle=modern
 AppPublisher=Guac Bridge contributors

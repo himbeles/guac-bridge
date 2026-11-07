@@ -2,10 +2,11 @@
 name = "guac-bridge"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SSH and OpenAI-compatible endpoints through Guacamole, with automatic helper deployment"
+description = "TCP forwarding with SSH, LLM and RDP presets through Guacamole and FortiGate, with automatic helper deployment"
 build = "build.rs"
 include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 
@@ -13,7 +14,7 @@ include = ["src/**", "build.rs", "assets/**", "Cargo.toml"]
 default = ["client"]
 agent = []
 bundled-ui = ["client", "dep:windows-reactor-setup"]
-client = ["dep:futures-util", "dep:serde", "dep:sha2", "dep:socket2", "dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:windows-reactor"]
+client = ["dep:flate2", "dep:unicode-width", "dep:futures-util", "dep:serde", "dep:sha2", "dep:socket2", "dep:reqwest", "dep:tokio-tungstenite", "dep:url", "dep:percent-encoding", "dep:rustls", "dep:rustls-native-certs", "dep:rustls-pemfile", "dep:rpassword", "dep:keyring", "dep:directories", "dep:uuid", "dep:windows-reactor"]
 
 [lib]
 name = "guac_bridge"
@@ -29,9 +30,11 @@ path = "src/agent.rs"
 required-features = ["agent"]
 
 [dependencies]
+unicode-width = { version = "0.2", optional = true }
 anyhow = "1"
 base64 = "0.22"
 crc32fast = "1.5"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"], optional = true }
 memchr = "2"
 clap = { version = "4", features = ["derive"] }
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"], optional = true }
@@ -61,6 +64,9 @@ keyring = { version = "3", features = ["windows-native"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"], optional = true }
 
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"

@@ -101,6 +101,9 @@ fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
     if args.benchmark_control {
         options.push_str(" --benchmark-control");
     }
+    if args.gateway == crate::options::Gateway::Fortigate {
+        options.push_str(" --reliable-output");
+    }
     if let Some(path) = &args.server_debug_log {
         options.push_str(&format!(" --debug-log {}", powershell_quote(path)));
     }
@@ -122,14 +125,18 @@ fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
 
 fn powershell_command(script: &str) -> Result<Vec<u8>> {
     let script: String = script.lines().map(str::trim).collect::<Vec<_>>().join("\n");
-    let utf16: Vec<u8> = script.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    // -EncodedCommand requires UTF-16LE, doubling an almost entirely ASCII
+    // bootstrap before Base64. A UTF-8 payload leaves room for paths and options
+    // under cmd.exe's line limit. The loader has no dollar signs, backticks or
+    // embedded double quotes, so both cmd.exe and PowerShell pass it literally.
     let command = format!(
-        "powershell.exe -NoLogo -NoProfile -NonInteractive -EncodedCommand {}\r",
-        STANDARD.encode(utf16)
+        "powershell.exe -NoLogo -NoProfile -NonInteractive -Command \"& ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{}'))))\"\r",
+        STANDARD.encode(script.as_bytes())
     );
     ensure!(
         command.len() < 8000,
-        "Windows bootstrap exceeds the command line limit"
+        "Windows bootstrap command is {} bytes, exceeding the safe 8000-byte line limit; shorten --server-debug-log or --server-command paths",
+        command.len()
     );
     Ok(command.into_bytes())
 }
@@ -159,10 +166,41 @@ mod tests {
         let lf = script.replace("\r\n", "\n");
         let crlf = lf.replace('\n', "\r\n");
         let command = powershell_command(&lf).unwrap();
-        assert!(command.len() < 8000);
+        assert!(command.len() < 5000);
         assert_eq!(command, powershell_command(&crlf).unwrap());
         assert_eq!(args.args.server_os, "windows");
         assert_eq!(powershell_quote("a'b"), "'a''b'");
+    }
+    #[test]
+    fn windows_bootstrap_preserves_long_unicode_paths_without_shell_interpolation() {
+        let options = format!(
+            "--reliable-output --debug-log {}",
+            powershell_quote(&format!(
+                "C:\\Users\\测试\\{}\\server's $log`😀.log",
+                "logs".repeat(60)
+            ))
+        );
+        let script = include_str!("windows_bootstrap.ps1")
+            .replace("@NONCE@", &"a".repeat(32))
+            .replace("@HASH@", &"b".repeat(64))
+            .replace("@COUNT@", "99999999")
+            .replace("@MANUAL@", "$null")
+            .replace("@OPTIONS@", &options);
+        let command = String::from_utf8(powershell_command(&script).unwrap()).unwrap();
+        assert!(command.is_ascii());
+        assert!(command.len() < 6000);
+        let payload = command
+            .split("FromBase64String('")
+            .nth(1)
+            .unwrap()
+            .split("')")
+            .next()
+            .unwrap();
+        let decoded = String::from_utf8(STANDARD.decode(payload).unwrap()).unwrap();
+        assert!(decoded.contains(&options));
+        assert!(command.ends_with("\"\r"));
+        assert!(!command.contains("$log"));
+        assert!(powershell_command(&"x".repeat(6000)).is_err());
     }
     #[test]
     fn chunked_upload_can_decode_each_block_independently() {
