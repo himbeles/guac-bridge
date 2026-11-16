@@ -25,6 +25,7 @@ guac-bridge tcp CONNECTION_URL --port 5432
 
 Connect your application to `127.0.0.1:5432` to reach port 5432 on the remote
 server. Add `--remote-port` if the remote service uses a different port.
+Use `--host YOUR_LOCAL_IP` to listen on a LAN interface.
 
 For **Apache Guacamole** (the default), use the SSH terminal's full browser URL as
 `CONNECTION_URL`. For **FortiGate**, use the SSL-VPN portal origin, select

@@ -582,7 +582,15 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     #[cfg(windows)]
     let mut interrupt = tokio::signal::windows::ctrl_c()?;
-    let listener=TcpListener::bind(("127.0.0.1",args.port())).await.with_context(|| format!("Cannot listen on 127.0.0.1:{}: the port is already in use or reserved. Choose another --port, or stop the process using it",args.port()))?;
+    let listen_addr = args.listen_addr(args.port());
+    let listener = TcpListener::bind(listen_addr).await.map_err(|error| {
+        let hint = if error.kind() == std::io::ErrorKind::AddrInUse {
+            "the port is already in use or reserved; choose another --port or stop the process using it"
+        } else {
+            "check that --host is a local address and the port is available"
+        };
+        anyhow::Error::new(error).context(format!("Cannot listen on {listen_addr}: {hint}"))
+    })?;
 
     #[cfg(windows)]
     if !args.benchmark_control
@@ -879,7 +887,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         let usage=Arc::new(crate::usage::Usage::default());
         let _managed=crate::background::control(&args,&username,port,stop_tx,usage.clone()).await?;
         drop(startup_guard);
-        if !args.benchmark_control{eprintln!("Bridge ready on 127.0.0.1:{port}; Ctrl+C to stop");}
+        if !args.benchmark_control{eprintln!("Bridge ready on {}; Ctrl+C to stop", listener.local_addr()?);}
         let control=async {if args.benchmark_control{benchmark_control(port).await}else{interrupt.recv().await;Ok(())}};
         tokio::pin!(control);
         let next_id=AtomicU32::new(1);

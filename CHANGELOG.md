@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 5.1.0
 
+- Add `--host` to TCP and all presets for IPv4/IPv6 listener binding, with 127.0.0.1 as the default. Keep management sockets on loopback.
+- Track bridges by listening address and port, preserve existing loopback records, and show actual listener addresses in CLI/UI routes and startup/status messages. Add `stop --host IP --port PORT` to select one address; port-only stop covers all matching listeners.
+- Rename `--target-host` to `--remote-host`, retaining the old spelling as a hidden compatibility alias. Align client/helper endpoint names with `--remote-port`.
 - Update the ZIP packaging dependency to 9.0.5 and handle fallible entry names when extracting native executables and Microsoft redistribution notices.
 
 ## 5.0.5

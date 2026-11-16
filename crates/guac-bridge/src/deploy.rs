@@ -40,9 +40,9 @@ pub(crate) fn command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
         return Ok(Vec::new());
     }
     let mut options = format!(
-        "--stdio --target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
-        shell_quote(&args.target_host),
-        args.target_port(),
+        "--stdio --remote-host {} --remote-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
+        shell_quote(&args.remote_host),
+        args.remote_port(),
         args.connect_timeout,
         args.max_connections,
         args.window,
@@ -90,9 +90,9 @@ fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
     };
     let hash = format!("{:x}", Sha256::digest(bytes));
     let mut options = format!(
-        "--target-host {} --target-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
-        powershell_quote(&args.target_host),
-        args.target_port(),
+        "--remote-host {} --remote-port {} --connect-timeout {} --max-connections {} --window {} --frame-size {}",
+        powershell_quote(&args.remote_host),
+        args.remote_port(),
         args.connect_timeout,
         args.max_connections,
         args.window,
@@ -162,7 +162,7 @@ mod tests {
         let script=include_str!("windows_bootstrap.ps1")
             .replace("@NONCE@", &"a".repeat(32)).replace("@HASH@", &"b".repeat(64))
             .replace("@COUNT@", "99999999").replace("@MANUAL@", "$null")
-            .replace("@OPTIONS@", "--target-host '127.0.0.1' --target-port 22 --connect-timeout 30 --max-connections 8 --window 32 --frame-size 65536");
+            .replace("@OPTIONS@", "--remote-host '127.0.0.1' --remote-port 22 --connect-timeout 30 --max-connections 8 --window 32 --frame-size 65536");
         let lf = script.replace("\r\n", "\n");
         let crlf = lf.replace('\n', "\r\n");
         let command = powershell_command(&lf).unwrap();

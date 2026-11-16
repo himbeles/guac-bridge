@@ -4565,7 +4565,7 @@ SOFTWARE.
 MIT License (MIT)
 
 Used by:
-- guac-bridge 5.0.5
+- guac-bridge 5.1.0
   Source: https://github.com/himbeles/guac-bridge
 
 MIT License

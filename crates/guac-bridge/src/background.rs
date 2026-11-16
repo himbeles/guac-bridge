@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
     io::{BufRead, BufReader, Write},
-    net::{SocketAddr, TcpStream},
+    net::{IpAddr, SocketAddr, TcpStream},
     path::PathBuf,
     time::{Duration, Instant},
 };
@@ -30,6 +30,8 @@ struct State {
     jump_url: String,
     mode: String,
     port: u16,
+    #[serde(default = "crate::options::default_host")]
+    host: IpAddr,
     target: String,
     version: String,
     executable: PathBuf,
@@ -49,8 +51,18 @@ pub(crate) fn directory() -> Result<PathBuf> {
     }
     Ok(p)
 }
+fn registration_key(mode: &str, host: IpAddr, port: u16) -> String {
+    if host == crate::options::default_host() {
+        format!("{mode}-{port}")
+    } else {
+        format!("{mode}-{port}-{}", host.to_string().replace(':', "_"))
+    }
+}
 fn path(args: &BridgeOptions) -> Result<PathBuf> {
-    Ok(directory()?.join(format!("{}-{}.json", args.mode.as_str(), args.port())))
+    Ok(directory()?.join(format!(
+        "{}.json",
+        registration_key(&args.mode, args.host, args.port())
+    )))
 }
 fn identity(args: &BridgeOptions) -> String {
     let mut data = serde_json::json!([
@@ -59,8 +71,8 @@ fn identity(args: &BridgeOptions) -> String {
         args.data_source,
         args.mode.as_str(),
         args.port(),
-        args.target_host,
-        args.target_port(),
+        args.remote_host,
+        args.remote_port(),
         args.server_command,
         args.server_os,
         args.debug_log,
@@ -80,6 +92,11 @@ fn identity(args: &BridgeOptions) -> String {
             serde_json::json!(args.server_port),
             serde_json::json!("output-reliable-v1"),
         ]);
+    }
+    if args.host != crate::options::default_host() {
+        data.as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(["host", args.host]));
     }
     format!("{:x}", Sha256::digest(data.to_string().as_bytes()))
 }
@@ -157,17 +174,24 @@ pub(crate) async fn control(
         jump_url: display_url(args.url.as_deref().unwrap_or_default()),
         mode: args.mode.as_str().into(),
         port,
-        target: format!("{}:{}", args.target_host, args.target_port()),
+        host: args.host,
+        target: crate::options::endpoint(&args.remote_host, args.remote_port()),
         version: env!("CARGO_PKG_VERSION").into(),
         executable: std::env::current_exe()?,
         instance: uuid::Uuid::new_v4().to_string(),
         log: if args.managed_child {
-            Some(directory()?.join(format!("{}-{}.log", args.mode.as_str(), port)))
+            Some(directory()?.join(format!(
+                "{}.log",
+                registration_key(&args.mode, args.host, port)
+            )))
         } else {
             args.debug_log.as_ref().map(PathBuf::from)
         },
     };
-    let path = directory()?.join(format!("{}-{}.json", args.mode.as_str(), port));
+    let path = directory()?.join(format!(
+        "{}.json",
+        registration_key(&args.mode, args.host, port)
+    ));
     let token = s.token.clone();
     let temp = path.with_extension(format!("{}.tmp", s.pid));
     let mut options = OpenOptions::new();
@@ -252,7 +276,11 @@ impl Bridge {
         display_url(&self.state.jump_url)
     }
     pub fn local_url(&self) -> String {
-        format!("{}://127.0.0.1:{}", self.scheme(), self.state.port)
+        format!(
+            "{}://{}",
+            self.scheme(),
+            SocketAddr::new(self.state.host, self.state.port)
+        )
     }
     pub fn server_url(&self) -> String {
         format!("{}://{} (on server)", self.scheme(), self.state.target)
@@ -442,7 +470,7 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             || state.instance.is_empty()
             || state.target.is_empty()
             || display_url(&state.jump_url).is_empty()
-            || key != format!("{}-{}", state.mode, state.port)
+            || key != registration_key(&state.mode, state.host, state.port)
         {
             continue;
         }
@@ -454,9 +482,9 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             key: key.into(),
             instance: state.instance.clone(),
             label: format!(
-                "[{}]  127.0.0.1:{} → {}",
+                "[{}]  {} → {}",
                 service_label(&state.mode),
-                state.port,
+                SocketAddr::new(state.host, state.port),
                 state.target
             ),
             state,
@@ -516,17 +544,25 @@ fn stop_registered(bridges: Vec<Bridge>) -> Result<()> {
 }
 
 /// Root-level bridge control does not need a preset or gateway credentials.
-pub(crate) fn stop(port: Option<u16>) -> Result<()> {
+pub(crate) fn stop(port: Option<u16>, host: Option<IpAddr>) -> Result<()> {
     let selected: Vec<_> = bridges()?
         .into_iter()
-        .filter(|bridge| port.is_none_or(|port| bridge.state.port == port))
+        .filter(|bridge| {
+            port.is_none_or(|port| bridge.state.port == port)
+                && host.is_none_or(|host| bridge.state.host == host)
+        })
         .collect();
     let running = selected.iter().filter(|bridge| bridge.online).count();
     stop_registered(selected)?;
-    let message = match (port, running) {
-        (Some(port), 0) => format!("No managed bridge running on port {port}"),
-        (Some(port), _) => format!("Bridge stopped on port {port}"),
-        (None, _) => format!("All bridges stopped ({running})"),
+    let message = match (port, host, running) {
+        (Some(port), Some(host), 0) => format!(
+            "No managed bridge running on {}",
+            SocketAddr::new(host, port)
+        ),
+        (Some(port), Some(host), _) => format!("Bridge stopped on {}", SocketAddr::new(host, port)),
+        (Some(port), None, 0) => format!("No managed bridge running on port {port}"),
+        (Some(port), None, _) => format!("Bridge stopped on port {port}"),
+        (None, _, _) => format!("All bridges stopped ({running})"),
     };
     crate::console::line(&message);
     Ok(())
@@ -543,6 +579,32 @@ mod control_tests {
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    #[test]
+    fn legacy_records_default_to_loopback_and_custom_addresses_have_distinct_keys() {
+        let state: State = serde_json::from_value(serde_json::json!({
+            "pid":1,"control":1,"token":"token","identity":"id","username":"u",
+            "jump_url":"https://gateway.example", "mode":"ssh", "port":2222,
+            "target":"127.0.0.1:22", "version":"5.0.5", "executable":"exe", "instance":"i", "log":null
+        })).unwrap();
+        assert_eq!(state.host, crate::options::default_host());
+        assert_eq!(registration_key("ssh", state.host, 2222), "ssh-2222");
+        let v6: IpAddr = "::1".parse().unwrap();
+        assert_eq!(registration_key("ssh", v6, 2222), "ssh-2222-__1");
+        assert_ne!(
+            registration_key("ssh", v6, 2222),
+            registration_key("ssh", state.host, 2222)
+        );
+        let bridge = Bridge {
+            state: State { host: v6, ..state },
+            key: String::new(),
+            instance: String::new(),
+            label: String::new(),
+            usage: None,
+            online: false,
+        };
+        assert_eq!(bridge.local_url(), "ssh://[::1]:2222");
+        assert_eq!(crate::options::endpoint("::1", 22), "[::1]:22");
+    }
     #[test]
     fn display_urls_keep_connection_navigation_and_remove_secrets() {
         assert_eq!(

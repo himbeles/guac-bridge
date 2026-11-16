@@ -2,16 +2,16 @@
 
 ```mermaid
 flowchart TD
-    SSH["SSH client"] --> Local["Rust client: local loopback listener"]
+    SSH["SSH client"] --> Local["Rust client: local TCP listener"]
     HTTP["HTTP, Remote Desktop or other TCP client"] --> Local
     Local --> Guac["Guacamole or FortiGate gateway terminal"]
     Guac --> Agent["Bundled Rust helper in terminal"]
     Agent --> Service["Remote loopback service: TCP, SSH, LLM or RDP"]
 ```
 
-Each bridge process has its own Guacamole terminal. Within that connection, independent local TCP connections use numbered channels. The HTTP mode forwards HTTP bytes without parsing, re-encoding, decompression or buffering a complete response. Authentication headers, binary bodies, keep-alive and server-sent events pass through unchanged.
+Each bridge process has its own gateway terminal. Within that connection, independent local TCP connections use numbered channels. TCP forwarding carries HTTP bytes without parsing, re-encoding, decompression or buffering a complete response. Authentication headers, binary bodies, keep-alive and server-sent events pass through unchanged.
 
-**Loopback** is a computer’s internal network interface. `127.0.0.1` and `::1` refer to the machine on which a process runs. The client listener accepts connections only from your computer. The helper connects to the service on the remote machine’s loopback interface. No additional externally accessible server port is needed. The client-to-Guacamole leg uses HTTPS/WSS when the supplied URL is HTTPS; a plain HTTP URL uses HTTP/WS.
+**Loopback** is a computer’s internal network interface. `127.0.0.1` and `::1` refer to the machine on which a process runs. The client listener defaults to 127.0.0.1. Use `--host` to select another local IPv4 or IPv6 address. The helper connects to the service on the remote machine’s loopback interface. No additional externally accessible server port is needed. The client-to-Guacamole leg uses HTTPS/WSS when the supplied URL is HTTPS; a plain HTTP URL uses HTTP/WS.
 
 ## Helper deployment
 
@@ -56,11 +56,36 @@ Windows console processing changes arbitrary terminal bytes, so this carrier use
 `rdp` presets instead keep independent defaults and overrides: 2222/22, 8000/8000
 and 33899/3389. All use the same wire framing and TCP engine.
 
-Each background bridge has a local tracking record for its preset and listening
-port. Multiple SSH bridges, for example, can run on ports 2222 and 2225, connect
+Each background bridge has a local tracking record for its preset, listening
+address and port. Multiple SSH bridges, for example, can run on ports 2222 and 2225, connect
 to different destinations and be stopped independently with `guac-bridge stop --port PORT`. Use
 `guac-bridge stop all` for every registered running bridge. Each opens its own
 gateway/helper session. These records hold control metadata, not application
 protocol state or forwarded passwords. Old HTTP records remain discoverable so
 manager and update controls can stop bridges created before the HTTP command
 was removed.
+
+## Client listener addresses
+
+`--host IP` selects the local interface independently of `--port`. Use a specific
+local address for one interface, `0.0.0.0` for all IPv4 interfaces, or an IPv6
+address such as `::1`. Applications connect to a reachable address of the client
+machine. Binding a LAN address makes the forwarded service reachable from that
+network; its application authentication and TLS still pass through unchanged.
+
+`--remote-host` selects the helper-side loopback service (`127.0.0.1`, `localhost`
+or `::1`); `--remote-port` selects its port. `--server-host` remains the gateway's
+SSH server. The old `--target-host` spelling is accepted for compatibility but
+hidden from help.
+
+```shell
+guac-bridge tcp CONNECTION_URL --host 192.168.1.10 --port 15432 --remote-port 5432
+guac-bridge tcp --status --host 192.168.1.10 --port 15432
+guac-bridge stop --host 192.168.1.10 --port 15432
+```
+
+Registrations and startup locks distinguish address/port pairs. Separate addresses
+can use the same port when the OS permits it; wildcard listeners may overlap
+other addresses. Existing loopback registrations retain their filenames. Port-only
+stop selects every registered bridge on that port; add `--host` to select one
+address. Management and usage queries always use authenticated loopback sockets.

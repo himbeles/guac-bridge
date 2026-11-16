@@ -31,8 +31,8 @@ service installation or remote internet access.
 | --- | --- |
 | URL, `--user`, gateway password | FortiGate portal |
 | `--server-host`, `--server-port`, `--server-user`, server password | SSH terminal opened by the portal |
-| `--target-host`, `--remote-port` | Loopback TCP service reached by the helper |
-| `--port` | Local loopback listener used by your application |
+| `--remote-host`, `--remote-port` | Loopback TCP service reached by the helper |
+| `--host`, `--port` | Local listener used by your application (127.0.0.1 by default) |
 
 The server SSH port defaults to 22. Preset service ports are SSH 22,
 LLM 8000 and RDP 3389. Generic TCP requires an explicit port. HTTPS uses TCP

@@ -28,10 +28,10 @@ struct Args {
     windows_console: bool,
     #[arg(long, hide = true, requires = "windows_console")]
     reliable_output: bool,
-    #[arg(long, default_value = "127.0.0.1")]
-    target_host: String,
-    #[arg(long, default_value_t = 22)]
-    target_port: u16,
+    #[arg(long, alias = "target-host", default_value = "127.0.0.1")]
+    remote_host: String,
+    #[arg(long, alias = "target-port", default_value_t = 22)]
+    remote_port: u16,
     #[arg(long, default_value_t = 30)]
     connect_timeout: u64,
     #[arg(long, default_value_t = 8)]
@@ -56,7 +56,7 @@ async fn connection(
 ) -> Result<()> {
     let stream = tokio::time::timeout(
         Duration::from_secs(args.connect_timeout),
-        TcpStream::connect((args.target_host.as_str(), args.target_port)),
+        TcpStream::connect((args.remote_host.as_str(), args.remote_port)),
     )
     .await
     .context("Target TCP connect timed out")?
@@ -319,7 +319,7 @@ async fn serve(args: Arc<Args>, stdout: &mut impl Write) -> Result<()> {
                             let task=tokio::spawn(async move {
                                 let result=connection(id,owned_args.clone(),rx,owned_credits,owned_output.clone()).await;
                                 if let Err(error)=&result {diagnostics::event(&format!("target channel={id}: {error:#}"));}
-                                let event=match result {Ok(())=>Frame::control(Kind::Closed,id),Err(error)=>Frame::payload(Kind::Error,id,format!("Target {}:{} failed: {error:#}",owned_args.target_host,owned_args.target_port).into_bytes())};
+                                let event=match result {Ok(())=>Frame::control(Kind::Closed,id),Err(error)=>Frame::payload(Kind::Error,id,format!("Target {}:{} failed: {error:#}",owned_args.remote_host,owned_args.remote_port).into_bytes())};
                                 let _=owned_output.send(event).await;
                             });
                             channels.insert(id,Channel{input:tx,credits,task,eof:false});
@@ -418,11 +418,11 @@ fn main() -> Result<()> {
         "Started automatically by native client; --stdio is required"
     );
     ensure!(
-        ["127.0.0.1", "localhost", "::1"].contains(&args.target_host.as_str()),
+        ["127.0.0.1", "localhost", "::1"].contains(&args.remote_host.as_str()),
         "Target must be loopback"
     );
     ensure!(
-        args.target_port > 0
+        args.remote_port > 0
             && (1..=16).contains(&args.max_connections)
             && args.connect_timeout > 0,
         "Invalid port, limit or timeout"

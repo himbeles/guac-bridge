@@ -49,7 +49,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
     def env(self):
         return dict(os.environ, GUAC_BRIDGE_PASSWORD='test', NO_PROXY='127.0.0.1,localhost', HOME=str(self.home), XDG_DATA_HOME=str(self.home/'data'))
 
-    async def target(self, handler):
+    async def target(self, handler, host='127.0.0.1'):
         async def serve(reader, writer):
             try:
                 await handler(reader, writer)
@@ -57,7 +57,7 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
                 writer.close()
                 with contextlib.suppress(OSError):
                     await writer.wait_closed()
-        server = await asyncio.start_server(serve, '127.0.0.1', 0)
+        server = await asyncio.start_server(serve, host, 0)
         self.servers.append(server)
         return server.sockets[0].getsockname()[1]
 
@@ -70,8 +70,9 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
         self.children.append(child)
         return child
 
-    async def stop_bridge(self, port=None, all=False):
+    async def stop_bridge(self, port=None, all=False, host=None):
         flags=['all'] if all else ['--port',str(port)]
+        if host is not None: flags += ['--host',host]
         process=await asyncio.create_subprocess_exec(str(BINARY),'stop',*flags,
             stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=self.env())
         out,error=await asyncio.wait_for(process.communicate(),30)
@@ -678,6 +679,64 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             os.close(master)
             if slave is not None:
                 os.close(slave)
+
+    async def test_listener_addresses_and_remote_host_alias(self):
+        import socket
+        hosts=['0.0.0.0','127.0.0.2','::1']
+        for host in hosts:
+            if host=='::1':
+                probe=socket.socket(socket.AF_INET6)
+                try:
+                    probe.bind(('::1',0))
+                except OSError:
+                    continue
+                finally:
+                    probe.close()
+            remote_host='::1' if host=='::1' else '127.0.0.1'
+            target=await self.target(self.echo,remote_host)
+            flag='--target-host' if host=='127.0.0.2' else '--remote-host'
+            child,port=await self.bridge(target,'tcp','--host',host,flag,remote_host)
+            reader,writer=await asyncio.open_connection('127.0.0.2' if host=='0.0.0.0' else host,port)
+            writer.write(b'address-specific traffic')
+            await writer.drain()
+            writer.write_eof()
+            self.assertEqual(await asyncio.wait_for(reader.read(),10),b'address-specific traffic')
+            writer.close();await writer.wait_closed()
+            child.stdin.write(b'quit\n');await child.stdin.drain()
+            await asyncio.wait_for(child.wait(),10)
+            self.assertEqual(child.returncode,0,(await child.stderr.read()).decode())
+
+    async def test_managed_addresses_share_port_with_independent_status_and_stop(self):
+        target=await self.target(self.echo)
+        dummy=await asyncio.start_server(lambda r,w:w.close(),'127.0.0.1',0)
+        port=dummy.sockets[0].getsockname()[1]
+        dummy.close();await dummy.wait_closed()
+        async def command(host,*flags):
+            child=await self.child('--host',host,'--port',port,'--remote-port',target,*flags,foreground=False,mode='tcp')
+            out,error=await asyncio.wait_for(child.communicate(),30)
+            self.assertEqual(child.returncode,0,(out+error).decode())
+            return (out+error).decode()
+        try:
+            for host in ['127.0.0.1','127.0.0.2']:
+                self.assertIn(f'Bridge ready on {host}:{port}',await command(host))
+                self.assertIn('already running',await command(host))
+                self.assertIn(f'Bridge running on {host}:{port}',await command(host,'--status'))
+            records=list((self.home/'data'/'guac-bridge').glob('tcp-*.json'))
+            states=[json.loads(p.read_text()) for p in records]
+            self.assertEqual({s['host'] for s in states},{'127.0.0.1','127.0.0.2'})
+            self.assertEqual(len({s['pid'] for s in states}),2)
+            listing=await asyncio.create_subprocess_exec(str(BINARY),'list',stdout=asyncio.subprocess.PIPE,env=self.env())
+            output,_=await listing.communicate()
+            self.assertIn(f'tcp://127.0.0.2:{port}',output.decode())
+            # Management sockets stay on loopback even when service binding changes.
+            for state in states:
+                with self.assertRaises(OSError):
+                    await asyncio.wait_for(asyncio.open_connection('127.0.0.2',state['control']),2)
+            await self.stop_bridge(port,host='127.0.0.2')
+            with self.assertRaises(OSError): await asyncio.open_connection('127.0.0.2',port)
+            await self.roundtrip(port,b'other listener remains usable')
+        finally:
+            await self.stop_bridge(port)
 
     async def test_managed_start_reuse_status_and_stop(self):
         await self.managed_lifetime('ssh')

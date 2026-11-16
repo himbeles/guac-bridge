@@ -169,7 +169,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         await ws.send_str(osc('GBWB:', f'{nonce}:STARTING\n'.encode()))
         window = re.search(r'--window (\d+)', script)[1]
         frame_size = re.search(r'--frame-size (\d+)', script)[1]
-        target_port = re.search(r'--target-port (\d+)', script)[1]
+        target_port = re.search(r'--remote-port (\d+)', script)[1]
         helper = await asyncio.create_subprocess_exec(str(self.agent), '--stdio', '--windows-console', '--reliable-output', '--target-port', target_port,
             '--window', window, '--frame-size', frame_size, '--connect-timeout','3',
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)

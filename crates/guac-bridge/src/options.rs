@@ -3,6 +3,19 @@
 use crate::{FRAME, WINDOW};
 use anyhow::{Result, ensure};
 use clap::{Args as ClapArgs, ValueEnum};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+pub(crate) fn default_host() -> IpAddr {
+    IpAddr::V4(Ipv4Addr::LOCALHOST)
+}
+
+pub(crate) fn endpoint(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
 
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum, serde::Serialize, serde::Deserialize,
@@ -67,15 +80,23 @@ pub(crate) struct BridgeOptions {
     /// Guacamole authentication data source; overrides the value decoded from the URL.
     #[arg(long, help_heading = "Gateway")]
     pub data_source: Option<String>,
+    /// Local listening IP (IPv4 or IPv6). Use 0.0.0.0 for all IPv4 interfaces.
+    #[arg(long, default_value = "127.0.0.1", help_heading = "Endpoints")]
+    pub host: IpAddr,
     /// Local TCP port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 2222, LLM 8000, RDP 33899.
     #[arg(long = "port", help_heading = "Endpoints")]
     pub port: Option<u16>,
     /// Remote TCP service port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 22, LLM 8000, RDP 3389.
     #[arg(long = "remote-port", help_heading = "Endpoints")]
-    pub target_port: Option<u16>,
+    pub remote_port: Option<u16>,
     /// Service address on the helper server: 127.0.0.1, localhost or ::1.
-    #[arg(long, default_value = "127.0.0.1", help_heading = "Endpoints")]
-    pub target_host: String,
+    #[arg(
+        long,
+        alias = "target-host",
+        default_value = "127.0.0.1",
+        help_heading = "Endpoints"
+    )]
+    pub remote_host: String,
     /// Connection, startup and reliable-delivery timeout in seconds (greater than zero).
     #[arg(long, default_value_t = 30, help_heading = "Transport")]
     pub connect_timeout: u64,
@@ -112,7 +133,7 @@ pub(crate) struct BridgeOptions {
     /// Run in this terminal until Ctrl+C instead of starting a background bridge.
     #[arg(long, conflicts_with = "status", help_heading = "Lifecycle")]
     pub foreground: bool,
-    /// Show the managed bridge status on --port.
+    /// Show the managed bridge status on --host and --port.
     #[arg(long, help_heading = "Lifecycle")]
     pub status: bool,
     /// Use a manually installed matching helper executable instead of deploying the bundled agent.
@@ -145,9 +166,12 @@ pub(crate) struct BridgeOptions {
     pub resolved_password: Option<String>,
 }
 impl BridgeOptions {
+    pub fn listen_addr(&self, port: u16) -> SocketAddr {
+        SocketAddr::new(self.host, port)
+    }
     fn ports(&self) -> (u16, u16) {
         if self.mode == "tcp" {
-            match (self.port, self.target_port) {
+            match (self.port, self.remote_port) {
                 (Some(port), None) | (None, Some(port)) => return (port, port),
                 _ => (),
             }
@@ -160,19 +184,19 @@ impl BridgeOptions {
         };
         (
             self.port.unwrap_or(defaults.0),
-            self.target_port.unwrap_or(defaults.1),
+            self.remote_port.unwrap_or(defaults.1),
         )
     }
     pub fn port(&self) -> u16 {
         self.ports().0
     }
-    pub fn target_port(&self) -> u16 {
+    pub fn remote_port(&self) -> u16 {
         self.ports().1
     }
     pub(crate) fn validate(&mut self) -> Result<()> {
         if self.mode == "tcp" && !self.forget_password && !self.forget_server_password {
             ensure!(
-                self.port.is_some() || self.target_port.is_some(),
+                self.port.is_some() || self.remote_port.is_some(),
                 "TCP bridges require --port or --remote-port"
             );
         }
@@ -206,11 +230,11 @@ impl BridgeOptions {
             "Invalid startup delay"
         );
         ensure!(
-            ["127.0.0.1", "localhost", "::1"].contains(&self.target_host.as_str()),
+            ["127.0.0.1", "localhost", "::1"].contains(&self.remote_host.as_str()),
             "Remote target must be loopback"
         );
         ensure!(
-            self.forget_password || self.forget_server_password || self.target_port() > 0,
+            self.forget_password || self.forget_server_password || self.remote_port() > 0,
             "Target port must be positive; use --remote-port with --port 0"
         );
         ensure!(

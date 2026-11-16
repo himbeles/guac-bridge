@@ -37,6 +37,9 @@ enum Command {
         /// Local listening port of the bridge to stop (1-65535).
         #[arg(long, value_parser = clap::value_parser!(u16).range(1..), required_unless_present = "all")]
         port: Option<u16>,
+        /// Restrict stopping to this listening IP; omit to stop every bridge on --port.
+        #[arg(long, requires = "port", conflicts_with = "all")]
+        host: Option<std::net::IpAddr>,
     },
     /// List registered bridges, gateways and local listeners.
     #[command(display_order = 12)]
@@ -113,8 +116,8 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             print!("{}", crate::licensing::text());
             return 0;
         }
-        Command::Stop { all, port } => {
-            return match crate::background::stop(if all.is_some() { None } else { port }) {
+        Command::Stop { all, port, host } => {
+            return match crate::background::stop(if all.is_some() { None } else { port }, host) {
                 Ok(()) => 0,
                 Err(error) => {
                     crate::console::line(&format!("Cannot stop bridges: {error:#}"));
@@ -243,6 +246,7 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::CommandFactory;
     fn bridge(mode: &str, flags: &[&str]) -> BridgeOptions {
         let cli = Cli::try_parse_from(
             [
@@ -260,6 +264,42 @@ mod tests {
         };
         args.mode = mode.into();
         args
+    }
+    #[test]
+    fn local_and_remote_hosts_are_independent_and_legacy_name_is_accepted() {
+        for mode in ["tcp", "ssh", "llm", "rdp"] {
+            let defaults = bridge(mode, &["--port", "5432"]);
+            assert_eq!(defaults.host, crate::options::default_host());
+            for host in ["192.0.2.10", "0.0.0.0", "::1", "::"] {
+                let args = bridge(
+                    mode,
+                    &[
+                        "--port",
+                        "5432",
+                        "--host",
+                        host,
+                        "--remote-host",
+                        "localhost",
+                    ],
+                );
+                assert_eq!(args.host.to_string(), host);
+                assert_eq!(args.remote_host, "localhost");
+            }
+            assert_eq!(bridge(mode, &["--target-host", "::1"]).remote_host, "::1");
+        }
+        assert!(Cli::try_parse_from(["guac-bridge", "ssh", "URL", "--host", "invalid"]).is_err());
+        assert!(Cli::try_parse_from(["guac-bridge", "stop", "--host", "::1"]).is_err());
+        assert!(Cli::try_parse_from(["guac-bridge", "stop", "all", "--host", "::1"]).is_err());
+        assert!(
+            Cli::try_parse_from(["guac-bridge", "stop", "--port", "2222", "--host", "::1"]).is_ok()
+        );
+        let help = Cli::command()
+            .find_subcommand_mut("ssh")
+            .unwrap()
+            .render_long_help()
+            .to_string();
+        assert!(help.contains("--remote-host") && help.contains("--host"));
+        assert!(!help.contains("--target-host"));
     }
     #[test]
     fn supported_commands_require_start_url_and_allow_control_without_url() {
@@ -355,7 +395,7 @@ mod tests {
             (vec!["--forget-password"], (0, 0), true),
         ] {
             let mut args = bridge("tcp", &flags);
-            assert_eq!((args.port(), args.target_port()), ports, "{flags:?}");
+            assert_eq!((args.port(), args.remote_port()), ports, "{flags:?}");
             assert_eq!(args.validate().is_ok(), valid, "{flags:?}");
         }
     }
@@ -365,11 +405,11 @@ mod tests {
         {
             let mut args = bridge(mode, &[]);
             args.validate().unwrap();
-            assert_eq!((args.port(), args.target_port()), (local, remote));
+            assert_eq!((args.port(), args.remote_port()), (local, remote));
             let args = bridge(mode, &["--port", "2225"]);
-            assert_eq!((args.port(), args.target_port()), (2225, remote));
+            assert_eq!((args.port(), args.remote_port()), (2225, remote));
             let args = bridge(mode, &["--remote-port", "2227"]);
-            assert_eq!((args.port(), args.target_port()), (local, 2227));
+            assert_eq!((args.port(), args.remote_port()), (local, 2227));
         }
     }
     #[test]

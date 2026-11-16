@@ -95,7 +95,9 @@ use the same authenticated bridge controls. Stopping bridges leaves the tray
 available; `prepare-update` also exits the tray and manager.
 
 Each bridge registers in the existing per-user application data directory, using
-`tcp-PORT.json`, `ssh-PORT.json`, `llm-PORT.json` or `rdp-PORT.json`. A registration contains a random instance ID,
+`tcp-PORT.json`, `ssh-PORT.json`, `llm-PORT.json` or `rdp-PORT.json` for the default
+127.0.0.1 listener. Other listening addresses add an address suffix (IPv6 colons
+are replaced with underscores for Windows filenames). A registration contains a random instance ID,
 PID, executable, version, sanitized jump-host URL, Guacamole username, target, and an authenticated loopback control endpoint.
 The authentication token stays out of the UI and status responses. Treat the
 registration directory as private, as with the existing background controls.
