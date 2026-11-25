@@ -136,7 +136,7 @@ pub(crate) struct BridgeOptions {
     /// Run in this terminal until Ctrl+C instead of starting a background bridge.
     #[arg(long, conflicts_with = "status", help_heading = "Lifecycle")]
     pub foreground: bool,
-    /// Show the managed bridge status on --host and --port.
+    /// Show managed status; reverse lookup uses the gateway URL and remote listening endpoint.
     #[arg(long, help_heading = "Lifecycle")]
     pub status: bool,
     /// Use a manually installed matching helper executable instead of deploying the bundled agent.

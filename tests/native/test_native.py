@@ -788,7 +788,9 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reverse_listener_expires_without_client_liveness(self):
         remote=await self.free_port()
-        helper=await asyncio.create_subprocess_exec(str(AGENT),'--stdio','--reverse','--remote-port',str(remote),
+        executable=self.home/'liveness-agent'
+        executable.write_bytes(AGENT.read_bytes());executable.chmod(0o700)
+        helper=await asyncio.create_subprocess_exec(str(executable),'--stdio','--reverse','--remote-port',str(remote),
                     stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
         self.children.append(helper)
         # Keep stdin open to model a gateway retaining the terminal after client loss.
