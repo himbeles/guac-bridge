@@ -33,6 +33,12 @@ struct State {
     #[serde(default = "crate::options::default_host")]
     host: IpAddr,
     target: String,
+    #[serde(default)]
+    reverse: bool,
+    #[serde(default)]
+    remote_scope: String,
+    #[serde(default)]
+    remote_port: u16,
     version: String,
     executable: PathBuf,
     instance: String,
@@ -58,11 +64,38 @@ fn registration_key(mode: &str, host: IpAddr, port: u16) -> String {
         format!("{mode}-{port}-{}", host.to_string().replace(':', "_"))
     }
 }
+fn remote_scope(args: &BridgeOptions) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(
+            serde_json::json!([
+                args.gateway,
+                args.url,
+                args.connection_id,
+                args.data_source,
+                args.server_host,
+                args.server_port,
+                args.remote_host
+            ])
+            .to_string()
+            .as_bytes()
+        )
+    )
+}
+fn key(args: &BridgeOptions, port: u16) -> String {
+    if args.reverse {
+        format!(
+            "reverse-{}-{}-{}",
+            args.mode,
+            args.remote_port(),
+            remote_scope(args)
+        )
+    } else {
+        registration_key(&args.mode, args.host, port)
+    }
+}
 fn path(args: &BridgeOptions) -> Result<PathBuf> {
-    Ok(directory()?.join(format!(
-        "{}.json",
-        registration_key(&args.mode, args.host, args.port())
-    )))
+    Ok(directory()?.join(format!("{}.json", key(args, args.port()))))
 }
 fn identity(args: &BridgeOptions) -> String {
     let mut data = serde_json::json!([
@@ -97,6 +130,11 @@ fn identity(args: &BridgeOptions) -> String {
         data.as_array_mut()
             .unwrap()
             .push(serde_json::json!(["host", args.host]));
+    }
+    if args.reverse {
+        data.as_array_mut()
+            .unwrap()
+            .push(serde_json::json!(["reverse", true]));
     }
     format!("{:x}", Sha256::digest(data.to_string().as_bytes()))
 }
@@ -176,22 +214,23 @@ pub(crate) async fn control(
         port,
         host: args.host,
         target: crate::options::endpoint(&args.remote_host, args.remote_port()),
+        reverse: args.reverse,
+        remote_scope: if args.reverse {
+            remote_scope(args)
+        } else {
+            String::new()
+        },
+        remote_port: args.remote_port(),
         version: env!("CARGO_PKG_VERSION").into(),
         executable: std::env::current_exe()?,
         instance: uuid::Uuid::new_v4().to_string(),
         log: if args.managed_child {
-            Some(directory()?.join(format!(
-                "{}.log",
-                registration_key(&args.mode, args.host, port)
-            )))
+            Some(directory()?.join(format!("{}.log", key(args, port))))
         } else {
             args.debug_log.as_ref().map(PathBuf::from)
         },
     };
-    let path = directory()?.join(format!(
-        "{}.json",
-        registration_key(&args.mode, args.host, port)
-    ));
+    let path = directory()?.join(format!("{}.json", key(args, port)));
     let token = s.token.clone();
     let temp = path.with_extension(format!("{}.tmp", s.pid));
     let mut options = OpenOptions::new();
@@ -293,6 +332,22 @@ impl Bridge {
         }
     }
     pub fn route(&self) -> String {
+        if self.state.reverse {
+            return format!(
+                "{}{} → {} → {} (on client)",
+                self.server_url(),
+                self.state
+                    .server_host
+                    .as_ref()
+                    .map(|host| format!(
+                        " [SSH {}]",
+                        crate::options::endpoint(host, self.state.server_port)
+                    ))
+                    .unwrap_or_default(),
+                self.destination(),
+                self.local_url()
+            );
+        }
         format!(
             "{} → {}{} → {}",
             self.local_url(),
@@ -311,7 +366,11 @@ impl Bridge {
         )
     }
     pub fn bridge_type(&self) -> &str {
-        service_label(&self.state.mode)
+        if self.state.reverse {
+            "Reverse TCP"
+        } else {
+            service_label(&self.state.mode)
+        }
     }
     pub fn gateway(&self) -> &str {
         self.state.gateway.name()
@@ -453,7 +512,8 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
                 || key.starts_with("rdp-")
                 || key.starts_with("tcp-")
                 || key.starts_with("llm-")
-                || key.starts_with("http-"))
+                || key.starts_with("http-")
+                || key.starts_with("reverse-tcp-"))
         {
             continue;
         }
@@ -470,7 +530,15 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             || state.instance.is_empty()
             || state.target.is_empty()
             || display_url(&state.jump_url).is_empty()
-            || key != registration_key(&state.mode, state.host, state.port)
+            || key
+                != if state.reverse {
+                    format!(
+                        "reverse-{}-{}-{}",
+                        state.mode, state.remote_port, state.remote_scope
+                    )
+                } else {
+                    registration_key(&state.mode, state.host, state.port)
+                }
         {
             continue;
         }
@@ -483,9 +551,21 @@ pub(crate) fn bridges() -> Result<Vec<Bridge>> {
             instance: state.instance.clone(),
             label: format!(
                 "[{}]  {} → {}",
-                service_label(&state.mode),
-                SocketAddr::new(state.host, state.port),
-                state.target
+                if state.reverse {
+                    "Reverse TCP"
+                } else {
+                    service_label(&state.mode)
+                },
+                if state.reverse {
+                    state.target.clone()
+                } else {
+                    SocketAddr::new(state.host, state.port).to_string()
+                },
+                if state.reverse {
+                    SocketAddr::new(state.host, state.port).to_string()
+                } else {
+                    state.target.clone()
+                }
             ),
             state,
             usage,
@@ -544,25 +624,47 @@ fn stop_registered(bridges: Vec<Bridge>) -> Result<()> {
 }
 
 /// Root-level bridge control does not need a preset or gateway credentials.
-pub(crate) fn stop(port: Option<u16>, host: Option<IpAddr>) -> Result<()> {
+pub(crate) fn stop(
+    port: Option<u16>,
+    host: Option<IpAddr>,
+    remote_port: Option<u16>,
+    remote_host: Option<String>,
+) -> Result<()> {
     let selected: Vec<_> = bridges()?
         .into_iter()
         .filter(|bridge| {
-            port.is_none_or(|port| bridge.state.port == port)
-                && host.is_none_or(|host| bridge.state.host == host)
+            if let Some(remote_port) = remote_port {
+                bridge.state.reverse
+                    && bridge.state.remote_port == remote_port
+                    && remote_host.as_ref().is_none_or(|host| {
+                        bridge.state.target == crate::options::endpoint(host, remote_port)
+                    })
+            } else if let Some(port) = port {
+                !bridge.state.reverse
+                    && bridge.state.port == port
+                    && host.is_none_or(|host| bridge.state.host == host)
+            } else {
+                true
+            }
         })
         .collect();
     let running = selected.iter().filter(|bridge| bridge.online).count();
     stop_registered(selected)?;
-    let message = match (port, host, running) {
-        (Some(port), Some(host), 0) => format!(
-            "No managed bridge running on {}",
-            SocketAddr::new(host, port)
-        ),
-        (Some(port), Some(host), _) => format!("Bridge stopped on {}", SocketAddr::new(host, port)),
-        (Some(port), None, 0) => format!("No managed bridge running on port {port}"),
-        (Some(port), None, _) => format!("Bridge stopped on port {port}"),
-        (None, _, _) => format!("All bridges stopped ({running})"),
+    let message = if let Some(remote_port) = remote_port {
+        format!("Reverse bridges stopped on remote port {remote_port} ({running})")
+    } else {
+        match (port, host, running) {
+            (Some(port), Some(host), 0) => format!(
+                "No managed bridge running on {}",
+                SocketAddr::new(host, port)
+            ),
+            (Some(port), Some(host), _) => {
+                format!("Bridge stopped on {}", SocketAddr::new(host, port))
+            }
+            (Some(port), None, 0) => format!("No managed bridge running on port {port}"),
+            (Some(port), None, _) => format!("Bridge stopped on port {port}"),
+            (None, _, _) => format!("All bridges stopped ({running})"),
+        }
     };
     crate::console::line(&message);
     Ok(())
@@ -579,6 +681,40 @@ mod control_tests {
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    #[test]
+    fn reverse_keys_distinguish_remote_servers_and_listeners_without_changing_forward_keys() {
+        #[derive(clap::Parser)]
+        struct Options {
+            #[command(flatten)]
+            bridge: BridgeOptions,
+        }
+        let mut args = <Options as clap::Parser>::parse_from([
+            "test",
+            "https://gateway.example/",
+            "--port",
+            "8000",
+            "--remote-port",
+            "18000",
+        ])
+        .bridge;
+        args.mode = "tcp".into();
+        let forward = key(&args, 8000);
+        assert_eq!(forward, "tcp-8000");
+        args.reverse = true;
+        let original = key(&args, 8000);
+        assert_ne!(original, forward);
+        args.port = Some(9000);
+        assert_eq!(
+            key(&args, 9000),
+            original,
+            "listener ownership must detect changed local destinations"
+        );
+        args.server_host = Some("other-server".into());
+        assert_ne!(key(&args, 9000), original);
+        args.server_host = None;
+        args.remote_host = "127.0.0.2".into();
+        assert_ne!(key(&args, 9000), original);
+    }
     #[test]
     fn legacy_records_default_to_loopback_and_custom_addresses_have_distinct_keys() {
         let state: State = serde_json::from_value(serde_json::json!({

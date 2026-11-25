@@ -25,21 +25,30 @@ enum Command {
     /// Stop all registered bridges and the tray before an external update.
     #[command(display_order = 10)]
     PrepareUpdate,
-    /// Stop a registered bridge by local port, or stop all registered bridges.
+    /// Stop forward bridges by client port, reverse bridges by remote port, or all bridges.
     #[command(
         display_order = 11,
-        after_help = "Stop one: guac-bridge stop --port 2222\nStop all: guac-bridge stop all\nApplies to TCP and all presets. Uses authenticated local control sockets; no gateway login is needed."
+        after_help = "Stop one: guac-bridge stop --port 2222\nStop reverse: guac-bridge stop --reverse --remote-port 18000\nStop all: guac-bridge stop all\nApplies to TCP and all presets. Uses authenticated local control sockets; no gateway login is needed."
     )]
     Stop {
         /// Stop every registered running bridge.
-        #[arg(value_name = "all", value_parser = ["all"], required_unless_present = "port", conflicts_with = "port")]
+        #[arg(value_name = "all", value_parser = ["all"], required_unless_present_any = ["port", "remote_port"], conflicts_with_all = ["port", "remote_port", "reverse"])]
         all: Option<String>,
         /// Local listening port of the bridge to stop (1-65535).
-        #[arg(long, value_parser = clap::value_parser!(u16).range(1..), required_unless_present = "all")]
+        #[arg(long, value_parser = clap::value_parser!(u16).range(1..), required_unless_present_any = ["all", "remote_port"])]
         port: Option<u16>,
         /// Restrict stopping to this listening IP; omit to stop every bridge on --port.
         #[arg(long, requires = "port", conflicts_with = "all")]
         host: Option<std::net::IpAddr>,
+        /// Select reverse bridges by their remote listening port, across gateways.
+        #[arg(long, requires = "reverse", conflicts_with = "port", value_parser = clap::value_parser!(u16).range(1..))]
+        remote_port: Option<u16>,
+        /// Restrict reverse stopping to this remote listening address.
+        #[arg(long, requires = "remote_port")]
+        remote_host: Option<String>,
+        /// Stop reverse listeners; requires --remote-port. Stop all includes both directions.
+        #[arg(long, requires = "remote_port")]
+        reverse: bool,
     },
     /// List registered bridges, gateways and local listeners.
     #[command(display_order = 12)]
@@ -53,7 +62,7 @@ enum Command {
     /// Forward any TCP service (main command); supply either port, or both for different ports.
     #[command(
         display_order = 0,
-        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 5432\nA single --port or --remote-port value is used for both local and remote ports.\nDifferent ports: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nTCP bytes, binary protocols and TLS pass unchanged. The remote target must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 5432\nStop: guac-bridge stop --port 5432"
+        after_help = "Example: guac-bridge tcp CONNECTION_URL --port 5432\nA single --port or --remote-port value is used for both local and remote ports.\nDifferent ports: guac-bridge tcp CONNECTION_URL --port 15432 --remote-port 5432\nReverse: guac-bridge tcp CONNECTION_URL --reverse --port 8000 --remote-port 18000\nReverse listens on the helper; --host/--port identify the service on this client.\nTCP bytes, binary protocols and TLS pass unchanged. Forward targets must be loopback on the helper server.\nStatus: guac-bridge tcp --status --port 5432\nStop: guac-bridge stop --port 5432"
     )]
     Tcp(BridgeOptions),
     /// TCP preset for SSH: local 2222 -> remote 22.
@@ -116,8 +125,20 @@ pub(crate) fn run(arguments: impl IntoIterator<Item = OsString>) -> i32 {
             print!("{}", crate::licensing::text());
             return 0;
         }
-        Command::Stop { all, port, host } => {
-            return match crate::background::stop(if all.is_some() { None } else { port }, host) {
+        Command::Stop {
+            all,
+            port,
+            host,
+            remote_port,
+            remote_host,
+            ..
+        } => {
+            return match crate::background::stop(
+                if all.is_some() { None } else { port },
+                host,
+                remote_port,
+                remote_host,
+            ) {
                 Ok(()) => 0,
                 Err(error) => {
                     crate::console::line(&format!("Cannot stop bridges: {error:#}"));
@@ -264,6 +285,55 @@ mod tests {
         };
         args.mode = mode.into();
         args
+    }
+    #[test]
+    fn reverse_endpoints_and_lifecycle_are_explicit() {
+        let mut args = bridge(
+            "tcp",
+            &[
+                "--reverse",
+                "--port",
+                "8000",
+                "--remote-port",
+                "18000",
+                "--remote-host",
+                "0.0.0.0",
+            ],
+        );
+        assert!(args.validate().is_ok());
+        assert_eq!(args.port(), 8000);
+        assert_eq!(args.remote_port(), 18000);
+        assert_eq!(args.listening_endpoint(), "0.0.0.0:18000");
+        for flags in [
+            vec!["--reverse", "--port", "0"],
+            vec!["--reverse", "--port", "8000", "--host", "0.0.0.0"],
+        ] {
+            assert!(bridge("tcp", &flags).validate().is_err());
+        }
+        assert!(bridge("ssh", &["--reverse"]).validate().is_err());
+        assert!(
+            bridge("tcp", &["--port", "8000", "--remote-host", "0.0.0.0"])
+                .validate()
+                .is_err()
+        );
+        assert!(
+            Cli::try_parse_from(["guac-bridge", "stop", "--reverse", "--remote-port", "18000"])
+                .is_ok()
+        );
+        for flags in [
+            vec!["stop", "--reverse"],
+            vec!["stop", "--remote-port", "18000"],
+            vec![
+                "stop",
+                "--port",
+                "8000",
+                "--reverse",
+                "--remote-port",
+                "18000",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(std::iter::once("guac-bridge").chain(flags)).is_err());
+        }
     }
     #[test]
     fn local_and_remote_hosts_are_independent_and_legacy_name_is_accepted() {

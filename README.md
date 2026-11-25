@@ -35,6 +35,15 @@ For **Apache Guacamole** (the default), use the SSH terminal's full browser URL 
 The bridge starts in the background and returns when ready. Connect your local
 application to start using it.
 
+To expose a service on this client through a remote listening port:
+
+```shell
+guac-bridge tcp CONNECTION_URL --reverse --port 8000 --remote-port 18000
+```
+
+Applications on the remote server can then connect to `127.0.0.1:18000`.
+See [reverse forwarding](docs/connections.md#reverse-forwarding) for lifecycle and management.
+
 ### Port presets
 
 Or use a preset with default ports:

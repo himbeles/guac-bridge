@@ -1,6 +1,6 @@
 //! Managed child launch, password stdin handoff and startup-log relay.
 //! The parent waits for authenticated readiness; it never treats a PID as authority.
-use super::{directory, identity, registration_key, request, state};
+use super::{directory, identity, key, request, state};
 use crate::options::BridgeOptions;
 use anyhow::{Context, Result, bail, ensure};
 use std::{
@@ -52,10 +52,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         .truncate(false)
         .read(true)
         .write(true)
-        .open(dir.join(format!(
-            "{}.lock",
-            registration_key(&args.mode, args.host, args.port())
-        )))?;
+        .open(dir.join(format!("{}.lock", key(&args, args.port()))))?;
     lock.lock()?;
     if let Ok(s) = state(&args)
         && request(&s, "status").is_ok()
@@ -67,7 +64,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         if args.status {
             crate::console::line(&format!(
                 "Bridge running on {} (PID {})",
-                args.listen_addr(args.port()),
+                args.listening_endpoint(),
                 s.pid
             ));
             return Ok(());
@@ -79,21 +76,28 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
                     .server_user
                     .as_ref()
                     .is_none_or(|u| Some(u) == s.server_user.as_ref()),
-            "A bridge with different settings already owns this port. Stop it first with guac-bridge stop --port {} --host {}",
-            args.port(),
-            args.host
+            "A bridge with different settings already owns this endpoint. Stop it first with {}",
+            if args.reverse {
+                format!(
+                    "guac-bridge stop --reverse --remote-port {}",
+                    args.remote_port()
+                )
+            } else {
+                format!(
+                    "guac-bridge stop --port {} --host {}",
+                    args.port(),
+                    args.host
+                )
+            }
         );
         crate::console::line(&format!(
             "Bridge already running on {}",
-            args.listen_addr(args.port())
+            args.listening_endpoint()
         ));
         return Ok(());
     }
     if args.status {
-        bail!(
-            "No managed bridge running on {}",
-            args.listen_addr(args.port())
-        );
+        bail!("No managed bridge running on {}", args.listening_endpoint());
     }
     crate::console::line("Starting bridge…");
     // Prompt in the calling console. The password travels only over the child's stdin pipe.
@@ -132,6 +136,9 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
         if let Some(v) = value {
             command.args([flag, &v]);
         }
+    }
+    if args.reverse {
+        command.arg("--reverse");
     }
     command.args([
         "--host",
@@ -174,10 +181,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
             command.arg(flag);
         }
     }
-    let log_path = dir.join(format!(
-        "{}.log",
-        registration_key(&args.mode, args.host, args.port())
-    ));
+    let log_path = dir.join(format!("{}.log", key(&args, args.port())));
     let log = OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -234,7 +238,7 @@ pub(crate) fn handle(mut args: BridgeOptions) -> Result<()> {
             startup_log.poll(&mut startup_file)?;
             crate::console::line(&format!(
                 "Bridge ready on {} (PID {}; output: {})",
-                args.listen_addr(args.port()),
+                args.listening_endpoint(),
                 s.pid,
                 log_path.display()
             ));

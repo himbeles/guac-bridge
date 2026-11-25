@@ -80,16 +80,19 @@ pub(crate) struct BridgeOptions {
     /// Guacamole authentication data source; overrides the value decoded from the URL.
     #[arg(long, help_heading = "Gateway")]
     pub data_source: Option<String>,
-    /// Local listening IP (IPv4 or IPv6). Use 0.0.0.0 for all IPv4 interfaces.
+    /// Client IP: listener normally, service destination with --reverse. Use 0.0.0.0 to listen on all IPv4 interfaces.
     #[arg(long, default_value = "127.0.0.1", help_heading = "Endpoints")]
     pub host: IpAddr,
-    /// Local TCP port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 2222, LLM 8000, RDP 33899.
+    /// Listen on the remote helper and forward connections to a service on this client (tcp only).
+    #[arg(long, help_heading = "Endpoints")]
+    pub reverse: bool,
+    /// Client TCP port: listener normally, service destination with --reverse. For tcp, a single supplied port sets both ends. Preset defaults: SSH 2222, LLM 8000, RDP 33899.
     #[arg(long = "port", help_heading = "Endpoints")]
     pub port: Option<u16>,
-    /// Remote TCP service port. For tcp, a single supplied port sets both ends. Preset defaults: SSH 22, LLM 8000, RDP 3389.
+    /// Helper TCP port: service normally, listener with --reverse. For tcp, a single supplied port sets both ends. Preset defaults: SSH 22, LLM 8000, RDP 3389.
     #[arg(long = "remote-port", help_heading = "Endpoints")]
     pub remote_port: Option<u16>,
-    /// Service address on the helper server: 127.0.0.1, localhost or ::1.
+    /// Helper-side address: loopback service normally, listening IP with --reverse.
     #[arg(
         long,
         alias = "target-host",
@@ -166,6 +169,13 @@ pub(crate) struct BridgeOptions {
     pub resolved_password: Option<String>,
 }
 impl BridgeOptions {
+    pub fn listening_endpoint(&self) -> String {
+        if self.reverse {
+            endpoint(&self.remote_host, self.remote_port())
+        } else {
+            self.listen_addr(self.port()).to_string()
+        }
+    }
     pub fn listen_addr(&self, port: u16) -> SocketAddr {
         SocketAddr::new(self.host, port)
     }
@@ -194,6 +204,28 @@ impl BridgeOptions {
         self.ports().1
     }
     pub(crate) fn validate(&mut self) -> Result<()> {
+        if self.reverse {
+            ensure!(
+                self.mode == "tcp",
+                "--reverse is supported by tcp; choose explicit client and remote ports"
+            );
+            ensure!(
+                self.port() > 0 && self.remote_port() > 0,
+                "Reverse forwarding requires positive client and remote ports"
+            );
+            ensure!(
+                !self.host.is_unspecified(),
+                "--host must identify a client service, not an unspecified address"
+            );
+            ensure!(
+                !self.benchmark_control,
+                "Reverse forwarding does not support benchmark control"
+            );
+            ensure!(
+                self.url.is_some(),
+                "Reverse status requires the gateway URL to identify the remote server"
+            );
+        }
         if self.mode == "tcp" && !self.forget_password && !self.forget_server_password {
             ensure!(
                 self.port.is_some() || self.remote_port.is_some(),
@@ -230,7 +262,11 @@ impl BridgeOptions {
             "Invalid startup delay"
         );
         ensure!(
-            ["127.0.0.1", "localhost", "::1"].contains(&self.remote_host.as_str()),
+            if self.reverse {
+                self.remote_host == "localhost" || self.remote_host.parse::<IpAddr>().is_ok()
+            } else {
+                ["127.0.0.1", "localhost", "::1"].contains(&self.remote_host.as_str())
+            },
             "Remote target must be loopback"
         );
         ensure!(

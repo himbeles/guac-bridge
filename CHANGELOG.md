@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.2.0
+
+- Add opt-in `tcp --reverse`: listen on the remote helper and forward TCP connections to a service on the client, using the existing reliable protocol on Guacamole and FortiGate.
+- Keep `--host`/`--port` on the client and `--remote-host`/`--remote-port` on the helper; preserve single-port TCP defaults.
+- Track reverse listeners separately by gateway/server and remote endpoint. Show Reverse TCP routes in CLI and Windows UI; add `stop --reverse --remote-port PORT` with optional `--remote-host`.
+- Confirm remote binding before readiness and close reverse listeners on shutdown or client liveness expiry. Preserve concurrent channels, half-closes, binary traffic, and per-connection failures.
+
 ## 5.1.0
 
 - Add `--host` to TCP and all presets for IPv4/IPv6 listener binding, with 127.0.0.1 as the default. Keep management sockets on loopback.

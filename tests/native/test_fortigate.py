@@ -170,7 +170,7 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         window = re.search(r'--window (\d+)', script)[1]
         frame_size = re.search(r'--frame-size (\d+)', script)[1]
         target_port = re.search(r'--remote-port (\d+)', script)[1]
-        helper = await asyncio.create_subprocess_exec(str(self.agent), '--stdio', '--windows-console', '--reliable-output', '--target-port', target_port,
+        helper = await asyncio.create_subprocess_exec(str(self.agent), '--stdio', '--windows-console', '--reliable-output', '--target-port', target_port,*(['--reverse'] if '--reverse' in script else []),
             '--window', window, '--frame-size', frame_size, '--connect-timeout','3',
             stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
         self.helpers.append(helper)
@@ -261,6 +261,33 @@ class FortigateTests(unittest.IsolatedAsyncioTestCase):
         await self.launch()
         payload = (ROOT/'crates/guac-bridge/assets/guac-bridge-agent-windows-x86_64.exe').read_bytes()
         self.assertEqual(self.upload_digest,hashlib.sha256(payload).hexdigest())
+
+    async def test_reverse_tcp_over_reliable_windows_carrier(self):
+        async def echo(reader,writer):
+            writer.write(await reader.read());await writer.drain();writer.close()
+        server=await asyncio.start_server(echo,'127.0.0.1',0);self.servers.append(server)
+        local=server.sockets[0].getsockname()[1]
+        probe=await asyncio.start_server(echo,'127.0.0.1',0)
+        self.target_port=probe.sockets[0].getsockname()[1]
+        probe.close();await probe.wait_closed()
+        child=await asyncio.create_subprocess_exec(*self.args('tcp',True,str(local)),'--reverse',env=self.env(),
+                stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        self.children.append(child)
+        async def ready():
+            lines=[]
+            while line:=await child.stderr.readline():
+                lines.append(line)
+                if b'Bridge ready on' in line:return
+            self.fail(b''.join(lines).decode())
+        await asyncio.wait_for(ready(),15)
+        async def exchange():
+            r,w=await asyncio.open_connection('127.0.0.1',self.target_port)
+            payload=bytes(range(256))*2048
+            w.write(payload);await w.drain();w.write_eof()
+            self.assertEqual(await asyncio.wait_for(r.read(),15),payload)
+            w.close();await w.wait_closed()
+        await asyncio.gather(exchange(),exchange())
+        child.terminate();await asyncio.wait_for(child.wait(),10)
 
     async def test_generic_tcp_forwards_binary_service_traffic(self):
         from rdp_fixture import verify_rdp_passthrough

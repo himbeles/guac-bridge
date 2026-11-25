@@ -111,6 +111,50 @@ class Gateway:
 
 
 class BootstrapTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reverse_listener_and_local_service_through_windows_console(self):
+        gateway=Gateway();url=await gateway.start()
+        children=[]
+        async def echo(reader,writer):
+            writer.write(await reader.read());await writer.drain();writer.close()
+        service=await asyncio.start_server(echo,'127.0.0.1',0)
+        probe=await asyncio.start_server(echo,'127.0.0.1',0)
+        local=service.sockets[0].getsockname()[1]
+        remote=probe.sockets[0].getsockname()[1]
+        probe.close();await probe.wait_closed()
+        env=dict(os.environ,GUAC_BRIDGE_PASSWORD='test',NO_PROXY='127.0.0.1,localhost')
+        binary=str(ROOT/'target/release/guac-bridge.exe')
+        try:
+            child=await asyncio.create_subprocess_exec(binary,'tcp',url,'--reverse','--foreground',
+                '--user','test','--server-os','windows','--no-keyring','--startup-delay','0',
+                '--port',str(local),'--remote-port',str(remote),stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=env)
+            children.append(child)
+            async def ready():
+                lines=[]
+                while line:=await child.stderr.readline():
+                    lines.append(line)
+                    if b'Bridge ready on' in line:return
+                self.fail(b''.join(lines).decode())
+            await asyncio.wait_for(ready(),60)
+            async def exchange():
+                r,w=await asyncio.open_connection('127.0.0.1',remote)
+                payload=bytes(range(256))*1024
+                w.write(payload);await w.drain();w.write_eof()
+                self.assertEqual(await asyncio.wait_for(r.read(),30),payload)
+                w.close();await w.wait_closed()
+            await asyncio.gather(exchange(),exchange())
+            stop=await asyncio.create_subprocess_exec(binary,'stop','--reverse','--remote-port',str(remote),env=env,
+                    stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+            out,error=await asyncio.wait_for(stop.communicate(),15)
+            self.assertEqual(stop.returncode,0,(out+error).decode())
+            await asyncio.wait_for(child.wait(),15)
+            self.assertEqual(child.returncode,0,(await child.stderr.read()).decode())
+            with self.assertRaises(OSError):await asyncio.open_connection('127.0.0.1',remote)
+        finally:
+            for child in children:
+                if child.returncode is None:child.kill();await child.wait()
+            service.close();await service.wait_closed()
+            await gateway.close()
+
     async def test_upload_cache_repair_presets_and_tcp(self):
         gateway = Gateway()
         url = await gateway.start()

@@ -46,10 +46,13 @@ struct ReliableInput {
     sender: Mutex<crate::reliable::Sender>,
     changed: Notify,
 }
+type Incoming = (u32, mpsc::Receiver<Frame>, Arc<Semaphore>);
 struct ReceivedFrames<'a> {
     decoder: Decoder,
     args: &'a BridgeOptions,
     channels: &'a Channels,
+    incoming: &'a mpsc::Sender<Incoming>,
+    input: &'a mpsc::Sender<Input>,
     ready: &'a Notify,
     started: &'a AtomicBool,
     reliable: &'a ReliableInput,
@@ -89,8 +92,47 @@ impl ReceivedFrames<'_> {
                             "FortiGate requires reliable helper output"
                         );
                     }
+                    ensure!(
+                        meta["reverse"].as_bool().unwrap_or(false) == self.args.reverse,
+                        "Helper forwarding direction does not match client"
+                    );
+                    if self.args.reverse {
+                        ensure!(
+                            meta["listen"] == self.args.listening_endpoint(),
+                            "Helper listener does not match requested endpoint"
+                        );
+                    }
                     self.started.store(true, Ordering::Relaxed);
                     self.ready.notify_one();
+                }
+                Kind::Open => {
+                    ensure!(
+                        self.args.reverse && self.started.load(Ordering::Relaxed),
+                        "Unexpected helper-initiated connection"
+                    );
+                    let mut channels = self.channels.lock().unwrap();
+                    ensure!(
+                        !channels.contains_key(&frame.id),
+                        "Duplicate reverse channel ID"
+                    );
+                    if channels.len() >= self.args.max_connections {
+                        self.input.try_send(Input::Event(Frame::payload(
+                            Kind::Error,
+                            frame.id,
+                            b"Connection limit reached".to_vec(),
+                        )))?;
+                        continue;
+                    }
+                    let (tx, rx) = mpsc::channel(self.args.window + 4);
+                    let credits = Arc::new(Semaphore::new(self.args.window));
+                    channels.insert(
+                        frame.id,
+                        Channel {
+                            queue: tx,
+                            credits: credits.clone(),
+                        },
+                    );
+                    self.incoming.try_send((frame.id, rx, credits))?;
                 }
                 Kind::Heartbeat => (),
                 Kind::InputAck => {
@@ -424,17 +466,20 @@ async fn channel(
     let (mut reader, mut writer) = stream.into_split();
     let remote_closed = AtomicBool::new(false);
     let result: Result<()> = async {
-        input
-            .send(Input::Event(Frame::control(Kind::Open, id)))
-            .await?;
-        let opened = tokio::time::timeout(Duration::from_secs(args.connect_timeout), queue.recv())
-            .await?
-            .ok_or_else(|| anyhow!("Channel ended before open"))?;
-        ensure!(
-            opened.kind == Kind::Opened,
-            "Remote target refused the TCP connection: {}",
-            String::from_utf8_lossy(&opened.data[..opened.data.len().min(1024)]).escape_debug()
-        );
+        if !args.reverse {
+            input
+                .send(Input::Event(Frame::control(Kind::Open, id)))
+                .await?;
+            let opened =
+                tokio::time::timeout(Duration::from_secs(args.connect_timeout), queue.recv())
+                    .await?
+                    .ok_or_else(|| anyhow!("Channel ended before open"))?;
+            ensure!(
+                opened.kind == Kind::Opened,
+                "Remote target refused the TCP connection: {}",
+                String::from_utf8_lossy(&opened.data[..opened.data.len().min(1024)]).escape_debug()
+            );
+        }
         let upload = async {
             let mut buffer = vec![0; args.frame_size as usize];
             loop {
@@ -583,14 +628,18 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
     #[cfg(windows)]
     let mut interrupt = tokio::signal::windows::ctrl_c()?;
     let listen_addr = args.listen_addr(args.port());
-    let listener = TcpListener::bind(listen_addr).await.map_err(|error| {
+    let listener = if args.reverse {
+        None
+    } else {
+        Some(TcpListener::bind(listen_addr).await.map_err(|error| {
         let hint = if error.kind() == std::io::ErrorKind::AddrInUse {
             "the port is already in use or reserved; choose another --port or stop the process using it"
         } else {
             "check that --host is a local address and the port is available"
         };
         anyhow::Error::new(error).context(format!("Cannot listen on {listen_addr}: {hint}"))
-    })?;
+    })?)
+    };
 
     #[cfg(windows)]
     if !args.benchmark_control
@@ -627,6 +676,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
     });
     let read_reliable = reliable.clone();
     let channels: Channels = Arc::new(Mutex::new(HashMap::new()));
+    let (incoming_tx, mut incoming_rx) = mpsc::channel::<Incoming>(args.max_connections);
     let (failure, mut failed) = watch::channel(None);
     let closing = Arc::new(AtomicBool::new(false));
     let synced = Arc::new(Notify::new());
@@ -667,7 +717,7 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         let mut fortigate_decoder=fortigate::Decoder::default();
         let mut output_records=crate::reliable::Receiver::default();
         let mut output_decoder=Decoder::default();
-        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,ready:&read_ready,started:&read_started,reliable:&read_reliable};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
+        let mut parser=Parser::default();let mut frames=ReceivedFrames{decoder:Decoder::default(),args:&read_args,channels:&read_channels,incoming:&incoming_tx,input:&read_input,ready:&read_ready,started:&read_started,reliable:&read_reliable};let mut output_stream=None;let mut pipe_ended:Option<Instant>=None;let mut remote_error=Vec::new();let mut boot_stream=None;let mut boot_buffer=Vec::new();
         let mut heartbeat=Instant::now();let mut tick=tokio::time::interval(Duration::from_secs(1));
         loop {
             tokio::select!{
@@ -882,16 +932,17 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
         if args.save_server_password && let Some((user,password))=&server_secret {
             crate::credentials::save_server(&args,user,password)?;
         }
-        let port=listener.local_addr()?.port();
+        let port=if let Some(listener)=&listener { listener.local_addr()?.port() } else { args.port() };
         let (stop_tx,mut stop_rx)=mpsc::channel(1);
         let usage=Arc::new(crate::usage::Usage::default());
         let _managed=crate::background::control(&args,&username,port,stop_tx,usage.clone()).await?;
         drop(startup_guard);
-        if !args.benchmark_control{eprintln!("Bridge ready on {}; Ctrl+C to stop", listener.local_addr()?);}
+        if !args.benchmark_control{eprintln!("Bridge ready on {}; Ctrl+C to stop", if args.reverse { format!("{} → client {}",args.listening_endpoint(),args.listen_addr(args.port())) } else { listener.as_ref().unwrap().local_addr()?.to_string() });}
         let control=async {if args.benchmark_control{benchmark_control(port).await}else{interrupt.recv().await;Ok(())}};
         tokio::pin!(control);
         let next_id=AtomicU32::new(1);
         let mut connections=tokio::task::JoinSet::new();
+        let mut liveness=tokio::time::interval(Duration::from_secs(10));
         let refresh=async {
             loop {
                 tokio::time::sleep(Duration::from_secs(60)).await;
@@ -908,7 +959,31 @@ pub(crate) async fn serve(args: Arc<BridgeOptions>) -> Result<()> {
                 result=&mut control=>{result?;break;},
                 _=failed.changed()=>bail!("{}",failed.borrow().as_deref().unwrap_or("Bridge failed")),
                 result=&mut refresh,if destination.as_ref().is_none_or(|d| d.is_connection())=>{result?;break;},
-                accepted=listener.accept()=>{
+                _=liveness.tick(),if args.reverse=>{
+                    input.send(Input::Event(Frame::control(Kind::Heartbeat,0))).await?;
+                },
+                Some((id,rx,credits))=incoming_rx.recv(),if args.reverse=>{
+                    let (input,channels,args,usage)=(input.clone(),channels.clone(),args.clone(),usage.clone());
+                    connections.spawn(async move {
+                        let connected=tokio::time::timeout(Duration::from_secs(args.connect_timeout),TcpStream::connect(args.listen_addr(args.port()))).await;
+                        match connected {
+                            Ok(Ok(stream))=>{
+                                let result=async {
+                                    stream.set_nodelay(true)?;
+                                    input.send(Input::Event(Frame::control(Kind::Opened,id))).await?;
+                                    channel(id,stream,rx,credits,input.clone(),channels.clone(),args,usage).await
+                                }.await;
+                                if let Err(error)=result {crate::diagnostics::event(&format!("Reverse TCP channel {id}: {error:#}"));}
+                            },
+                            error=>{
+                                let message=format!("Client service connection failed: {error:?}");
+                                let _=input.send(Input::Event(Frame::payload(Kind::Error,id,message.into_bytes()))).await;
+                            }
+                        }
+                        channels.lock().unwrap().remove(&id);
+                    });
+                },
+                accepted=async {listener.as_ref().unwrap().accept().await},if listener.is_some()=>{
                     let (stream,_)=accepted?;
                     stream.set_nodelay(true)?;
                     if channels.lock().unwrap().len()>=args.max_connections{drop(stream);continue;}

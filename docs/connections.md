@@ -89,3 +89,45 @@ can use the same port when the OS permits it; wildcard listeners may overlap
 other addresses. Existing loopback registrations retain their filenames. Port-only
 stop selects every registered bridge on that port; add `--host` to select one
 address. Management and usage queries always use authenticated loopback sockets.
+
+
+## Reverse forwarding
+
+`tcp --reverse` listens on the helper machine and forwards each connection to a
+service on this client. The client still opens the gateway session; no incoming
+network connection to the client is required.
+
+```shell
+guac-bridge tcp CONNECTION_URL --reverse --port 8000 --remote-port 18000
+guac-bridge tcp CONNECTION_URL --reverse --port 8000 --remote-port 18000 --status
+guac-bridge stop --reverse --remote-port 18000
+```
+
+`--host` and `--port` always identify the client endpoint: in reverse mode that is
+the service destination. `--remote-host` and `--remote-port` identify the remote
+helper's listener. Both addresses default to `127.0.0.1`. A single supplied port
+sets both ends. Reverse forwarding requires positive ports and is available on
+`tcp`; presets retain their existing behavior.
+
+The helper binds before startup succeeds. Use `--remote-host 0.0.0.0` to listen on
+all remote IPv4 interfaces, or specify a remote IPv6 address. Firewall rules and
+port permissions apply on the helper machine. A loopback listener is reachable
+by other processes and helpers sharing that machine's network namespace; it is
+not private to one gateway session or user. The forwarded service keeps its own
+authentication and TLS.
+
+Reverse registrations distinguish gateway/server, listening address, port and
+direction. Status requires the original gateway URL and remote endpoint. Starting
+the same configuration reuses its bridge; a different client destination requires
+stopping the existing bridge first. `stop --reverse --remote-port PORT` stops all
+reverse registrations with that remote port across gateways. Add
+`--remote-host IP` to restrict the listening address. Normal `stop --port PORT`
+selects forward bridges only; `stop all` includes both directions. The Windows
+manager can stop an individual reverse registration.
+
+Closing one TCP connection leaves the listener active. Stopping the bridge closes
+the remote listener and its channels. Unexpected transport loss closes active
+connections; a helper whose terminal remains open expires after 45 seconds
+without client traffic, checked every 10 seconds. There is no automatic recovery
+or replay of connections in this release. A local service connection refusal
+closes just that channel; the listener can accept later connections.

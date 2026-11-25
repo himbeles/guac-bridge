@@ -33,7 +33,9 @@ Python/uv only distribute and launch the native executable.
 
 A normal TCP, SSH, LLM or RDP command starts or reuses a background bridge and returns only
 when its helper is ready. `--foreground` stays attached to the current terminal.
-The local listener binds before remote login so a busy port fails promptly.
+Forward listeners bind before remote login so a busy local port fails promptly.
+With `tcp --reverse`, the helper binds its listener before Ready, and the client
+connects to its local service only after the helper initiates a channel.
 
 Managed startup passes the password through the child's stdin, never arguments.
 Control sockets require their random token. Registrations are not PID-kill lists.

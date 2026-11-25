@@ -680,6 +680,139 @@ class NativeTests(unittest.IsolatedAsyncioTestCase):
             if slave is not None:
                 os.close(slave)
 
+    async def free_port(self, host='127.0.0.1'):
+        server=await asyncio.start_server(lambda r,w:w.close(),host,0)
+        port=server.sockets[0].getsockname()[1]
+        server.close();await server.wait_closed()
+        return port
+
+    async def reverse_bridge(self, target, remote_port, *extra, background=False):
+        child=await self.child('--reverse','--port',target,'--remote-port',remote_port,*extra,
+                               mode='tcp',foreground=not background)
+        if background:
+            output,error=await asyncio.wait_for(child.communicate(),30)
+            self.assertEqual(child.returncode,0,(output+error).decode())
+            return child,(output+error).decode()
+        async def ready():
+            lines=[]
+            while line:=await child.stderr.readline():
+                lines.append(line)
+                if b'Bridge ready on' in line:return b''.join(lines).decode()
+            self.fail(b''.join(lines).decode())
+        return child,await asyncio.wait_for(ready(),20)
+
+    async def stop_reverse(self, remote_port):
+        child=await asyncio.create_subprocess_exec(str(BINARY),'stop','--reverse','--remote-port',str(remote_port),
+                    stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=self.env())
+        output,error=await asyncio.wait_for(child.communicate(),10)
+        self.assertEqual(child.returncode,0,(output+error).decode())
+
+    async def test_reverse_binary_channels_and_forward_bridge_chaining(self):
+        target=await self.target(self.echo)
+        remote=await self.free_port()
+        reverse,_=await self.reverse_bridge(target,remote)
+        payload=bytes(range(256))*4096+b'\x1b]482203;\x07'
+        await asyncio.gather(*(self.roundtrip(remote,payload) for _ in range(3)))
+        # Another helper on this same machine can reach the reverse loopback listener.
+        forward,local=await self.bridge(remote,'tcp')
+        await self.roundtrip(local,b'forward helper -> reverse helper -> local service')
+        await self.finish(forward)
+        await self.stop_reverse(remote)
+        await asyncio.wait_for(reverse.wait(),10)
+        self.assertEqual(reverse.returncode,0,(await reverse.stderr.read()).decode())
+        with self.assertRaises(OSError):await asyncio.open_connection('127.0.0.1',remote)
+
+    async def test_reverse_background_reuse_status_stop_and_forward_coexist(self):
+        target=await self.target(self.echo)
+        remote=await self.free_port()
+        _,output=await self.reverse_bridge(target,remote,background=True)
+        self.assertIn(f'Bridge ready on 127.0.0.1:{remote}',output)
+        _,output=await self.reverse_bridge(target,remote,background=True)
+        self.assertIn('already running',output)
+        _,output=await self.reverse_bridge(target,remote,'--status',background=True)
+        self.assertIn(f'Bridge running on 127.0.0.1:{remote}',output)
+        records=list((self.home/'data'/'guac-bridge').glob('reverse-tcp-*.json'))
+        self.assertEqual(len(records),1)
+        self.assertTrue(json.loads(records[0].read_text())['reverse'])
+        listing=await asyncio.create_subprocess_exec(str(BINARY),'list',stdout=asyncio.subprocess.PIPE,env=self.env())
+        output,_=await listing.communicate()
+        self.assertIn('Reverse TCP',output.decode())
+        # Stopping normal forwards by client port must not stop a reverse bridge.
+        await self.stop_bridge(target)
+        await self.roundtrip(remote,b'still reverse')
+        await self.stop_reverse(remote)
+        async def closed():
+            while True:
+                try:r,w=await asyncio.open_connection('127.0.0.1',remote)
+                except OSError:return
+                w.close();await w.wait_closed();await asyncio.sleep(.05)
+        await asyncio.wait_for(closed(),5)
+
+    async def test_reverse_same_port_distinct_addresses_stop_independently(self):
+        target=await self.target(self.echo)
+        remote=await self.free_port()
+        try:
+            for host in ['127.0.0.1','127.0.0.2']:
+                await self.reverse_bridge(target,remote,'--remote-host',host,background=True)
+            records=list((self.home/'data'/'guac-bridge').glob('reverse-tcp-*.json'))
+            self.assertEqual(len(records),2)
+            child=await asyncio.create_subprocess_exec(str(BINARY),'stop','--reverse','--remote-port',str(remote),
+                '--remote-host','127.0.0.2',stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE,env=self.env())
+            out,error=await asyncio.wait_for(child.communicate(),10)
+            self.assertEqual(child.returncode,0,(out+error).decode())
+            await self.roundtrip(remote,b'other remote listener remains alive')
+            with self.assertRaises(OSError):await asyncio.open_connection('127.0.0.2',remote)
+        finally:await self.stop_reverse(remote)
+
+    async def test_reverse_bind_failure_and_local_service_recovery(self):
+        target=await self.free_port()
+        occupied=await self.target(self.echo)
+        child=await self.child('--reverse','--port',target,'--remote-port',occupied,mode='tcp')
+        output,error=await asyncio.wait_for(child.communicate(),20)
+        self.assertNotEqual(child.returncode,0)
+        self.assertNotIn(b'Bridge ready',output+error)
+        remote=await self.free_port()
+        child,_=await self.reverse_bridge(target,remote)
+        r,w=await asyncio.open_connection('127.0.0.1',remote)
+        with contextlib.suppress(ConnectionResetError):
+            self.assertEqual(await asyncio.wait_for(r.read(),5),b'')
+        w.close()
+        with contextlib.suppress(OSError):await w.wait_closed()
+        async def echo(r,w):
+            w.write(await r.read());await w.drain();w.close()
+        server=await asyncio.start_server(echo,'127.0.0.1',target)
+        self.servers.append(server)
+        await self.roundtrip(remote,b'local service started later')
+        await self.stop_reverse(remote)
+        await asyncio.wait_for(child.wait(),10)
+
+    async def test_reverse_listener_expires_without_client_liveness(self):
+        remote=await self.free_port()
+        helper=await asyncio.create_subprocess_exec(str(AGENT),'--stdio','--reverse','--remote-port',str(remote),
+                    stdin=asyncio.subprocess.PIPE,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        self.children.append(helper)
+        # Keep stdin open to model a gateway retaining the terminal after client loss.
+        stdout=asyncio.create_task(helper.stdout.read())
+        stderr=asyncio.create_task(helper.stderr.read())
+        await asyncio.wait_for(helper.wait(),60)
+        await stdout;error=await stderr
+        self.assertNotEqual(helper.returncode,0)
+        self.assertIn(b'Client heartbeat lost',error)
+        with self.assertRaises(OSError):await asyncio.open_connection('127.0.0.1',remote)
+
+    async def test_reverse_ipv6_and_wildcard_listeners(self):
+        target=await self.target(self.echo)
+        for host,connect in [('0.0.0.0','127.0.0.2'),('::1','::1')]:
+            try:remote=await self.free_port(connect)
+            except OSError:continue
+            child,_=await self.reverse_bridge(target,remote,'--remote-host',host)
+            r,w=await asyncio.open_connection(connect,remote)
+            w.write(b'reverse address');await w.drain();w.write_eof()
+            self.assertEqual(await asyncio.wait_for(r.read(),5),b'reverse address')
+            w.close();await w.wait_closed()
+            await self.stop_reverse(remote)
+            await asyncio.wait_for(child.wait(),10)
+
     async def test_listener_addresses_and_remote_host_alias(self):
         import socket
         hosts=['0.0.0.0','127.0.0.2','::1']

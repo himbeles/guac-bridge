@@ -46,3 +46,20 @@ output acknowledgements, avoiding an acknowledgement loop. Windows output writes
 direct console handle, avoiding standard-output text conversion and large buffered
 writes through the terminal. The Guacamole binary output protocol remains
 unchanged. Client and helper must come from the same build.
+
+
+## Reverse TCP channels
+
+`tcp --reverse` switches channel initiation while retaining version 5 frames and
+the existing reliable carriers. Ready confirms `reverse: true` and the requested
+`listen` endpoint after binding. A reverse helper sends Open for each accepted
+socket. The client connects to its configured service and replies Opened or Error.
+No application bytes are read from the accepted socket before Opened. Data,
+Credit, Eof, Close and Closed retain their original meanings and bounded queues.
+Only the accepting side allocates channel IDs within a session; mixed directions
+in one session are not supported. Client and bundled helper package versions
+must still match, and the client checks the advertised forwarding direction.
+
+Reverse clients send Heartbeat every 10 seconds. The helper checks for missing
+client traffic every 10 seconds and exits after 45 seconds without an input
+frame, closing its listener and channels even if the gateway retains stdin.

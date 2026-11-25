@@ -6,8 +6,8 @@ use guac_bridge::{FRAME, Frame, Kind, WINDOW};
 use std::{collections::HashMap, io::Write, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
-    sync::{Semaphore, mpsc, watch},
+    net::{TcpListener, TcpStream},
+    sync::{Semaphore, mpsc, oneshot, watch},
     task::JoinHandle,
 };
 
@@ -19,6 +19,8 @@ use tokio::{
 struct Args {
     #[arg(long)]
     stdio: bool,
+    #[arg(long)]
+    reverse: bool,
     #[arg(long)]
     debug_log: Option<String>,
     #[arg(long, hide = true)]
@@ -46,24 +48,36 @@ struct Channel {
     credits: Arc<Semaphore>,
     task: JoinHandle<()>,
     eof: bool,
+    opened: Option<oneshot::Sender<Result<(), String>>>,
 }
 async fn connection(
     id: u32,
+    stream: Option<TcpStream>,
+    opened: oneshot::Receiver<Result<(), String>>,
     args: Arc<Args>,
     mut input: mpsc::Receiver<Option<Vec<u8>>>,
     credits: Arc<Semaphore>,
     output: mpsc::Sender<Frame>,
 ) -> Result<()> {
-    let stream = tokio::time::timeout(
-        Duration::from_secs(args.connect_timeout),
-        TcpStream::connect((args.remote_host.as_str(), args.remote_port)),
-    )
-    .await
-    .context("Target TCP connect timed out")?
-    .context("Target TCP connect failed")?;
+    let stream = if let Some(stream) = stream {
+        tokio::time::timeout(Duration::from_secs(args.connect_timeout), opened)
+            .await??
+            .map_err(anyhow::Error::msg)?;
+        stream
+    } else {
+        tokio::time::timeout(
+            Duration::from_secs(args.connect_timeout),
+            TcpStream::connect((args.remote_host.as_str(), args.remote_port)),
+        )
+        .await
+        .context("Target TCP connect timed out")?
+        .context("Target TCP connect failed")?
+    };
     stream.set_nodelay(true)?;
     let (mut reader, mut writer) = stream.into_split();
-    output.send(Frame::control(Kind::Opened, id)).await?;
+    if !args.reverse {
+        output.send(Frame::control(Kind::Opened, id)).await?;
+    }
     let download = async {
         let mut buffer = vec![0; args.frame_size];
         loop {
@@ -102,6 +116,53 @@ async fn connection(
     };
     tokio::try_join!(upload, download)?;
     Ok(())
+}
+fn start_channel(
+    id: u32,
+    stream: Option<TcpStream>,
+    args: Arc<Args>,
+    output: mpsc::Sender<Frame>,
+    channels: &mut HashMap<u32, Channel>,
+) {
+    let (tx, rx) = mpsc::channel(args.window + 1);
+    let credits = Arc::new(Semaphore::new(args.window));
+    let (opened_tx, opened_rx) = oneshot::channel();
+    let owned_credits = credits.clone();
+    let reverse = args.reverse;
+    let task = tokio::spawn(async move {
+        let result = connection(
+            id,
+            stream,
+            opened_rx,
+            args,
+            rx,
+            owned_credits,
+            output.clone(),
+        )
+        .await;
+        if let Err(error) = &result {
+            diagnostics::event(&format!("TCP channel={id}: {error:#}"));
+        }
+        let event = match result {
+            Ok(()) => Frame::control(Kind::Closed, id),
+            Err(error) => Frame::payload(
+                Kind::Error,
+                id,
+                format!("TCP connection failed: {error:#}").into_bytes(),
+            ),
+        };
+        let _ = output.send(event).await;
+    });
+    channels.insert(
+        id,
+        Channel {
+            input: tx,
+            credits,
+            task,
+            eof: false,
+            opened: reverse.then_some(opened_tx),
+        },
+    );
 }
 async fn read_input(
     sender: mpsc::Sender<Frame>,
@@ -244,8 +305,17 @@ async fn serve(args: Arc<Args>, stdout: &mut impl Write) -> Result<()> {
             guac_bridge::terminal_wire::OUTPUT_STREAM
         )?;
     }
+    let listener = if args.reverse {
+        Some(
+            TcpListener::bind((args.remote_host.as_str(), args.remote_port))
+                .await
+                .context("Cannot bind remote listener")?,
+        )
+    } else {
+        None
+    };
     let ready = serde_json::to_vec(
-        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","window":args.window,"frame_size":args.frame_size,"input_protocol":"reliable-v1","output_protocol":if args.reliable_output {"reliable-v1"} else {"plain"}}),
+        &serde_json::json!({"package_version":env!("CARGO_PKG_VERSION"),"version":5,"protocol":"tcp","reverse":args.reverse,"listen":if args.reverse {Some(format!("{}:{}",if args.remote_host.contains(':') {format!("[{}]",args.remote_host)} else {args.remote_host.clone()},args.remote_port))} else {None},"window":args.window,"frame_size":args.frame_size,"input_protocol":"reliable-v1","output_protocol":if args.reliable_output {"reliable-v1"} else {"plain"}}),
     )?;
     write_frame(
         stdout,
@@ -269,6 +339,8 @@ async fn serve(args: Arc<Args>, stdout: &mut impl Write) -> Result<()> {
     let mut heartbeat = tokio::time::interval(Duration::from_secs(10));
     heartbeat.tick().await;
     let mut input_acks_open = true;
+    let mut next_id = 1u32;
+    let mut last_input = std::time::Instant::now();
     let mut output_tick = tokio::time::interval(Duration::from_millis(25));
     let stop = termination();
     tokio::pin!(stop);
@@ -288,10 +360,17 @@ async fn serve(args: Arc<Args>, stdout: &mut impl Write) -> Result<()> {
                     } else {input_acks_open=false;}
                 },
                 Some(error)=error_rx.recv()=>return Err(error),
-                _=heartbeat.tick(),if output_available=>{write_frame(stdout,&mut reliable_output,&Frame::control(Kind::Heartbeat,0),args.windows_console)?;},
+                _=heartbeat.tick(),if output_available=>{ensure!(!args.reverse || last_input.elapsed()<Duration::from_secs(45),"Client heartbeat lost; closing reverse listener");write_frame(stdout,&mut reliable_output,&Frame::control(Kind::Heartbeat,0),args.windows_console)?;},
                 Some(frame)=output_rx.recv(),if output_available=>{
                     if matches!(frame.kind,Kind::Closed|Kind::Error){channels.remove(&frame.id);}
                     write_frame(stdout,&mut reliable_output,&frame,args.windows_console)?;
+                },
+                accepted=async {listener.as_ref().unwrap().accept().await},if listener.is_some() && output_available=>{
+                    let (stream,_)=accepted?;
+                    if channels.len()>=args.max_connections {drop(stream);continue;}
+                    let id=next_id;next_id=next_id.checked_add(1).context("Channel ID space exhausted")?;
+                    start_channel(id,Some(stream),args.clone(),output_tx.clone(),&mut channels);
+                    write_frame(stdout,&mut reliable_output,&Frame::control(Kind::Open,id),args.windows_console)?;
                 },
                 frame=input_rx.recv()=>{
                     let Some(frame)=frame else {
@@ -300,6 +379,7 @@ async fn serve(args: Arc<Args>, stdout: &mut impl Write) -> Result<()> {
                         if let Some(error)=error_rx.recv().await {return Err(error);}
                         break;
                     };
+                    last_input=std::time::Instant::now();
                     let id=frame.id;
                     match frame.kind {
                         Kind::OutputAck=>{
@@ -307,22 +387,26 @@ async fn serve(args: Arc<Args>, stdout: &mut impl Write) -> Result<()> {
                             reliable_output.as_mut().unwrap().ack(&frame.data,std::time::Instant::now())?;
                         },
                         Kind::Shutdown=>break,
+                        Kind::Heartbeat=>{ensure!(args.reverse,"Unexpected client heartbeat");},
                         Kind::Open=>{
+                            ensure!(!args.reverse,"Client cannot open channels in reverse mode");
                             ensure!(id>0&&!channels.contains_key(&id),"Invalid or duplicate channel ID");
                             if channels.len()>=args.max_connections {
                                 write_frame(stdout,&mut reliable_output,&Frame::payload(Kind::Error,id,b"Connection limit reached".to_vec()),args.windows_console)?;
                                 stdout.flush()?;continue;
                             }
-                            let (tx,rx)=mpsc::channel(args.window+1);
-                            let credits=Arc::new(Semaphore::new(args.window));
-                            let (owned_args,owned_credits,owned_output)=(args.clone(),credits.clone(),output_tx.clone());
-                            let task=tokio::spawn(async move {
-                                let result=connection(id,owned_args.clone(),rx,owned_credits,owned_output.clone()).await;
-                                if let Err(error)=&result {diagnostics::event(&format!("target channel={id}: {error:#}"));}
-                                let event=match result {Ok(())=>Frame::control(Kind::Closed,id),Err(error)=>Frame::payload(Kind::Error,id,format!("Target {}:{} failed: {error:#}",owned_args.remote_host,owned_args.remote_port).into_bytes())};
-                                let _=owned_output.send(event).await;
-                            });
-                            channels.insert(id,Channel{input:tx,credits,task,eof:false});
+                            start_channel(id,None,args.clone(),output_tx.clone(),&mut channels);
+                        },
+                        Kind::Opened=>{
+                            ensure!(args.reverse,"Unexpected channel open confirmation");
+                            if let Some(channel)=channels.get_mut(&id) {
+                                let opened=channel.opened.take().context("Duplicate channel open confirmation")?;
+                                let _=opened.send(Ok(()));
+                            }
+                        },
+                        Kind::Error=>{
+                            ensure!(args.reverse,"Unexpected client channel error");
+                            if let Some(channel)=channels.remove(&id) {channel.task.abort();let _=channel.task.await;}
                         },
                         Kind::Close=>{
                             if let Some(channel)=channels.remove(&id){channel.task.abort();let _=channel.task.await;}
@@ -418,7 +502,11 @@ fn main() -> Result<()> {
         "Started automatically by native client; --stdio is required"
     );
     ensure!(
-        ["127.0.0.1", "localhost", "::1"].contains(&args.remote_host.as_str()),
+        if args.reverse {
+            args.remote_host == "localhost" || args.remote_host.parse::<std::net::IpAddr>().is_ok()
+        } else {
+            ["127.0.0.1", "localhost", "::1"].contains(&args.remote_host.as_str())
+        },
         "Target must be loopback"
     );
     ensure!(

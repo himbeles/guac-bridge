@@ -48,6 +48,9 @@ pub(crate) fn command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
+    if args.reverse {
+        options.push_str(" --reverse");
+    }
     if args.benchmark_control {
         options.push_str(" --benchmark-control");
     }
@@ -98,6 +101,9 @@ fn windows_command(args: &BridgeOptions, nonce: &str) -> Result<Vec<u8>> {
         args.window,
         args.frame_size
     );
+    if args.reverse {
+        options.push_str(" --reverse");
+    }
     if args.benchmark_control {
         options.push_str(" --benchmark-control");
     }
